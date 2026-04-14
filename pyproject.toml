@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openagent"
+version = "0.1.0"
+description = "Python SDK skeleton aligned with the agent-sdk-spec."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "OpenAgent Contributors" },
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.18.0",
+  "pytest>=8.4.0",
+  "ruff>=0.12.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/openagent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["openagent"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.18.0",
+  "pytest>=8.4.0",
+  "ruff>=0.12.0",
+]
