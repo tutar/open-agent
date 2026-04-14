@@ -59,7 +59,12 @@ class SimpleToolExecutor:
                 safe_calls.append((index, tool_call))
                 continue
 
-            ordered_results.append((index, tool.call(tool_call.arguments)))
+            result = tool.call(tool_call.arguments)
+            if tool_call.call_id is not None:
+                metadata = dict(result.metadata or {})
+                metadata["tool_use_id"] = tool_call.call_id
+                result.metadata = metadata
+            ordered_results.append((index, result))
 
         if safe_calls:
             with ThreadPoolExecutor(max_workers=len(safe_calls)) as pool:
@@ -69,6 +74,12 @@ class SimpleToolExecutor:
                     futures.append((index, pool.submit(tool.call, tool_call.arguments)))
 
                 for index, future in futures:
-                    ordered_results.append((index, future.result()))
+                    result = future.result()
+                    tool_call = tool_calls[index]
+                    if tool_call.call_id is not None:
+                        metadata = dict(result.metadata or {})
+                        metadata["tool_use_id"] = tool_call.call_id
+                        result.metadata = metadata
+                    ordered_results.append((index, result))
 
         return [result for _, result in sorted(ordered_results, key=lambda item: item[0])]

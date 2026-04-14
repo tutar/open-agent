@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 from openagent.harness.models import ModelAdapter, ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import (
@@ -59,6 +60,7 @@ class SimpleHarness:
             request = self.build_model_input(session, [])
             response = self.model.generate(request)
             handled = self.handle_model_output(response)
+            self._ensure_tool_call_ids(handled.tool_calls)
 
             if handled.assistant_message is not None:
                 assistant_message = handled.assistant_message
@@ -98,7 +100,7 @@ class SimpleHarness:
                         self._new_event(
                             session_id=session_handle,
                             event_type=RuntimeEventType.TOOL_STARTED,
-                            payload=tool_call.to_dict(),
+                            payload=self._tool_call_payload(tool_call),
                         ),
                     )
                 )
@@ -112,7 +114,7 @@ class SimpleHarness:
                 event = self._new_event(
                     session_id=session_handle,
                     event_type=RuntimeEventType.REQUIRES_ACTION,
-                    payload=exc.requires_action.to_dict(),
+                    payload=self._requires_action_payload(exc.requires_action),
                 )
                 emitted_events.append(self._append_event(session, event))
                 session.status = SessionStatus.REQUIRES_ACTION
@@ -151,7 +153,7 @@ class SimpleHarness:
                         self._new_event(
                             session_id=session_handle,
                             event_type=RuntimeEventType.TOOL_RESULT,
-                            payload=result.to_dict(),
+                            payload=self._tool_result_payload(result),
                         ),
                     )
                 )
@@ -211,7 +213,7 @@ class SimpleHarness:
                     self._new_event(
                         session_id=session_handle,
                         event_type=RuntimeEventType.TOOL_STARTED,
-                        payload=tool_call.to_dict(),
+                        payload=self._tool_call_payload(tool_call),
                     ),
                 )
             )
@@ -232,7 +234,7 @@ class SimpleHarness:
                     self._new_event(
                         session_id=session_handle,
                         event_type=RuntimeEventType.TOOL_RESULT,
-                        payload=result.to_dict(),
+                        payload=self._tool_result_payload(result),
                     ),
                 )
             )
@@ -304,6 +306,34 @@ class SimpleHarness:
     def _append_event(self, session: SessionRecord, event: RuntimeEvent) -> RuntimeEvent:
         session.events.append(event)
         return event
+
+    def _ensure_tool_call_ids(self, tool_calls: list[ToolCall]) -> None:
+        for index, tool_call in enumerate(tool_calls, start=1):
+            if tool_call.call_id is None:
+                tool_call.call_id = f"toolu_{index}"
+
+    def _tool_call_payload(self, tool_call: ToolCall) -> JsonObject:
+        payload = tool_call.to_dict()
+        tool_use_id = payload.pop("call_id", None)
+        if tool_use_id is not None:
+            payload["tool_use_id"] = tool_use_id
+        return payload
+
+    def _tool_result_payload(self, result: ToolResult) -> JsonObject:
+        payload = result.to_dict()
+        metadata = payload.get("metadata")
+        if isinstance(metadata, dict) and "tool_use_id" in metadata:
+            payload["tool_use_id"] = metadata["tool_use_id"]
+        return payload
+
+    def _requires_action_payload(self, requires_action: object) -> JsonObject:
+        if not hasattr(requires_action, "to_dict"):
+            raise TypeError("requires_action payload must support to_dict()")
+        payload = cast(JsonObject, requires_action.to_dict())
+        request_id = payload.get("request_id")
+        if request_id is not None:
+            payload["tool_use_id"] = request_id
+        return payload
 
     def _new_event(
         self,
