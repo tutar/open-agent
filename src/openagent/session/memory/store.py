@@ -242,7 +242,8 @@ class FileMemoryStore(InMemoryMemoryStore):
         transcript_slice: builtins.list[SessionMessage],
     ) -> MemoryConsolidationResult:
         result = super().consolidate(session_id, transcript_slice)
-        for record in result.new_records:
+        records_to_write = result.new_records or list(self._records.values())
+        for record in records_to_write:
             self._write_record(record)
         return result
 
@@ -271,7 +272,10 @@ class FileMemoryStore(InMemoryMemoryStore):
     def _load_existing(self) -> None:
         max_counter = 0
         for path in sorted(self._root.glob("memory_*.json")):
-            record = MemoryRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+            raw_text = path.read_text(encoding="utf-8").strip()
+            if not raw_text:
+                continue
+            record = MemoryRecord.from_dict(json.loads(raw_text))
             self._records[record.memory_id] = record
             try:
                 max_counter = max(max_counter, int(record.memory_id.removeprefix("memory_")))

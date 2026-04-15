@@ -23,7 +23,7 @@ gateway 的作用是把 frontend 看到的世界收敛成：
 
 当前 terminal TUI 主链路是：
 
-`Ink TUI -> bridge.py -> IngressGateway -> InProcessSessionAdapter -> SimpleHarness`
+`Ink TUI -> bridge.py -> Gateway -> InProcessSessionAdapter -> SimpleHarness`
 
 其中：
 

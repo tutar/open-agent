@@ -19,8 +19,8 @@ configure_sys_path()
 
 from openagent.gateway import (  # noqa: E402
     ChannelIdentity,
+    Gateway,
     InboundEnvelope,
-    IngressGateway,
     InProcessSessionAdapter,
 )
 from openagent.harness import (  # noqa: E402
@@ -141,7 +141,7 @@ def main() -> None:
     )
 
     session_adapter = InProcessSessionAdapter(runtime)
-    gateway = IngressGateway(session_adapter)
+    gateway = Gateway(session_adapter)
     sessions: dict[str, ChannelIdentity] = {}
     current_session_name = "main"
 
@@ -213,7 +213,7 @@ def main() -> None:
             egress = gateway.process_user_message(
                 InboundEnvelope(
                     channel_identity=channel.to_dict(),
-                    ingress_kind="user_message",
+                    input_kind="user_message",
                     payload={"content": str(message.get("content", ""))},
                 )
             )
@@ -230,7 +230,7 @@ def main() -> None:
 
         if kind == "control":
             subtype = str(message.get("subtype", ""))
-            if subtype not in {"permission", "interrupt"}:
+            if subtype not in {"permission_response", "interrupt"}:
                 emit_error("unknown_control_subtype")
                 continue
             channel = sessions[current_session_name]

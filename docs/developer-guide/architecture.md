@@ -64,7 +64,7 @@
 
 1. terminal TUI 采集用户输入
 2. bridge 把输入转成 JSON lines 协议
-3. `IngressGateway` 做 inbound normalization 和 session binding
+3. `Gateway` 做 input normalization、session binding 和 egress projection
 4. `InProcessSessionAdapter` 调用本地 runtime
 5. `SimpleHarness` 把 turn 交给显式的 `RalphLoop`
 6. `RalphLoop` 通过注入的 `ModelProviderAdapter` 调用 provider adapter 或 test double

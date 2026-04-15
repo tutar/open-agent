@@ -259,12 +259,12 @@ function InteractiveShell({
 				return;
 			}
 			if (text === '/approve') {
-				send({kind: 'control', subtype: 'permission', approved: true});
+				send({kind: 'control', subtype: 'permission_response', approved: true});
 				setInput('');
 				return;
 			}
 			if (text === '/reject') {
-				send({kind: 'control', subtype: 'permission', approved: false});
+				send({kind: 'control', subtype: 'permission_response', approved: false});
 				setInput('');
 				return;
 			}

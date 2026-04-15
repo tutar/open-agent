@@ -203,7 +203,7 @@ gateway 是 frontend 的稳定接入边界。
 - projected event filtering
 - session replay observation
 
-frontend 当前应通过 `IngressGateway` 使用 agent，不应该直接持有 harness。
+frontend 当前应通过 `Gateway` 使用 agent，不应该直接持有 harness。
 
 ## Terminal TUI
 

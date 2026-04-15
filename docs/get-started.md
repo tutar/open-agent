@@ -134,7 +134,7 @@ frontend 不直接调用 harness/runtime。
 
 terminal TUI 通过本地 stdio bridge 接入 Python gateway：
 
-`terminal-tui -> bridge.py -> IngressGateway -> InProcessSessionAdapter -> SimpleHarness -> RalphLoop -> ModelProviderAdapter -> harness/providers`
+`terminal-tui -> bridge.py -> Gateway -> InProcessSessionAdapter -> SimpleHarness -> RalphLoop -> ModelProviderAdapter -> harness/providers`
 
 这条边界当前是稳定集成入口。
 

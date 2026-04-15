@@ -1,4 +1,4 @@
-"""Ingress gateway and local session adapter baselines."""
+"""Gateway and local session adapter baselines."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class ChannelIdentity(SerializableModel):
 @dataclass(slots=True)
 class InboundEnvelope(SerializableModel):
     channel_identity: JsonObject
-    ingress_kind: str
+    input_kind: str
     payload: JsonObject
     delivery_metadata: JsonObject = field(default_factory=dict)
 
@@ -188,8 +188,8 @@ class InProcessSessionAdapter:
         return getattr(session, "restore_marker", None)
 
 
-class IngressGateway:
-    """Local ingress gateway for terminal/desktop frontends."""
+class Gateway:
+    """Local channel gateway for terminal/desktop frontends."""
 
     def __init__(
         self,
@@ -200,7 +200,7 @@ class IngressGateway:
         self._binding_store = binding_store
         self._bindings: dict[tuple[str, str], SessionBinding] = {}
 
-    def receive_inbound(self, inbound_envelope: InboundEnvelope) -> NormalizedInboundMessage:
+    def receive_input(self, inbound_envelope: InboundEnvelope) -> NormalizedInboundMessage:
         channel_identity = inbound_envelope.channel_identity
         conversation_id = str(channel_identity.get("conversation_id", "default"))
         sender_id = channel_identity.get("user_id")
@@ -231,6 +231,9 @@ class IngressGateway:
         adapter_name: str | None = None,
     ) -> SessionBinding:
         conversation_id = channel_identity.conversation_id or "default"
+        existing = self._bindings.get((channel_identity.channel_type, conversation_id))
+        if existing is not None and existing.session_id != session_identity:
+            raise ValueError("A chat can only be bound to one session")
         binding = SessionBinding(
             channel_identity=channel_identity.to_dict(),
             conversation_id=conversation_id,
@@ -249,7 +252,8 @@ class IngressGateway:
         subtype = str(control_message.get("subtype", "unknown"))
         return {
             "subtype": subtype,
-            "accepted": subtype in {"interrupt", "resume", "permission", "mode_change"},
+            "accepted": subtype
+            in {"interrupt", "resume", "permission_response", "mode_change"},
         }
 
     def project_egress(
@@ -278,11 +282,20 @@ class IngressGateway:
         return self._project_many(events, binding)
 
     def process_user_message(self, inbound_envelope: InboundEnvelope) -> list[EgressEnvelope]:
-        normalized = self.receive_inbound(inbound_envelope)
+        normalized = self.receive_input(inbound_envelope)
         binding_key = (normalized.channel, normalized.conversation_id)
         binding = self._get_binding(*binding_key)
         events = self._session_adapter.write_input(binding.session_id, normalized.content)
         return self._project_many(events, binding)
+
+    def process_input(self, inbound_envelope: InboundEnvelope) -> list[EgressEnvelope]:
+        input_kind = inbound_envelope.input_kind
+        if input_kind in {"user_message", "supplement_input"}:
+            return self.process_user_message(inbound_envelope)
+        if input_kind == "control":
+            channel = ChannelIdentity.from_dict(inbound_envelope.channel_identity)
+            return self.process_control_message(channel, inbound_envelope.payload)
+        return []
 
     def process_control_message(
         self,
@@ -297,7 +310,7 @@ class IngressGateway:
         binding = self._get_binding(channel_identity.channel_type, conversation_id)
         subtype = str(control_message["subtype"])
 
-        if subtype == "permission":
+        if subtype == "permission_response":
             approved = bool(control_message.get("approved", False))
             events = self._session_adapter.continue_session(binding.session_id, approved=approved)
             return self._project_many(events, binding)

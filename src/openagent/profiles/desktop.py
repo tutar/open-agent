@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from openagent.context_governance import ContextGovernance
-from openagent.gateway import FileSessionBindingStore, IngressGateway, InProcessSessionAdapter
+from openagent.gateway import FileSessionBindingStore, Gateway, InProcessSessionAdapter
 from openagent.harness import ModelProviderAdapter, SimpleHarness
 from openagent.orchestration import FileTaskManager, InMemoryTaskManager
 from openagent.session import FileSessionStore
@@ -72,10 +72,10 @@ class DesktopProfile:
         session_root: str,
         tools: list[ToolDefinition] | None = None,
         binding_root: str | None = None,
-    ) -> IngressGateway:
+    ) -> Gateway:
         runtime = self.create_runtime(model=model, session_root=session_root, tools=tools)
         resolved_binding_root = binding_root or f"{session_root}/bindings"
-        return IngressGateway(
+        return Gateway(
             InProcessSessionAdapter(runtime),
             binding_store=FileSessionBindingStore(resolved_binding_root),
         )

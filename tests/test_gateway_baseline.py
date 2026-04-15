@@ -1,11 +1,24 @@
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from openagent.gateway import ChannelIdentity, FileSessionBindingStore, InboundEnvelope
+from openagent.gateway import (
+    ChannelIdentity,
+    FileSessionBindingStore,
+    Gateway,
+    InboundEnvelope,
+    InProcessSessionAdapter,
+)
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import RuntimeEventType, ToolResult
 from openagent.profiles import DesktopProfile, TuiProfile
-from openagent.tools import PermissionDecision, ToolCall
+from openagent.tools import (
+    PermissionDecision,
+    ToolCall,
+    ToolExecutionContext,
+    ToolProgressUpdate,
+    ToolStreamItem,
+)
 
 
 @dataclass(slots=True)
@@ -42,6 +55,32 @@ class DemoTool:
 
 
 @dataclass(slots=True)
+class StreamingTool(DemoTool):
+    name: str = "stream"
+
+    def stream_call(
+        self,
+        arguments: dict[str, object],
+        context: ToolExecutionContext,
+    ) -> Iterator[ToolStreamItem]:
+        del context
+        yield ToolStreamItem(
+            progress=ToolProgressUpdate(
+                tool_name=self.name,
+                message="working",
+                progress=0.5,
+            )
+        )
+        yield ToolStreamItem(
+            result=ToolResult(
+                tool_name=self.name,
+                success=True,
+                content=[str(arguments.get("text", "ok"))],
+            )
+        )
+
+
+@dataclass(slots=True)
 class ToolThenReplyModel:
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
         latest = request.messages[-1]
@@ -50,6 +89,17 @@ class ToolThenReplyModel:
             return ModelTurnResponse(assistant_message="tool completed after approval")
         return ModelTurnResponse(
             tool_calls=[ToolCall(tool_name="admin", arguments={"text": "rotate"})]
+        )
+
+
+@dataclass(slots=True)
+class ToolProgressModel:
+    def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        latest = request.messages[-1]
+        if latest.get("role") == "tool":
+            return ModelTurnResponse(assistant_message="done after progress")
+        return ModelTurnResponse(
+            tool_calls=[ToolCall(tool_name="stream", arguments={"text": "payload"})]
         )
 
 
@@ -65,7 +115,7 @@ def test_tui_gateway_processes_user_message() -> None:
     egress = gateway.process_user_message(
         InboundEnvelope(
             channel_identity=channel.to_dict(),
-            ingress_kind="user_message",
+            input_kind="user_message",
             payload={"content": "hi"},
             delivery_metadata={"message_id": "msg_1"},
         )
@@ -93,7 +143,7 @@ def test_desktop_gateway_uses_file_backed_runtime(tmp_path: Path) -> None:
     egress = gateway.process_user_message(
         InboundEnvelope(
             channel_identity=channel.to_dict(),
-            ingress_kind="user_message",
+            input_kind="user_message",
             payload={"content": "open"},
             delivery_metadata={"message_id": "msg_2"},
         )
@@ -107,7 +157,7 @@ def test_desktop_gateway_uses_file_backed_runtime(tmp_path: Path) -> None:
 def test_gateway_route_control_accepts_known_subtypes() -> None:
     gateway = TuiProfile().create_gateway(model=StaticModel(message="noop"))
 
-    accepted = gateway.route_control({"subtype": "permission"})
+    accepted = gateway.route_control({"subtype": "permission_response"})
     accepted_mode_change = gateway.route_control({"subtype": "mode_change"})
     rejected = gateway.route_control({"subtype": "unknown"})
 
@@ -131,19 +181,63 @@ def test_gateway_processes_permission_continuation() -> None:
     first_egress = gateway.process_user_message(
         InboundEnvelope(
             channel_identity=channel.to_dict(),
-            ingress_kind="user_message",
+            input_kind="user_message",
             payload={"content": "admin rotate"},
             delivery_metadata={"message_id": "msg_3"},
         )
     )
     second_egress = gateway.process_control_message(
         channel,
-        {"subtype": "permission", "approved": True},
+        {"subtype": "permission_response", "approved": True},
     )
 
     assert first_egress[-1].event["event_type"] == RuntimeEventType.REQUIRES_ACTION.value
     assert second_egress[0].event["event_type"] == RuntimeEventType.TOOL_STARTED.value
     assert second_egress[-1].event["event_type"] == RuntimeEventType.TURN_COMPLETED.value
+
+
+def test_gateway_process_input_accepts_supplement_input() -> None:
+    gateway = TuiProfile().create_gateway(model=StaticModel(message="supplement seen"))
+    channel = ChannelIdentity(
+        channel_type="terminal",
+        user_id="user_sup",
+        conversation_id="conv_supplement",
+    )
+    gateway.bind_session(channel, "sess_gateway_supplement")
+
+    egress = gateway.process_input(
+        InboundEnvelope(
+            channel_identity=channel.to_dict(),
+            input_kind="supplement_input",
+            payload={"content": "one more thing"},
+        )
+    )
+
+    assert egress[0].event["event_type"] == RuntimeEventType.TURN_STARTED.value
+    assert egress[-1].event["event_type"] == RuntimeEventType.TURN_COMPLETED.value
+
+
+def test_gateway_projects_tool_progress_events() -> None:
+    gateway = TuiProfile().create_gateway(
+        model=ToolProgressModel(),
+        tools=[StreamingTool(name="stream")],
+    )
+    channel = ChannelIdentity(
+        channel_type="terminal",
+        user_id="user_progress",
+        conversation_id="conv_progress",
+    )
+    gateway.bind_session(channel, "sess_gateway_progress")
+
+    egress = gateway.process_user_message(
+        InboundEnvelope(
+            channel_identity=channel.to_dict(),
+            input_kind="user_message",
+            payload={"content": "run stream"},
+        )
+    )
+
+    assert RuntimeEventType.TOOL_PROGRESS.value in [item.event["event_type"] for item in egress]
 
 
 def test_gateway_filters_and_replays_projected_events() -> None:
@@ -166,7 +260,7 @@ def test_gateway_filters_and_replays_projected_events() -> None:
     egress = gateway.process_user_message(
         InboundEnvelope(
             channel_identity=channel.to_dict(),
-            ingress_kind="user_message",
+            input_kind="user_message",
             payload={"content": "hi"},
         )
     )
@@ -183,14 +277,14 @@ def test_gateway_filters_and_replays_projected_events() -> None:
     assert replay[0].session_id == "sess_gateway_filtered"
     binding = gateway.bind_session(
         channel,
-        "sess_gateway_filtered_2",
+        "sess_gateway_filtered",
         event_types=[
             RuntimeEventType.ASSISTANT_MESSAGE.value,
             RuntimeEventType.TURN_COMPLETED.value,
         ],
         adapter_name="terminal-tui",
     )
-    assert binding.checkpoint_event_offset == 0
+    assert binding.checkpoint_event_offset == 3
 
 
 def test_gateway_restores_persisted_binding_after_restart(tmp_path: Path) -> None:
@@ -208,7 +302,7 @@ def test_gateway_restores_persisted_binding_after_restart(tmp_path: Path) -> Non
     first_gateway.process_user_message(
         InboundEnvelope(
             channel_identity=channel.to_dict(),
-            ingress_kind="user_message",
+            input_kind="user_message",
             payload={"content": "hi"},
         )
     )
@@ -220,7 +314,7 @@ def test_gateway_restores_persisted_binding_after_restart(tmp_path: Path) -> Non
     egress = restored_gateway.process_user_message(
         InboundEnvelope(
             channel_identity=channel.to_dict(),
-            ingress_kind="user_message",
+            input_kind="user_message",
             payload={"content": "hi"},
         )
     )
@@ -254,3 +348,21 @@ def test_desktop_gateway_persists_binding_store_by_default(tmp_path: Path) -> No
 
     assert restored is not None
     assert restored.session_id == "sess_gateway_desktop_binding"
+
+
+def test_gateway_enforces_one_chat_one_session() -> None:
+    runtime = TuiProfile().create_runtime(model=StaticModel(message="x"))
+    gateway = Gateway(InProcessSessionAdapter(runtime))
+    channel = ChannelIdentity(
+        channel_type="terminal",
+        user_id="user_7",
+        conversation_id="conv_unique",
+    )
+
+    gateway.bind_session(channel, "sess_one")
+    try:
+        gateway.bind_session(channel, "sess_two")
+    except ValueError as exc:
+        assert "one session" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
