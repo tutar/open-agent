@@ -186,6 +186,33 @@
 - richer extraction policy
 - richer recall ranking and scoping
 
+## Observability
+
+当前 observability 子系统已经独立于 runtime event log。
+
+当前支持：
+
+- `AgentObservability`
+- `RuntimeMetric`
+- `SessionStateSignal`
+- `ProgressUpdate`
+- span-based tracing via `start_span(...) / end_span(...)`
+- `InMemoryObservabilitySink`
+- `StdoutObservabilitySink`
+- `NoOpObservabilitySink`
+- `CompositeObservabilitySink`
+- interaction / llm request / tool / background task span baseline
+- session lifecycle signal: `running / requires_action / idle`
+- task / background progress projection baseline
+- host-local structured stdout output for debugging
+
+当前不支持：
+
+- OTel exporter
+- vendor-specific tracing backend integration
+- standalone durable trace storage
+- precise provider token/cost accounting when the provider does not expose it
+
 ## Gateway
 
 gateway 是 frontend 的稳定接入边界。

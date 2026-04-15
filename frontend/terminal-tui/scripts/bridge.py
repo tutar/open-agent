@@ -19,9 +19,9 @@ configure_sys_path()
 
 from openagent.gateway import (  # noqa: E402
     ChannelIdentity,
-    Gateway,
     InboundEnvelope,
     InProcessSessionAdapter,
+    TerminalChannelAdapter,
 )
 from openagent.harness import (  # noqa: E402
     ModelProviderAdapter,
@@ -33,7 +33,7 @@ from openagent.harness.providers import (  # noqa: E402
     load_model_from_env,
 )
 from openagent.object_model import RuntimeEvent, ToolResult  # noqa: E402
-from openagent.profiles import TuiProfile  # noqa: E402
+from openagent.local import create_gateway_for_runtime, create_in_memory_runtime  # noqa: E402
 from openagent.tools import PermissionDecision, ToolCall  # noqa: E402
 
 
@@ -133,15 +133,14 @@ def session_identity(session_name: str) -> tuple[str, str]:
 
 
 def main() -> None:
-    profile = TuiProfile()
     model = _load_bridge_model()
-    runtime = profile.create_runtime(
+    runtime = create_in_memory_runtime(
         model=model,
         tools=[EchoTool(), AdminTool()],
     )
 
+    gateway = create_gateway_for_runtime(runtime, [TerminalChannelAdapter()])
     session_adapter = InProcessSessionAdapter(runtime)
-    gateway = Gateway(session_adapter)
     sessions: dict[str, ChannelIdentity] = {}
     current_session_name = "main"
 

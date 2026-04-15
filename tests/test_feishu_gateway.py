@@ -3,11 +3,11 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from openagent import create_feishu_runtime
 from openagent.gateway import FeishuAppConfig, FeishuChannelAdapter, FeishuLongConnectionHost
 from openagent.gateway.feishu import create_feishu_gateway
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import ToolResult
-from openagent.profiles import FeishuProfile
 from openagent.tools import (
     PermissionDecision,
     ToolCall,
@@ -318,16 +318,12 @@ def test_feishu_adapter_coalesces_tool_progress_notifications(tmp_path: Path) ->
     assert len(progress_messages) == 1
 
 
-def test_feishu_profile_creates_file_backed_runtime(tmp_path: Path) -> None:
-    profile = FeishuProfile()
-
-    runtime = profile.create_runtime(
+def test_feishu_runtime_creates_file_backed_runtime(tmp_path: Path) -> None:
+    runtime = create_feishu_runtime(
         model=StaticModel(message="profile"),
         session_root=str(tmp_path / "sessions"),
     )
     events, terminal = runtime.run_turn("hello", "sess_feishu")
 
-    assert profile.name == "feishu"
-    assert profile.binding_name == "in_process"
     assert events[1].payload["message"] == "profile"
     assert terminal.reason == "assistant_message"

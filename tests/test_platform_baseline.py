@@ -8,6 +8,7 @@ from openagent.capability_surface import (
 )
 from openagent.context_governance import ContextGovernance
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.local import create_file_runtime, create_in_memory_runtime
 from openagent.object_model import JsonObject, TerminalStatus, ToolResult
 from openagent.orchestration import (
     BackgroundTaskContext,
@@ -16,7 +17,6 @@ from openagent.orchestration import (
     LocalBackgroundAgentOrchestrator,
     LocalTaskKind,
 )
-from openagent.profiles import DesktopExtension, DesktopProfile, TuiProfile
 from openagent.sandbox import LocalSandbox, SandboxExecutionRequest
 from openagent.session import SessionMessage
 from openagent.tools import (
@@ -138,8 +138,8 @@ def test_local_sandbox_negotiates_capabilities_and_denies_missing_access() -> No
     assert "Missing sandbox credentials: cloud-token" in negotiation.reasons
 
 
-def test_tui_profile_creates_working_runtime() -> None:
-    runtime = TuiProfile().create_runtime(model=StaticModel(message="profile-ready"))
+def test_in_memory_runtime_creates_working_runtime() -> None:
+    runtime = create_in_memory_runtime(model=StaticModel(message="profile-ready"))
 
     events, terminal = runtime.run_turn("hello", "sess_profile")
 
@@ -147,12 +147,9 @@ def test_tui_profile_creates_working_runtime() -> None:
     assert events[1].payload["message"] == "profile-ready"
 
 
-def test_tui_and_desktop_profiles_use_in_process_binding(tmp_path: Path) -> None:
-    tui = TuiProfile()
-    desktop = DesktopProfile()
-
-    tui_runtime = tui.create_runtime(StaticModel(message="tui"))
-    desktop_runtime = desktop.create_runtime(
+def test_local_runtimes_use_in_process_binding(tmp_path: Path) -> None:
+    tui_runtime = create_in_memory_runtime(StaticModel(message="tui"))
+    desktop_runtime = create_file_runtime(
         StaticModel(message="desktop"),
         str(tmp_path / "desktop"),
     )
@@ -160,16 +157,14 @@ def test_tui_and_desktop_profiles_use_in_process_binding(tmp_path: Path) -> None
     tui_events, tui_terminal = tui_runtime.run_turn("hello", "sess_tui")
     desktop_events, desktop_terminal = desktop_runtime.run_turn("hello", "sess_desktop")
 
-    assert tui.binding_name == "in_process"
-    assert desktop.binding_name == "in_process"
     assert tui_terminal.status is TerminalStatus.COMPLETED
     assert desktop_terminal.status is TerminalStatus.COMPLETED
     assert tui_events[1].payload["message"] == "tui"
     assert desktop_events[1].payload["message"] == "desktop"
 
 
-def test_tui_profile_can_create_file_backed_task_manager(tmp_path: Path) -> None:
-    manager = TuiProfile().create_task_manager(root=str(tmp_path / "tui_tasks"))
+def test_file_task_manager_can_be_created_directly(tmp_path: Path) -> None:
+    manager = FileTaskManager(root=str(tmp_path / "tui_tasks"))
 
     assert isinstance(manager, FileTaskManager)
 
@@ -210,26 +205,6 @@ def test_local_background_agent_orchestrator_runs_without_blocking() -> None:
     assert final_task.status is TerminalStatus.COMPLETED
 
 
-def test_desktop_profile_tracks_local_extensions() -> None:
-    manager = DesktopProfile().create_extension_manager()
-    extension = DesktopExtension(
-        extension_id="ext.review",
-        label="Review Bundle",
-        commands=["cmd.review"],
-        skills=["skill.review"],
-    )
-
-    manager.install(extension)
-    manager.disable("ext.review")
-
-    assert manager.list_extensions()[0].enabled is False
-
-    manager.enable("ext.review")
-    enabled_extensions = manager.list_extensions(enabled_only=True)
-
-    assert [item.extension_id for item in enabled_extensions] == ["ext.review"]
-
-
 def test_context_governance_compacts_and_externalizes(tmp_path: Path) -> None:
     governance = ContextGovernance(
         max_tokens=5,
@@ -238,7 +213,7 @@ def test_context_governance_compacts_and_externalizes(tmp_path: Path) -> None:
         overflow_compact_to_messages=1,
         storage_dir=str(tmp_path),
     )
-    runtime = TuiProfile().create_runtime(model=StaticModel(message="governed"))
+    runtime = create_in_memory_runtime(model=StaticModel(message="governed"))
     runtime.context_governance = governance
 
     runtime.run_turn("a" * 120, "sess_compact")

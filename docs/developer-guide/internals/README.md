@@ -9,6 +9,7 @@
 - [Model Provider And Providers](./model-provider-and-providers.md)
 - [Tools And Capability Surface](./tools-and-capability-surface.md)
 - [Gateway And Frontend](./gateway-and-frontend.md)
+- [Agent Observability](./agent-observability.md)
 - [Orchestration And Sandbox](./orchestration-and-sandbox.md)
 
 阅读顺序建议：
@@ -18,4 +19,5 @@
 3. `model-provider-and-providers`
 4. `tools-and-capability-surface`
 5. `gateway-and-frontend`
-6. `orchestration-and-sandbox`
+6. `agent-observability`
+7. `orchestration-and-sandbox`

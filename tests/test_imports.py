@@ -1,5 +1,6 @@
 from openagent import (
     SPEC_VERSION,
+    AgentObservability,
     AgentRuntime,
     CapabilityView,
     ModelProviderAdapter,
@@ -16,8 +17,8 @@ from openagent import (
     __version__,
 )
 from openagent.harness import Harness
+from openagent.local import create_in_memory_runtime
 from openagent.orchestration import TaskManager
-from openagent.profiles import TuiProfile
 from openagent.sandbox import Sandbox
 from openagent.session import SessionStore
 from openagent.tools import ToolDefinition, ToolExecutor, ToolRegistry
@@ -26,9 +27,9 @@ from openagent.tools import ToolDefinition, ToolExecutor, ToolRegistry
 def test_public_exports_are_importable() -> None:
     assert __version__ == "0.1.0"
     assert SPEC_VERSION == "0.1"
-    assert TuiProfile().name == "tui"
     assert Harness is not None
     assert AgentRuntime is not None
+    assert AgentObservability is not None
     assert ModelProviderAdapter is not None
     assert ModelProviderStreamingAdapter is not None
     assert RalphLoop is not None
@@ -38,6 +39,7 @@ def test_public_exports_are_importable() -> None:
     assert ToolExecutor is not None
     assert Sandbox is not None
     assert TaskManager is not None
+    assert create_in_memory_runtime is not None
 
 
 def test_object_models_support_dict_serialization() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from openagent.object_model import JsonObject, RuntimeEvent
+from openagent.observability import AgentObservability
 
 from .control import route_control_message
 from .interfaces import ChannelAdapter, SessionAdapter, SessionBindingStore
@@ -23,16 +24,25 @@ class Gateway:
         self,
         session_adapter: SessionAdapter,
         binding_store: SessionBindingStore | None = None,
+        observability: AgentObservability | None = None,
     ) -> None:
         self._session_adapter = session_adapter
         self._binding_store = binding_store
         self._bindings: dict[tuple[str, str], SessionBinding] = {}
         self._channel_adapters: dict[str, ChannelAdapter] = {}
+        self._observability = observability
 
     def register_channel(self, adapter: ChannelAdapter) -> None:
         """Register channel preferences used when creating a binding."""
 
         self._channel_adapters[adapter.channel_type] = adapter
+        if self._observability is not None:
+            self._observability.project_external_event(
+                {
+                    "event": "gateway.channel_registered",
+                    "channel_type": adapter.channel_type,
+                }
+            )
 
     def receive_input(self, inbound_envelope: InboundEnvelope) -> NormalizedInboundMessage:
         """Normalize channel input into the runtime-facing message shape."""
@@ -88,6 +98,15 @@ class Gateway:
         self._session_adapter.spawn(session_identity)
         self._sync_binding_checkpoint(binding)
         self._persist_binding(binding)
+        if self._observability is not None:
+            self._observability.project_external_event(
+                {
+                    "event": "gateway.session_bound",
+                    "channel_type": channel_identity.channel_type,
+                    "conversation_id": conversation_id,
+                    "session_id": session_identity,
+                }
+            )
         return binding
 
     def get_binding(self, channel_type: str, conversation_id: str) -> SessionBinding:
@@ -138,6 +157,15 @@ class Gateway:
         """Append a user message into the currently bound session."""
 
         normalized = self.receive_input(inbound_envelope)
+        if self._observability is not None:
+            self._observability.project_external_event(
+                {
+                    "event": "gateway.user_message",
+                    "channel": normalized.channel,
+                    "conversation_id": normalized.conversation_id,
+                    "message_id": normalized.message_id,
+                }
+            )
         binding = self._get_binding(normalized.channel, normalized.conversation_id)
         events = self._session_adapter.write_input(binding.session_id, normalized.content)
         return self._project_many(events, binding)
@@ -170,16 +198,42 @@ class Gateway:
 
         if subtype == "permission_response":
             approved = bool(control_message.get("approved", False))
+            if self._observability is not None:
+                self._observability.project_external_event(
+                    {
+                        "event": "gateway.control",
+                        "subtype": subtype,
+                        "conversation_id": conversation_id,
+                        "approved": approved,
+                    }
+                )
             events = self._session_adapter.continue_session(binding.session_id, approved=approved)
             return self._project_many(events, binding)
 
         if subtype == "interrupt":
+            if self._observability is not None:
+                self._observability.project_external_event(
+                    {
+                        "event": "gateway.control",
+                        "subtype": subtype,
+                        "conversation_id": conversation_id,
+                    }
+                )
             self._session_adapter.kill(binding.session_id)
             return []
 
         if subtype == "resume":
             after = control_message.get("after")
             normalized_after = int(after) if isinstance(after, int | float | str) else None
+            if self._observability is not None:
+                self._observability.project_external_event(
+                    {
+                        "event": "gateway.control",
+                        "subtype": subtype,
+                        "conversation_id": conversation_id,
+                        "after": normalized_after,
+                    }
+                )
             return self.resume_bound_session(channel_identity, after=normalized_after)
 
         return []
@@ -213,6 +267,16 @@ class Gateway:
             envelope = self.project_egress(event, binding)
             if envelope is not None:
                 projected.append(envelope)
+                if self._observability is not None:
+                    self._observability.project_external_event(
+                        {
+                            "event": "gateway.egress",
+                            "channel": envelope.channel,
+                            "conversation_id": envelope.conversation_id,
+                            "session_id": envelope.session_id,
+                            "event_type": envelope.event["event_type"],
+                        }
+                    )
         self._persist_binding(binding)
         return projected
 

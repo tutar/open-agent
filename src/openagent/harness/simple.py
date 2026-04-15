@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import cast
 
 from openagent.context_governance import (
@@ -32,6 +33,12 @@ from openagent.object_model import (
     TerminalState,
     TerminalStatus,
     ToolResult,
+)
+from openagent.observability import (
+    AgentObservability,
+    ProgressUpdate,
+    RuntimeMetric,
+    SessionStateSignal,
 )
 from openagent.session import (
     MemoryStore,
@@ -71,11 +78,16 @@ class SimpleHarness:
     memory_store: MemoryStore | None = None
     short_term_memory_store: ShortTermMemoryStore | None = None
     last_memory_consolidation_job_id: str | None = None
+    observability: AgentObservability | None = None
     runtime_loop: AgentRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         # Keep the loop explicit and spec-aligned while preserving the existing
         # facade API that tests and frontends already use.
+        if self.observability is None:
+            self.observability = AgentObservability()
+        if hasattr(self.executor, "set_observability"):
+            self.executor.set_observability(self.observability)
         self.runtime_loop = RalphLoop(self)
 
     def run_turn_stream(
@@ -145,6 +157,15 @@ class SimpleHarness:
                         available_tools,
                         compacted=compacted,
                         recovered_from_overflow=recovered_from_overflow,
+                    )
+                    self._emit_progress(
+                        ProgressUpdate(
+                            scope="turn",
+                            session_id=session_slice.session_id,
+                            summary="context_governance_report",
+                            last_activity="context_report",
+                            attributes=self.last_context_report.to_dict(),
+                        )
                     )
         memory_context: list[JsonObject] = []
         if self.memory_store is not None and session_slice.messages:
@@ -290,22 +311,78 @@ class SimpleHarness:
         session: SessionRecord,
         session_handle: str,
         control: TurnControl,
+        parent_span: object | None = None,
     ) -> tuple[ModelTurnResponse, list[RuntimeEvent]]:
         last_error: Exception | None = None
         for attempt in range(max(0, control.max_retries) + 1):
             if self._check_cancelled(control):
                 raise CancelledTurn()
+            llm_span = self.observability.start_span(
+                "llm_request",
+                {
+                    "provider_adapter": type(self.model).__name__,
+                    "model": str(getattr(self.model, "model", type(self.model).__name__)),
+                    "retry_index": attempt,
+                    "streaming": callable(getattr(self.model, "stream_generate", None)),
+                },
+                parent=parent_span if isinstance(parent_span, object) else None,
+                session_id=session_handle,
+            )
+            started_at = perf_counter()
             try:
-                return self._run_model_once(
+                response, events, ttft_ms = self._run_model_once(
                     request=request,
                     session=session,
                     session_handle=session_handle,
                     control=control,
                 )
+                duration_ms = (perf_counter() - started_at) * 1000
+                self._emit_metric(
+                    RuntimeMetric(
+                        name="llm_request.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"retry_index": attempt},
+                    )
+                )
+                self.observability.end_span(
+                    llm_span,
+                    {"retry_index": attempt},
+                    status="completed",
+                    duration_ms=duration_ms,
+                    ttft_ms=ttft_ms,
+                    input_tokens=self._usage_value(response.usage, "input_tokens", "prompt_tokens"),
+                    output_tokens=self._usage_value(
+                        response.usage,
+                        "output_tokens",
+                        "completion_tokens",
+                    ),
+                    cache_tokens=self._usage_value(
+                        response.usage,
+                        "cache_read_input_tokens",
+                        "cached_tokens",
+                    ),
+                )
+                return response, events
             except (CancelledTurn, TimedOutTurn):
+                duration_ms = (perf_counter() - started_at) * 1000
+                self.observability.end_span(
+                    llm_span,
+                    {"retry_index": attempt},
+                    status="cancelled",
+                    duration_ms=duration_ms,
+                )
                 raise
             except Exception as exc:
                 last_error = exc
+                duration_ms = (perf_counter() - started_at) * 1000
+                self.observability.end_span(
+                    llm_span,
+                    {"retry_index": attempt, "error": str(exc)},
+                    status="error",
+                    duration_ms=duration_ms,
+                )
                 if attempt == control.max_retries:
                     raise RetryExhaustedTurn(str(exc)) from exc
         raise RetryExhaustedTurn(str(last_error))
@@ -316,7 +393,7 @@ class SimpleHarness:
         session: SessionRecord,
         session_handle: str,
         control: TurnControl,
-    ) -> tuple[ModelTurnResponse, list[RuntimeEvent]]:
+    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None]:
         stream_generate = getattr(self.model, "stream_generate", None)
         if callable(stream_generate):
             streaming_model = cast(ModelProviderStreamingAdapter, self.model)
@@ -333,13 +410,13 @@ class SimpleHarness:
         self,
         request: ModelTurnRequest,
         control: TurnControl,
-    ) -> tuple[ModelTurnResponse, list[RuntimeEvent]]:
+    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None]:
         if control.timeout_seconds is None:
-            return self.model.generate(request), []
+            return self.model.generate(request), [], None
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(self.model.generate, request)
             try:
-                return future.result(timeout=control.timeout_seconds), []
+                return future.result(timeout=control.timeout_seconds), [], None
             except FutureTimeoutError as exc:
                 raise TimedOutTurn() from exc
 
@@ -350,16 +427,20 @@ class SimpleHarness:
         session: SessionRecord,
         session_handle: str,
         control: TurnControl,
-    ) -> tuple[ModelTurnResponse, list[RuntimeEvent]]:
+    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None]:
         stream = model.stream_generate(request)
         aggregated_message = ""
         final_message: str | None = None
         final_tool_calls: list[ToolCall] = []
         streamed_events: list[RuntimeEvent] = []
+        stream_started_at = perf_counter()
+        ttft_ms: float | None = None
         for stream_event in stream:
             if self._check_cancelled(control):
                 raise CancelledTurn()
             if stream_event.assistant_delta:
+                if ttft_ms is None:
+                    ttft_ms = (perf_counter() - stream_started_at) * 1000
                 aggregated_message += stream_event.assistant_delta
                 runtime_event = self._append_event(
                     session,
@@ -384,6 +465,7 @@ class SimpleHarness:
                 tool_calls=final_tool_calls,
             ),
             streamed_events,
+            ttft_ms,
         )
 
     def _append_tool_results(self, session: SessionRecord, tool_results: list[ToolResult]) -> None:
@@ -474,6 +556,28 @@ class SimpleHarness:
     def _check_cancelled(self, control: TurnControl) -> bool:
         return control.cancellation_check is not None and control.cancellation_check()
 
+    def _emit_metric(self, metric: RuntimeMetric) -> None:
+        self.observability.emit_runtime_metric(metric)
+
+    def _emit_progress(self, progress: ProgressUpdate) -> None:
+        self.observability.emit_progress(progress)
+
+    def _emit_session_state(
+        self,
+        session_id: str,
+        state: str,
+        reason: str | None = None,
+        attributes: JsonObject | None = None,
+    ) -> None:
+        self.observability.emit_session_state(
+            SessionStateSignal(
+                session_id=session_id,
+                state=state,
+                reason=reason,
+                attributes=dict(attributes or {}),
+            )
+        )
+
     def _terminal_state_from_event(self, event: RuntimeEvent) -> TerminalState:
         if event.event_type is RuntimeEventType.TURN_COMPLETED:
             return TerminalState.from_dict(event.payload)
@@ -487,3 +591,21 @@ class SimpleHarness:
                 summary=summary,
             )
         raise ValueError("Event stream did not terminate with a terminal event")
+
+    def _usage_value(self, usage: JsonObject | None, *keys: str) -> int | None:
+        if usage is None:
+            return None
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, int):
+                return value
+            if isinstance(value, dict):
+                nested_cached = value.get("cached_tokens")
+                if isinstance(nested_cached, int):
+                    return nested_cached
+        prompt_details = usage.get("prompt_tokens_details")
+        if isinstance(prompt_details, dict):
+            cached = prompt_details.get("cached_tokens")
+            if isinstance(cached, int):
+                return cached
+        return None

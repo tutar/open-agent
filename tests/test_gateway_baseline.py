@@ -13,8 +13,12 @@ from openagent.gateway import (
     TerminalChannelAdapter,
 )
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.local import (
+    create_file_runtime,
+    create_gateway_for_runtime,
+    create_in_memory_runtime,
+)
 from openagent.object_model import RuntimeEventType, ToolResult
-from openagent.profiles import DesktopProfile, TuiProfile
 from openagent.tools import (
     PermissionDecision,
     ToolCall,
@@ -117,8 +121,31 @@ class FilteringTerminalChannelAdapter:
         ]
 
 
+def build_terminal_gateway(
+    model: object,
+    *,
+    tools: list[object] | None = None,
+    binding_root: str | None = None,
+) -> Gateway:
+    runtime = create_in_memory_runtime(model=model, tools=tools)
+    return create_gateway_for_runtime(
+        runtime,
+        [TerminalChannelAdapter()],
+        binding_root=binding_root,
+    )
+
+
+def build_desktop_gateway(model: object, *, session_root: str) -> Gateway:
+    runtime = create_file_runtime(model=model, session_root=session_root)
+    return create_gateway_for_runtime(
+        runtime,
+        [DesktopChannelAdapter()],
+        binding_root=str(Path(session_root) / "bindings"),
+    )
+
+
 def test_tui_gateway_processes_user_message() -> None:
-    gateway = TuiProfile().create_gateway(model=StaticModel(message="hello via gateway"))
+    gateway = build_terminal_gateway(StaticModel(message="hello via gateway"))
     channel = ChannelIdentity(
         channel_type="terminal",
         user_id="user_1",
@@ -143,7 +170,7 @@ def test_tui_gateway_processes_user_message() -> None:
 
 
 def test_tui_profile_registers_terminal_channel_defaults() -> None:
-    gateway = TuiProfile().create_gateway(model=StaticModel(message="hello via gateway"))
+    gateway = build_terminal_gateway(StaticModel(message="hello via gateway"))
     channel = ChannelIdentity(
         channel_type="terminal",
         user_id="user_tui_default",
@@ -156,8 +183,8 @@ def test_tui_profile_registers_terminal_channel_defaults() -> None:
 
 
 def test_desktop_gateway_uses_file_backed_runtime(tmp_path: Path) -> None:
-    gateway = DesktopProfile().create_gateway(
-        model=StaticModel(message="desktop gateway"),
+    gateway = build_desktop_gateway(
+        StaticModel(message="desktop gateway"),
         session_root=str(tmp_path / "desktop_sessions"),
     )
     channel = ChannelIdentity(
@@ -182,8 +209,8 @@ def test_desktop_gateway_uses_file_backed_runtime(tmp_path: Path) -> None:
 
 
 def test_desktop_profile_registers_desktop_channel_defaults(tmp_path: Path) -> None:
-    gateway = DesktopProfile().create_gateway(
-        model=StaticModel(message="desktop gateway"),
+    gateway = build_desktop_gateway(
+        StaticModel(message="desktop gateway"),
         session_root=str(tmp_path / "desktop_sessions"),
     )
     channel = ChannelIdentity(
@@ -198,7 +225,7 @@ def test_desktop_profile_registers_desktop_channel_defaults(tmp_path: Path) -> N
 
 
 def test_gateway_route_control_accepts_known_subtypes() -> None:
-    gateway = TuiProfile().create_gateway(model=StaticModel(message="noop"))
+    gateway = build_terminal_gateway(StaticModel(message="noop"))
 
     accepted = gateway.route_control({"subtype": "permission_response"})
     accepted_resume = gateway.route_control({"subtype": "resume"})
@@ -212,8 +239,8 @@ def test_gateway_route_control_accepts_known_subtypes() -> None:
 
 
 def test_gateway_processes_permission_continuation() -> None:
-    gateway = TuiProfile().create_gateway(
-        model=ToolThenReplyModel(),
+    gateway = build_terminal_gateway(
+        ToolThenReplyModel(),
         tools=[DemoTool(name="admin", permission=PermissionDecision.ASK)],
     )
     channel = ChannelIdentity(
@@ -242,7 +269,7 @@ def test_gateway_processes_permission_continuation() -> None:
 
 
 def test_gateway_process_input_accepts_supplement_input() -> None:
-    gateway = TuiProfile().create_gateway(model=StaticModel(message="supplement seen"))
+    gateway = build_terminal_gateway(StaticModel(message="supplement seen"))
     channel = ChannelIdentity(
         channel_type="terminal",
         user_id="user_sup",
@@ -263,8 +290,8 @@ def test_gateway_process_input_accepts_supplement_input() -> None:
 
 
 def test_gateway_projects_tool_progress_events() -> None:
-    gateway = TuiProfile().create_gateway(
-        model=ToolProgressModel(),
+    gateway = build_terminal_gateway(
+        ToolProgressModel(),
         tools=[StreamingTool(name="stream")],
     )
     channel = ChannelIdentity(
@@ -286,7 +313,7 @@ def test_gateway_projects_tool_progress_events() -> None:
 
 
 def test_gateway_filters_and_replays_projected_events() -> None:
-    gateway = TuiProfile().create_gateway(model=StaticModel(message="visible reply"))
+    gateway = build_terminal_gateway(StaticModel(message="visible reply"))
     channel = ChannelIdentity(
         channel_type="terminal",
         user_id="user_4",
@@ -333,7 +360,7 @@ def test_gateway_filters_and_replays_projected_events() -> None:
 
 
 def test_gateway_registers_channel_defaults_for_bindings() -> None:
-    runtime = TuiProfile().create_runtime(model=StaticModel(message="hello"))
+    runtime = create_in_memory_runtime(model=StaticModel(message="hello"))
     gateway = Gateway(InProcessSessionAdapter(runtime))
     channel_adapter: ChannelAdapter = FilteringTerminalChannelAdapter()
     channel = ChannelIdentity(
@@ -352,7 +379,7 @@ def test_gateway_registers_channel_defaults_for_bindings() -> None:
 
 
 def test_gateway_resumes_bound_session_from_explicit_offset() -> None:
-    gateway = TuiProfile().create_gateway(model=StaticModel(message="resume replay"))
+    gateway = build_terminal_gateway(StaticModel(message="resume replay"))
     channel = ChannelIdentity(
         channel_type="terminal",
         user_id="user_resume",
@@ -374,7 +401,7 @@ def test_gateway_resumes_bound_session_from_explicit_offset() -> None:
 
 
 def test_gateway_process_control_resume_replays_events() -> None:
-    gateway = TuiProfile().create_gateway(model=StaticModel(message="resume control"))
+    gateway = build_terminal_gateway(StaticModel(message="resume control"))
     channel = ChannelIdentity(
         channel_type="terminal",
         user_id="user_resume_control",
@@ -397,8 +424,8 @@ def test_gateway_process_control_resume_replays_events() -> None:
 
 def test_gateway_restores_persisted_binding_after_restart(tmp_path: Path) -> None:
     binding_root = tmp_path / "bindings"
-    first_gateway = TuiProfile().create_gateway(
-        model=StaticModel(message="hello via persisted binding"),
+    first_gateway = build_terminal_gateway(
+        StaticModel(message="hello via persisted binding"),
         binding_root=str(binding_root),
     )
     channel = ChannelIdentity(
@@ -415,8 +442,8 @@ def test_gateway_restores_persisted_binding_after_restart(tmp_path: Path) -> Non
         )
     )
 
-    restored_gateway = TuiProfile().create_gateway(
-        model=StaticModel(message="hello via persisted binding"),
+    restored_gateway = build_terminal_gateway(
+        StaticModel(message="hello via persisted binding"),
         binding_root=str(binding_root),
     )
     egress = restored_gateway.process_user_message(
@@ -440,8 +467,8 @@ def test_gateway_restores_persisted_binding_after_restart(tmp_path: Path) -> Non
 
 def test_gateway_get_binding_restores_persisted_binding(tmp_path: Path) -> None:
     binding_root = tmp_path / "bindings"
-    first_gateway = TuiProfile().create_gateway(
-        model=StaticModel(message="hello binding"),
+    first_gateway = build_terminal_gateway(
+        StaticModel(message="hello binding"),
         binding_root=str(binding_root),
     )
     channel = ChannelIdentity(
@@ -451,8 +478,8 @@ def test_gateway_get_binding_restores_persisted_binding(tmp_path: Path) -> None:
     )
     first_gateway.bind_session(channel, "sess_binding_restore")
 
-    restored_gateway = TuiProfile().create_gateway(
-        model=StaticModel(message="hello binding"),
+    restored_gateway = build_terminal_gateway(
+        StaticModel(message="hello binding"),
         binding_root=str(binding_root),
     )
     restored = restored_gateway.get_binding("terminal", "conv_binding_restore")
@@ -462,8 +489,8 @@ def test_gateway_get_binding_restores_persisted_binding(tmp_path: Path) -> None:
 
 def test_desktop_gateway_persists_binding_store_by_default(tmp_path: Path) -> None:
     session_root = tmp_path / "desktop_sessions"
-    gateway = DesktopProfile().create_gateway(
-        model=StaticModel(message="desktop gateway"),
+    gateway = build_desktop_gateway(
+        StaticModel(message="desktop gateway"),
         session_root=str(session_root),
     )
     channel = ChannelIdentity(
@@ -481,7 +508,7 @@ def test_desktop_gateway_persists_binding_store_by_default(tmp_path: Path) -> No
 
 
 def test_gateway_enforces_one_chat_one_session() -> None:
-    runtime = TuiProfile().create_runtime(model=StaticModel(message="x"))
+    runtime = create_in_memory_runtime(model=StaticModel(message="x"))
     gateway = Gateway(InProcessSessionAdapter(runtime))
     channel = ChannelIdentity(
         channel_type="terminal",

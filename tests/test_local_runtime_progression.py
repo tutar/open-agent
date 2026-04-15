@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.local import create_in_memory_runtime
 from openagent.object_model import RuntimeEventType, ToolResult
-from openagent.profiles import TuiProfile
 from openagent.session import (
     FileSessionStore,
     FileShortTermMemoryStore,
@@ -370,7 +370,7 @@ def test_resume_snapshot_includes_short_term_memory() -> None:
 
 
 def test_in_memory_session_store_checkpoint_and_readback() -> None:
-    runtime = TuiProfile().create_runtime(
+    runtime = create_in_memory_runtime(
         model=ScriptedModel([ModelTurnResponse(assistant_message="ok")])
     )
     events, _ = runtime.run_turn("hello", "sess_mem")
@@ -388,7 +388,7 @@ def test_in_memory_session_store_checkpoint_and_readback() -> None:
 
 def test_file_session_store_appends_event_log(tmp_path: Path) -> None:
     store = FileSessionStore(tmp_path / "sessions")
-    runtime = TuiProfile().create_runtime(
+    runtime = create_in_memory_runtime(
         model=ScriptedModel(
             [
                 ModelTurnResponse(assistant_message="saved"),

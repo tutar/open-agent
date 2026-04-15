@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from time import perf_counter
 
 from openagent.object_model import RequiresAction, RuntimeEvent, RuntimeEventType, ToolResult
+from openagent.observability import AgentObservability, ProgressUpdate, RuntimeMetric
 from openagent.tools.errors import (
     RequiresActionError,
     ToolCancelledError,
@@ -30,9 +32,16 @@ class SimpleToolExecutor:
         self,
         registry: ToolRegistry,
         policy_engine: ToolPolicyEngine | None = None,
+        observability: AgentObservability | None = None,
     ) -> None:
         self._registry = registry
         self._policy_engine = policy_engine
+        self._observability = observability
+
+    def set_observability(self, observability: AgentObservability) -> None:
+        """Attach an observability facade after executor construction."""
+
+        self._observability = observability
 
     def run_tool_stream(
         self,
@@ -143,9 +152,37 @@ class SimpleToolExecutor:
     ) -> Iterator[RuntimeEvent]:
         tool = self._registry.resolve_tool(tool_call.tool_name)
         stream_call = getattr(tool, "stream_call", None)
+        span = None
+        started_at = perf_counter()
+        if self._observability is not None:
+            span = self._observability.start_span(
+                "tool",
+                {
+                    "tool_name": tool_call.tool_name,
+                    "concurrency_safe": tool.is_concurrency_safe(),
+                },
+                session_id=context.session_id,
+            )
         try:
             if callable(stream_call):
                 yield from self._stream_tool_call(tool_call, context)
+                if self._observability is not None and span is not None:
+                    duration_ms = (perf_counter() - started_at) * 1000
+                    self._observability.emit_runtime_metric(
+                        RuntimeMetric(
+                            name="tool.duration_ms",
+                            value=duration_ms,
+                            unit="ms",
+                            session_id=context.session_id,
+                            attributes={"tool_name": tool_call.tool_name},
+                        )
+                    )
+                    self._observability.end_span(
+                        span,
+                        {"tool_name": tool_call.tool_name},
+                        status="completed",
+                        duration_ms=duration_ms,
+                    )
                 return
 
             result = tool.call(tool_call.arguments)
@@ -153,6 +190,23 @@ class SimpleToolExecutor:
                 context.session_id,
                 self._attach_call_id(tool_call, result),
             )
+            if self._observability is not None and span is not None:
+                duration_ms = (perf_counter() - started_at) * 1000
+                self._observability.emit_runtime_metric(
+                    RuntimeMetric(
+                        name="tool.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=context.session_id,
+                        attributes={"tool_name": tool_call.tool_name},
+                    )
+                )
+                self._observability.end_span(
+                    span,
+                    {"tool_name": tool_call.tool_name},
+                    status="completed",
+                    duration_ms=duration_ms,
+                )
         except ToolCancelledError as exc:
             yield self._tool_cancelled_event(
                 context.session_id,
@@ -160,6 +214,14 @@ class SimpleToolExecutor:
                 tool_call.call_id,
                 str(exc),
             )
+            if self._observability is not None and span is not None:
+                duration_ms = (perf_counter() - started_at) * 1000
+                self._observability.end_span(
+                    span,
+                    {"tool_name": tool_call.tool_name, "error": str(exc)},
+                    status="cancelled",
+                    duration_ms=duration_ms,
+                )
         except Exception as exc:
             yield self._tool_failed_event(
                 context.session_id,
@@ -167,6 +229,14 @@ class SimpleToolExecutor:
                 tool_call.call_id,
                 str(exc),
             )
+            if self._observability is not None and span is not None:
+                duration_ms = (perf_counter() - started_at) * 1000
+                self._observability.end_span(
+                    span,
+                    {"tool_name": tool_call.tool_name, "error": str(exc)},
+                    status="error",
+                    duration_ms=duration_ms,
+                )
 
     def _evaluate_policy(
         self,
@@ -190,6 +260,19 @@ class SimpleToolExecutor:
             if context.cancellation_check is not None and context.cancellation_check():
                 raise ToolCancelledError(tool_name=tool_call.tool_name)
             if item.progress is not None:
+                if self._observability is not None:
+                    self._observability.emit_progress(
+                        ProgressUpdate(
+                            scope="tool",
+                            session_id=context.session_id,
+                            summary=item.progress.message,
+                            last_activity="tool_progress",
+                            attributes={
+                                "tool_name": item.progress.tool_name,
+                                "progress": item.progress.progress,
+                            },
+                        )
+                    )
                 yield self._tool_progress_event(
                     context.session_id,
                     item.progress,

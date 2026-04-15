@@ -11,8 +11,6 @@
 - 不为了未来分布式场景提前引入 IPC / daemon 复杂度
 - frontend 通过 gateway 接入，不直接碰 harness
 
-仓库里保留了 `DesktopProfile` baseline，但当前 backlog 不再继续推进 desktop 方向。
-
 ## Developer Docs Map
 
 - [Contributing](./contributing.md)
@@ -25,6 +23,10 @@
   - runtime 主链路
   - gateway 边界
   - terminal TUI 集成方式
+- [Feishu E2E Debugging](./feishu-e2e-debugging.md)
+  - `lark-cli` 真实消息联调
+  - 飞书服务到 gateway 的链路验证
+  - host 日志观测点与 smoke checklist
 - [Internals](./internals/README.md)
   - 逐模块解释 object model、harness、session、tools、gateway、sandbox 和 orchestration
   - 包括 model integration / providers 边界
@@ -39,8 +41,8 @@
 - `src/openagent/tools`
 - `src/openagent/sandbox`
 - `src/openagent/orchestration`
-- `src/openagent/profiles`
 - `src/openagent/shared`
+- `src/openagent/local.py`
 - `frontend/terminal-tui`
 - `tests`
 - `docs`

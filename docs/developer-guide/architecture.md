@@ -53,6 +53,10 @@
   - host assembly points
 - `gateway`
   - frontend integration boundary
+- `observability`
+  - session signal
+  - progress projection
+  - span-based tracing
 
 ## Main Runtime Flow
 
@@ -88,6 +92,7 @@ terminal TUI 当前使用：
 - bridge：协议转换
 - gateway：channel / session / egress projection
 - harness：turn execution
+- observability：debug/runtime signal projection
 
 ## Session And Event Model
 
@@ -182,6 +187,22 @@ turn 级控制当前通过 `TurnControl` 暴露：
 harness 在 `build_model_input(...)` 阶段会调用它，并把最近一次治理结果保存在
 `last_context_report`，供测试和 host 层观察。
 
+## Agent Observability
+
+当前 runtime 还带有独立 observability 平面，而不是把所有调试信息塞进 `RuntimeEvent`。
+
+当前已接入：
+
+- interaction span
+- llm request span
+- tool span
+- background task span
+- session lifecycle signal
+- task / background progress projection
+- local stdout sink baseline
+
+这层的职责是“让开发者和 host 看见发生了什么”，而不是承担 replay 或 durability。
+
 ## Session And Memory Boundaries
 
 当前 session 负责 transcript、working state 和 short-term continuity。
@@ -232,16 +253,15 @@ capability surface 当前统一投影三类能力：
 
 它现在不是 durable distributed orchestration，而是本地任务生命周期抽象。
 
-## Profiles
+## Local Assembly
 
-当前 profile 主要用于装配，而不是承载业务语义。
+当前不再保留 `profile` 抽象。SDK 直接暴露本地装配 helper：
 
-- `TuiProfile`
-  - 装配本地 runtime
-  - 装配 gateway
-- `DesktopProfile`
-  - 目前只保留已存在的 baseline
-  - 不在当前 backlog 中继续推进
+- `create_in_memory_runtime(...)`
+- `create_file_runtime(...)`
+- `create_gateway_for_runtime(...)`
+
+这样 frontend/host 可以直接按部署形态装配 runtime 和 gateway，而不是再包一层 profile 概念。
 
 ## What Is Intentionally Missing
 

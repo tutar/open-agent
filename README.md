@@ -9,7 +9,7 @@
 
 - 对齐 `agent-sdk-spec` 的五大模块边界
 - 提供跨语言 canonical object model 的 Python 占位实现
-- 为后续 `TUI-first` 的装配与行为实现预留稳定入口
+- 为后续本地 gateway / frontend 装配与行为实现预留稳定入口
 
 ## Docs
 
@@ -25,8 +25,8 @@
 - `src/openagent/tools/`: tool interfaces
 - `src/openagent/sandbox/`: sandbox interfaces
 - `src/openagent/orchestration/`: orchestration interfaces
-- `src/openagent/profiles/`: host profile assembly points
 - `src/openagent/shared/`: shared constants and helpers
+- `src/openagent/local.py`: local runtime / gateway assembly helpers
 - `tests/`: unit tests for skeleton contracts
 
 ## Spec Mapping
@@ -45,7 +45,8 @@
 
 `frontend/` 目录现在位于 `agent-python-sdk/` 内。terminal TUI 采用 `React + Ink + Yoga`，
 terminal TUI 和 desktop 前端都应通过 gateway 使用 agent runtime，而不是直接持有 harness。
-因此 Python SDK 当前推荐的集成入口是 `profile.create_gateway(...)`。
+因此 Python SDK 当前推荐的集成入口是 `openagent.local.create_*_runtime(...)`
+和 `openagent.local.create_gateway_for_runtime(...)`。
 
 ## Development
 

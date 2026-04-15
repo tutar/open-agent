@@ -24,6 +24,7 @@ class ModelTurnRequest(SerializableModel):
 class ModelTurnResponse(SerializableModel):
     assistant_message: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: JsonObject | None = None
 
 
 @dataclass(slots=True)
@@ -31,6 +32,7 @@ class ModelStreamEvent(SerializableModel):
     assistant_delta: str | None = None
     assistant_message: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: JsonObject | None = None
 
 
 class ModelProviderAdapter(Protocol):

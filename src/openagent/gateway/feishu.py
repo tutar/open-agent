@@ -15,6 +15,7 @@ from openagent.context_governance import ContextGovernance
 from openagent.harness import ModelProviderAdapter, SimpleHarness
 from openagent.harness.providers import load_model_from_env
 from openagent.object_model import JsonObject
+from openagent.observability import AgentObservability
 from openagent.session import FileSessionStore
 from openagent.tools import SimpleToolExecutor, StaticToolRegistry, ToolDefinition
 
@@ -491,6 +492,7 @@ def create_feishu_runtime(
     model: ModelProviderAdapter,
     session_root: str,
     tools: list[ToolDefinition] | None = None,
+    observability: AgentObservability | None = None,
 ) -> SimpleHarness:
     """Create a file-backed runtime suitable for Feishu sessions."""
 
@@ -501,6 +503,7 @@ def create_feishu_runtime(
         tools=registry,
         executor=SimpleToolExecutor(registry),
         context_governance=ContextGovernance(storage_dir=session_root),
+        observability=observability,
     )
 
 

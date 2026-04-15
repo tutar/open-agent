@@ -127,4 +127,9 @@ class AnthropicMessagesModelAdapter:
                     )
                 )
         assistant_message = "".join(text_parts) or None
-        return ModelTurnResponse(assistant_message=assistant_message, tool_calls=tool_calls)
+        usage = body.get("usage")
+        return ModelTurnResponse(
+            assistant_message=assistant_message,
+            tool_calls=tool_calls,
+            usage=dict(usage) if isinstance(usage, dict) else None,
+        )

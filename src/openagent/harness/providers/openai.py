@@ -124,9 +124,11 @@ class OpenAIChatCompletionsModelAdapter:
             raise ProviderError("OpenAI-compatible choice.message must be an object")
         tool_calls = self._parse_tool_calls(message.get("tool_calls"))
         assistant_message = message.get("content")
+        usage = body.get("usage")
         return ModelTurnResponse(
             assistant_message=str(assistant_message) if assistant_message is not None else None,
             tool_calls=tool_calls,
+            usage=dict(usage) if isinstance(usage, dict) else None,
         )
 
     def _parse_tool_calls(self, raw_tool_calls: object) -> list[ToolCall]:

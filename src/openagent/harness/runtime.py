@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from openagent.harness.models import (
@@ -14,6 +15,7 @@ from openagent.harness.models import (
     TurnState,
 )
 from openagent.object_model import RuntimeEvent, RuntimeEventType, TerminalState, TerminalStatus
+from openagent.observability import ProgressUpdate, RuntimeMetric
 from openagent.session import SessionRecord, SessionStatus
 from openagent.tools import (
     RequiresActionError,
@@ -60,6 +62,13 @@ class RalphLoop:
             raise TypeError("SimpleHarness requires SessionRecord-compatible session state")
         if session.status is not SessionStatus.REQUIRES_ACTION or not session.pending_tool_calls:
             raise ValueError("Session has no pending requires_action continuation")
+        interaction_span = self.harness.observability.start_span(
+            "interaction",
+            {"continuation": True, "approved": approved},
+            session_id=session_handle,
+        )
+        interaction_started_at = perf_counter()
+        self.harness._emit_session_state(session_handle, "running", reason="continuation_started")
 
         if not approved:
             session.pending_tool_calls = []
@@ -75,6 +84,23 @@ class RalphLoop:
                     event_type=RuntimeEventType.TURN_FAILED,
                     payload=terminal.to_dict(),
                 ),
+            )
+            duration_ms = (perf_counter() - interaction_started_at) * 1000
+            self.harness._emit_metric(
+                RuntimeMetric(
+                    name="turn.duration_ms",
+                    value=duration_ms,
+                    unit="ms",
+                    session_id=session_handle,
+                    attributes={"reason": "approval_rejected"},
+                )
+            )
+            self.harness._emit_session_state(session_handle, "idle", reason="approval_rejected")
+            self.harness.observability.end_span(
+                interaction_span,
+                {"reason": "approval_rejected"},
+                status="cancelled",
+                duration_ms=duration_ms,
             )
             return [event], terminal
 
@@ -139,7 +165,12 @@ class RalphLoop:
         self.harness._append_tool_results(session, tool_results)
 
         request = self.harness.build_model_input(session, [])
-        response = self.harness.model.generate(request)
+        response, _, _ = self.harness._run_model_once(
+            request=request,
+            session=session,
+            session_handle=session_handle,
+            control=TurnControl(),
+        )
         handled = self.harness.handle_model_output(response)
         if handled.assistant_message is not None:
             session.messages.append(
@@ -174,6 +205,33 @@ class RalphLoop:
         self.harness.schedule_memory_maintenance(session)
         self.harness.stabilize_short_term_memory(session)
         self.harness._persist_session(session_handle, session)
+        duration_ms = (perf_counter() - interaction_started_at) * 1000
+        self.harness._emit_metric(
+            RuntimeMetric(
+                name="turn.duration_ms",
+                value=duration_ms,
+                unit="ms",
+                session_id=session_handle,
+                attributes={"reason": "approval_continuation"},
+            )
+        )
+        self.harness._emit_progress(
+            ProgressUpdate(
+                scope="turn",
+                session_id=session_handle,
+                summary="approval_continuation",
+                last_activity="turn_completed",
+                duration_ms=duration_ms,
+                tool_use_count=len(pending_calls),
+            )
+        )
+        self.harness._emit_session_state(session_handle, "idle", reason="approval_continuation")
+        self.harness.observability.end_span(
+            interaction_span,
+            {"reason": "approval_continuation"},
+            status="completed",
+            duration_ms=duration_ms,
+        )
         return emitted_events, terminal
 
     def _execute_turn_stream(
@@ -185,6 +243,13 @@ class RalphLoop:
         session = self.harness.sessions.load_session(session_handle)
         if not isinstance(session, SessionRecord):
             raise TypeError("SimpleHarness requires SessionRecord-compatible session state")
+        interaction_span = self.harness.observability.start_span(
+            "interaction",
+            {"input_preview": input[:80]},
+            session_id=session_handle,
+        )
+        interaction_started_at = perf_counter()
+        tool_use_count = 0
 
         self.state = TurnState(
             messages=[message.to_dict() for message in session.messages],
@@ -193,6 +258,15 @@ class RalphLoop:
             requires_action=False,
         )
         session.status = SessionStatus.RUNNING
+        self.harness._emit_session_state(session_handle, "running", reason="turn_started")
+        self.harness._emit_progress(
+            ProgressUpdate(
+                scope="turn",
+                session_id=session_handle,
+                summary="turn_started",
+                last_activity="turn_started",
+            )
+        )
         session.messages.append(self.harness._new_session_message(role="user", content=input))
         self.state.messages = [message.to_dict() for message in session.messages]
         yield self.harness._append_event(
@@ -211,6 +285,23 @@ class RalphLoop:
             cancelled = self.harness._check_cancelled(control)
             if cancelled:
                 self.state.transition = "aborted"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "cancelled"},
+                    )
+                )
+                self.harness._emit_session_state(session_handle, "idle", reason="cancelled")
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "cancelled"},
+                    status="cancelled",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -226,9 +317,27 @@ class RalphLoop:
                     session=session,
                     session_handle=session_handle,
                     control=control,
+                    parent_span=interaction_span,
                 )
             except CancelledTurn:
                 self.state.transition = "aborted"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "cancelled"},
+                    )
+                )
+                self.harness._emit_session_state(session_handle, "idle", reason="cancelled")
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "cancelled"},
+                    status="cancelled",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -238,6 +347,23 @@ class RalphLoop:
                 return
             except TimedOutTurn:
                 self.state.transition = "failed"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "timeout"},
+                    )
+                )
+                self.harness._emit_session_state(session_handle, "idle", reason="timeout")
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "timeout"},
+                    status="error",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -251,6 +377,27 @@ class RalphLoop:
                 return
             except RetryExhaustedTurn as exc:
                 self.state.transition = "failed"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "retry_exhausted"},
+                    )
+                )
+                self.harness._emit_session_state(
+                    session_handle,
+                    "idle",
+                    reason="retry_exhausted",
+                )
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "retry_exhausted", "summary": str(exc)},
+                    status="error",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -286,6 +433,37 @@ class RalphLoop:
 
             if not handled.tool_calls:
                 self.state.transition = "completed"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "assistant_message"},
+                    )
+                )
+                self.harness._emit_progress(
+                    ProgressUpdate(
+                        scope="turn",
+                        session_id=session_handle,
+                        summary="assistant_message",
+                        last_activity="turn_completed",
+                        duration_ms=duration_ms,
+                        tool_use_count=tool_use_count,
+                    )
+                )
+                self.harness._emit_session_state(
+                    session_handle,
+                    "idle",
+                    reason="assistant_message",
+                )
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "assistant_message"},
+                    status="completed",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -296,6 +474,7 @@ class RalphLoop:
 
             self.harness._ensure_tool_call_ids(handled.tool_calls)
             self.state.transition = "tool_execution"
+            tool_use_count += len(handled.tool_calls)
 
             try:
                 tool_events, tool_results, tool_error = self.harness._execute_tool_stream(
@@ -322,9 +501,61 @@ class RalphLoop:
                 self.harness.schedule_memory_maintenance(session)
                 self.harness.stabilize_short_term_memory(session)
                 self.harness._persist_session(session_handle, session)
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "requires_action"},
+                    )
+                )
+                self.harness._emit_progress(
+                    ProgressUpdate(
+                        scope="turn",
+                        session_id=session_handle,
+                        summary="requires_action",
+                        last_activity="requires_action",
+                        duration_ms=duration_ms,
+                        tool_use_count=tool_use_count,
+                    )
+                )
+                self.harness._emit_session_state(
+                    session_handle,
+                    "requires_action",
+                    reason="tool_permission",
+                )
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "requires_action"},
+                    status="blocked",
+                    duration_ms=duration_ms,
+                )
                 return
             except ToolPermissionDeniedError as exc:
                 self.state.transition = "failed"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "tool_permission_denied"},
+                    )
+                )
+                self.harness._emit_session_state(
+                    session_handle,
+                    "idle",
+                    reason="tool_permission_denied",
+                )
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "tool_permission_denied", "summary": str(exc)},
+                    status="error",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -338,6 +569,27 @@ class RalphLoop:
                 return
             except ToolExecutionFailedError as exc:
                 self.state.transition = "failed"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "tool_execution_failed"},
+                    )
+                )
+                self.harness._emit_session_state(
+                    session_handle,
+                    "idle",
+                    reason="tool_execution_failed",
+                )
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "tool_execution_failed", "summary": str(exc)},
+                    status="error",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -351,6 +603,23 @@ class RalphLoop:
                 return
             except ToolCancelledError as exc:
                 self.state.transition = "aborted"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "tool_cancelled"},
+                    )
+                )
+                self.harness._emit_session_state(session_handle, "idle", reason="tool_cancelled")
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "tool_cancelled", "summary": str(exc)},
+                    status="cancelled",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -365,6 +634,27 @@ class RalphLoop:
 
             if isinstance(tool_error, ToolExecutionFailedError):
                 self.state.transition = "failed"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "tool_execution_failed"},
+                    )
+                )
+                self.harness._emit_session_state(
+                    session_handle,
+                    "idle",
+                    reason="tool_execution_failed",
+                )
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "tool_execution_failed", "summary": str(tool_error)},
+                    status="error",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -378,6 +668,23 @@ class RalphLoop:
                 return
             if isinstance(tool_error, ToolCancelledError):
                 self.state.transition = "aborted"
+                duration_ms = (perf_counter() - interaction_started_at) * 1000
+                self.harness._emit_metric(
+                    RuntimeMetric(
+                        name="turn.duration_ms",
+                        value=duration_ms,
+                        unit="ms",
+                        session_id=session_handle,
+                        attributes={"reason": "tool_cancelled"},
+                    )
+                )
+                self.harness._emit_session_state(session_handle, "idle", reason="tool_cancelled")
+                self.harness.observability.end_span(
+                    interaction_span,
+                    {"reason": "tool_cancelled", "summary": str(tool_error)},
+                    status="cancelled",
+                    duration_ms=duration_ms,
+                )
                 yield self.harness._emit_terminal(
                     session,
                     session_handle,
@@ -395,6 +702,27 @@ class RalphLoop:
             self.harness._persist_session(session_handle, session)
 
         self.state.transition = "failed"
+        duration_ms = (perf_counter() - interaction_started_at) * 1000
+        self.harness._emit_metric(
+            RuntimeMetric(
+                name="turn.duration_ms",
+                value=duration_ms,
+                unit="ms",
+                session_id=session_handle,
+                attributes={"reason": "iteration_limit_exceeded"},
+            )
+        )
+        self.harness._emit_session_state(
+            session_handle,
+            "idle",
+            reason="iteration_limit_exceeded",
+        )
+        self.harness.observability.end_span(
+            interaction_span,
+            {"reason": "iteration_limit_exceeded"},
+            status="error",
+            duration_ms=duration_ms,
+        )
         yield self.harness._emit_terminal(
             session,
             session_handle,

@@ -174,3 +174,26 @@ openagent-feishu
 - 群聊消息只有 `@机器人` 才触发
 - `/approve`、`/reject`、`/interrupt`、`/resume` 会作为 control 注入 gateway
 - session 和 binding 默认走文件持久化，可跨重启恢复
+
+## Debug Feishu End-To-End With `lark-cli`
+
+如果你要走真实飞书链路联调，建议使用飞书官方 CLI `lark-cli` 作为飞书侧消息入口和结果观察入口。
+
+这条真实链路是：
+
+`人工/机器 -> lark-cli -> 飞书服务 -> openagent gateway -> harness/runtime -> openagent gateway -> 飞书服务 -> lark-cli/飞书客户端`
+
+建议先完成：
+
+```bash
+npm install -g @larksuite/cli
+lark-cli config init
+lark-cli auth login --recommend
+lark-cli auth status
+```
+
+然后启动上面的 `openagent-feishu`，再用 `lark-cli` 给机器人发私聊消息。
+
+完整联调步骤、日志观测点和 smoke checklist 见：
+
+- [`developer-guide/feishu-e2e-debugging.md`](./developer-guide/feishu-e2e-debugging.md)
