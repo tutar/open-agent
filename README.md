@@ -5,6 +5,44 @@
 当前项目已具备最小本地运行基线：对象模型、内存 session、静态 tool registry、简单 tool executor、
 本地 harness、基础 orchestration，以及最小 sandbox 适配层。
 
+## Quick Try
+
+统一启动方式是先拉起 Python host，再接入 channel。
+
+本地 terminal TUI：
+
+```bash
+python -m openagent.cli.host
+cd frontend/terminal-tui
+npm install
+npm run dev
+```
+
+Feishu：
+
+```bash
+export OPENAGENT_PROVIDER=openai
+export OPENAGENT_BASE_URL=http://127.0.0.1:8001
+export OPENAGENT_MODEL=gpt-4.1
+python -m openagent.cli.host
+```
+
+然后在 TUI 里执行：
+
+```text
+/channel
+/channel feishu
+```
+
+如果没有预设飞书环境变量，再补：
+
+```text
+/channel-config feishu app_id <value>
+/channel-config feishu app_secret <value>
+```
+
+`openagent-feishu` 仍然可用，但它现在只是统一 host 的 Feishu 预加载包装。
+
 ## Goals
 
 - 对齐 `agent-sdk-spec` 的五大模块边界
@@ -40,11 +78,11 @@
 - `orchestration`
 - `object_model`
 
-当前 Python SDK 只面向 `TUI / Desktop` 本地场景，不考虑 `Cloud`。模块之间默认使用同进程直接函数调用，
+当前 Python SDK 只面向本地 `terminal` 和 `feishu` 场景，不考虑 `Cloud`。模块之间默认使用同进程直接函数调用，
 优先降低复杂度和调用开销，而不是为远程绑定或 IPC 预留抽象成本。
 
 `frontend/` 目录现在位于 `agent-python-sdk/` 内。terminal TUI 采用 `React + Ink + Yoga`，
-terminal TUI 和 desktop 前端都应通过 gateway 使用 agent runtime，而不是直接持有 harness。
+terminal TUI 通过 gateway 使用 agent runtime，而不是直接持有 harness。
 因此 Python SDK 当前推荐的集成入口是 `openagent.local.create_*_runtime(...)`
 和 `openagent.local.create_gateway_for_runtime(...)`。
 
@@ -60,9 +98,10 @@ uv run mypy .
 
 当前本地开发环境基线是 `Python 3.11.15`。
 
-Terminal TUI 前端还需要一个本地 Node 运行时。启动方式：
+Terminal TUI 前端还需要一个本地 Node 运行时。统一 host 模型下，先启动 Python host，再启动 TUI：
 
 ```bash
+python -m openagent.cli.host
 cd frontend/terminal-tui
 npm install
 npm run dev

@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from time import perf_counter
 from typing import cast
 
@@ -167,14 +168,15 @@ class SimpleHarness:
                             attributes=self.last_context_report.to_dict(),
                         )
                     )
-        memory_context: list[JsonObject] = []
+        memory_context = self._load_agents_memory_context(session_slice)
         if self.memory_store is not None and session_slice.messages:
             latest_query = session_slice.messages[-1].content
             recall_result = self.memory_store.recall(
                 session_slice.session_id,
                 latest_query,
+                agent_id=session_slice.agent_id,
             )
-            memory_context = [record.to_dict() for record in recall_result.recalled]
+            memory_context.extend(record.to_dict() for record in recall_result.recalled)
         tool_definitions: list[JsonObject] = [
             {
                 "name": tool.name,
@@ -219,7 +221,11 @@ class SimpleHarness:
             if update.memory is not None:
                 session.short_term_memory = update.memory.to_dict()
         if self.memory_store is not None and session.messages:
-            job = self.memory_store.schedule(session.session_id, list(session.messages))
+            job = self.memory_store.schedule(
+                session.session_id,
+                list(session.messages),
+                agent_id=session.agent_id,
+            )
             self.last_memory_consolidation_job_id = job.job_id
 
     def stabilize_short_term_memory(
@@ -262,6 +268,92 @@ class SimpleHarness:
                 payload.pop("metadata", None)
             normalized.append(payload)
         return normalized
+
+    def _load_agents_memory_context(self, session: SessionRecord) -> list[JsonObject]:
+        documents = self._resolve_agents_documents(session)
+        if not documents:
+            return []
+        merged_content = self._merge_agents_documents(documents)
+        if not merged_content:
+            return []
+        return [
+            {
+                "type": "agents_memory",
+                "scope": "agent",
+                "title": "AGENTS.md context",
+                "content": merged_content,
+                "source": "AGENTS.md",
+                "metadata": {
+                    "paths": [str(path) for path, _ in documents],
+                    "session_id": session.session_id,
+                },
+            }
+        ]
+
+    def _resolve_agents_documents(self, session: SessionRecord) -> list[tuple[Path, str]]:
+        metadata = session.metadata if isinstance(session.metadata, dict) else {}
+        workdir_value = metadata.get("workdir")
+        target_path_value = metadata.get("target_path")
+        documents: list[tuple[Path, str]] = []
+        seen: set[Path] = set()
+
+        def append_if_exists(path: Path) -> None:
+            resolved = path.resolve()
+            if resolved in seen or not resolved.exists() or not resolved.is_file():
+                return
+            text = resolved.read_text(encoding="utf-8").strip()
+            if not text:
+                return
+            seen.add(resolved)
+            documents.append((resolved, text))
+
+        append_if_exists(Path.home() / ".openagent" / "AGENTS.md")
+        workdir = (
+            Path(str(workdir_value)).resolve()
+            if isinstance(workdir_value, str) and workdir_value
+            else None
+        )
+        if workdir is not None:
+            append_if_exists(workdir / "AGENTS.md")
+        if workdir is not None and isinstance(target_path_value, str) and target_path_value:
+            target_path = Path(target_path_value)
+            if not target_path.is_absolute():
+                target_path = workdir / target_path
+            target_path = target_path.resolve()
+            if target_path.is_dir():
+                target_dir = target_path
+            else:
+                target_dir = target_path.parent
+            try:
+                relative_parts = target_dir.relative_to(workdir).parts
+            except ValueError:
+                relative_parts = ()
+            current = workdir
+            for part in relative_parts:
+                current = current / part
+                append_if_exists(current / "AGENTS.md")
+        return documents
+
+    def _merge_agents_documents(self, documents: list[tuple[Path, str]]) -> str:
+        ordered_lines: list[str] = []
+        keyed_lines: dict[str, str] = {}
+        keyed_order: list[str] = []
+        for _, content in documents:
+            for raw_line in content.splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    normalized_key = key.strip().lower()
+                    keyed_lines[normalized_key] = f"{key.strip()}: {value.strip()}"
+                    if normalized_key not in keyed_order:
+                        keyed_order.append(normalized_key)
+                    continue
+                if line not in ordered_lines:
+                    ordered_lines.append(line)
+        merged = [*ordered_lines, *(keyed_lines[key] for key in keyed_order)]
+        return "\n".join(merged)
 
     def _execute_tool_stream(
         self,

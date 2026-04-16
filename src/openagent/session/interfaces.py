@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from openagent.object_model import RuntimeEvent
+from openagent.object_model import RuntimeEvent, SessionHarnessLease
 from openagent.session.models import (
     ResumeSnapshot,
     SessionCheckpoint,
@@ -44,6 +44,20 @@ class SessionStore(Protocol):
 
     def get_resume_snapshot(self, wake_request: WakeRequest) -> ResumeSnapshot:
         """Build a runtime-facing resume snapshot from durable session state."""
+
+    def acquire_lease(
+        self,
+        session_id: str,
+        harness_instance_id: str,
+        agent_id: str,
+    ) -> SessionHarnessLease:
+        """Acquire the single active harness lease for the session."""
+
+    def release_lease(self, session_id: str, harness_instance_id: str) -> bool:
+        """Release an active harness lease held by the given harness instance."""
+
+    def get_active_lease(self, session_id: str) -> SessionHarnessLease | None:
+        """Return the current active harness lease for the session, if any."""
 
 
 class ShortTermMemoryStore(Protocol):

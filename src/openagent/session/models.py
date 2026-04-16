@@ -42,12 +42,14 @@ class ShortTermMemoryUpdateResult(SerializableModel):
 @dataclass(slots=True)
 class SessionRecord(SerializableModel):
     session_id: str
+    agent_id: str | None = None
     status: SessionStatus = SessionStatus.IDLE
     messages: list[SessionMessage] = field(default_factory=list)
     events: list[RuntimeEvent] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
     restore_marker: str | None = None
     short_term_memory: JsonObject | None = None
+    metadata: JsonObject = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, JsonValue]) -> SessionRecord:
@@ -65,6 +67,7 @@ class SessionRecord(SerializableModel):
         )
         return cls(
             session_id=str(data["session_id"]),
+            agent_id=str(data["agent_id"]) if data.get("agent_id") is not None else None,
             status=SessionStatus(str(data.get("status", SessionStatus.IDLE.value))),
             messages=[
                 SessionMessage.from_dict(message)
@@ -83,6 +86,7 @@ class SessionRecord(SerializableModel):
             if data.get("restore_marker") is not None
             else None,
             short_term_memory=short_term_memory,
+            metadata=dict(data["metadata"]) if isinstance(data.get("metadata"), dict) else {},
         )
 
 

@@ -1,4 +1,4 @@
-"""Built-in local channel adapters for gateway defaults."""
+"""Built-in local channel adapters for terminal and desktop frontends."""
 
 from __future__ import annotations
 

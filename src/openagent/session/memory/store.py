@@ -28,7 +28,7 @@ class InMemoryMemoryStore:
         self._records: dict[str, MemoryRecord] = {}
         self._counter = 0
         self._recall_handles: dict[str, MemoryRecallHandle] = {}
-        self._jobs: dict[str, tuple[str, list[SessionMessage]]] = {}
+        self._jobs: dict[str, tuple[str, list[SessionMessage], str]] = {}
         self._pending_jobs: dict[str, Future[MemoryConsolidationResult]] = {}
         self._executor = ThreadPoolExecutor(max_workers=2)
 
@@ -72,6 +72,7 @@ class InMemoryMemoryStore:
         transcript_slice: builtins.list[SessionMessage],
         existing_memory_context: builtins.list[MemoryRecord] | None = None,
         session_id: str | None = None,
+        agent_id: str | None = None,
     ) -> builtins.list[MemoryRecord]:
         if not transcript_slice:
             return []
@@ -96,14 +97,21 @@ class InMemoryMemoryStore:
                 updated_at=datetime.now(UTC).isoformat(),
                 freshness="fresh",
                 session_id=session_id,
+                agent_id=agent_id,
                 metadata={"message_count": len(transcript_slice)},
             )
         ]
 
     def prefetch(self, query: str, runtime_context: dict[str, object]) -> MemoryRecallHandle:
         session_id = str(runtime_context.get("session_id", ""))
+        agent_id = runtime_context.get("agent_id")
         scopes = runtime_context.get("scopes")
-        selected = self._select_records(query, session_id=session_id, scopes=scopes)
+        selected = self._select_records(
+            query,
+            session_id=session_id,
+            agent_id=str(agent_id) if isinstance(agent_id, str) else None,
+            scopes=scopes,
+        )
         handle = MemoryRecallHandle(
             handle_id=f"recall_{len(self._recall_handles) + 1}",
             query=query,
@@ -130,6 +138,7 @@ class InMemoryMemoryStore:
         self,
         session_id: str,
         transcript_slice: builtins.list[SessionMessage],
+        agent_id: str | None = None,
     ) -> MemoryConsolidationJob:
         job = MemoryConsolidationJob(
             job_id=f"memory_job_{len(self._jobs) + 1}",
@@ -144,7 +153,7 @@ class InMemoryMemoryStore:
             )
             for item in transcript_slice
         ]
-        self._jobs[job.job_id] = (session_id, snapshot)
+        self._jobs[job.job_id] = (session_id, snapshot, agent_id or "")
         self._pending_jobs[job.job_id] = self._executor.submit(self.run, job)
         return job
 
@@ -161,8 +170,9 @@ class InMemoryMemoryStore:
         session_id: str,
         query: str,
         limit: int = 5,
+        agent_id: str | None = None,
     ) -> MemoryRecallResult:
-        handle = self.prefetch(query, {"session_id": session_id})
+        handle = self.prefetch(query, {"session_id": session_id, "agent_id": agent_id})
         result = self.collect(handle)
         return MemoryRecallResult(query=query, recalled=result.recalled[:limit])
 
@@ -170,11 +180,13 @@ class InMemoryMemoryStore:
         self,
         session_id: str,
         transcript_slice: builtins.list[SessionMessage],
+        agent_id: str | None = None,
     ) -> MemoryConsolidationResult:
         extracted = self.extract(
             transcript_slice,
             existing_memory_context=list(self._records.values()),
             session_id=session_id,
+            agent_id=agent_id,
         )
         if not extracted:
             return MemoryConsolidationResult(session_id=session_id)
@@ -183,8 +195,8 @@ class InMemoryMemoryStore:
         return MemoryConsolidationResult(session_id=session_id, new_records=extracted)
 
     def run(self, consolidation_job: MemoryConsolidationJob) -> MemoryConsolidationResult:
-        session_id, transcript_slice = self._jobs[consolidation_job.job_id]
-        result = self.consolidate(session_id, transcript_slice)
+        session_id, transcript_slice, agent_id = self._jobs[consolidation_job.job_id]
+        result = self.consolidate(session_id, transcript_slice, agent_id=agent_id or None)
         self._pending_jobs.pop(consolidation_job.job_id, None)
         return result
 
@@ -192,6 +204,7 @@ class InMemoryMemoryStore:
         self,
         query: str,
         session_id: str,
+        agent_id: str | None = None,
         scopes: object = None,
     ) -> builtins.list[MemoryRecord]:
         tokens = {token for token in query.lower().split() if token}
@@ -205,6 +218,12 @@ class InMemoryMemoryStore:
             if selected_scopes is not None and record.scope.value not in selected_scopes:
                 continue
             bonus = 1 if record.session_id is not None and record.session_id == session_id else 0
+            if (
+                record.scope is MemoryScope.AGENT
+                and agent_id is not None
+                and record.agent_id == agent_id
+            ):
+                bonus += 2
             haystack = f"{record.title} {record.content} {record.summary}".lower()
             score = sum(1 for token in tokens if token in haystack) + bonus
             if score > 0 or not tokens:
@@ -240,8 +259,9 @@ class FileMemoryStore(InMemoryMemoryStore):
         self,
         session_id: str,
         transcript_slice: builtins.list[SessionMessage],
+        agent_id: str | None = None,
     ) -> MemoryConsolidationResult:
-        result = super().consolidate(session_id, transcript_slice)
+        result = super().consolidate(session_id, transcript_slice, agent_id=agent_id)
         records_to_write = result.new_records or list(self._records.values())
         for record in records_to_write:
             self._write_record(record)

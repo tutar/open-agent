@@ -6,12 +6,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from openagent.gateway import (
+    FeishuAppConfig,
     FeishuChannelAdapter,
     FeishuHostRunLock,
     FeishuLongConnectionHost,
     OfficialFeishuBotClient,
+    create_feishu_gateway,
 )
-from openagent.gateway.feishu import FeishuAppConfig, create_feishu_gateway
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import ToolResult
 from openagent.tools import (
@@ -134,12 +135,10 @@ def create_feishu_e2e_host_from_env() -> FeishuLongConnectionHost:
         model=DeterministicFeishuModel(),
         tools=[ApprovalTool(), StreamingTool()],
     )
-    client = OfficialFeishuBotClient(config)
-    adapter = FeishuChannelAdapter(
-        client=client,
-        mention_required_in_group=config.mention_required_in_group,
-    )
-    gateway.register_channel(adapter)
+    client = OfficialFeishuBotClient(config.app_id, config.app_secret)
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
     return FeishuLongConnectionHost(
         gateway=gateway,
         adapter=adapter,

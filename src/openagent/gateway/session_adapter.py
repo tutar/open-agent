@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from openagent.harness import SimpleHarness
-from openagent.object_model import RuntimeEvent
+from openagent.object_model import HarnessInstance, RuntimeEvent
 from openagent.session import SessionCheckpoint
 
 from .models import LocalSessionHandle
@@ -12,12 +14,42 @@ from .models import LocalSessionHandle
 class InProcessSessionAdapter:
     """Expose a local harness as a gateway-managed session runtime."""
 
-    def __init__(self, runtime: SimpleHarness) -> None:
+    def __init__(
+        self,
+        runtime: SimpleHarness,
+        *,
+        agent_id: str = "local-agent",
+        gateway_id: str = "local-gateway",
+    ) -> None:
         self._runtime = runtime
+        self._agent_id = agent_id
+        self._gateway_id = gateway_id
         self._handles: dict[str, LocalSessionHandle] = {}
 
     def spawn(self, session_id: str) -> LocalSessionHandle:
-        handle = self._handles.setdefault(session_id, LocalSessionHandle(session_id=session_id))
+        handle = self._handles.get(session_id)
+        if handle is not None:
+            return handle
+        harness_instance = HarnessInstance(
+            harness_instance_id=f"{self._gateway_id}:{session_id}",
+            agent_id=self._agent_id,
+            gateway_id=self._gateway_id,
+            session_id=session_id,
+            status="active",
+            runtime_state_ref=f"session://{session_id}",
+            metadata={"spawned_at": datetime.now(UTC).isoformat()},
+        )
+        session = self._runtime.sessions.load_session(session_id)
+        if getattr(session, "agent_id", None) is None:
+            session.agent_id = self._agent_id
+            self._runtime.sessions.save_session(session_id, session)
+        self._runtime.sessions.acquire_lease(
+            session_id,
+            harness_instance.harness_instance_id,
+            self._agent_id,
+        )
+        handle = LocalSessionHandle(session_id=session_id, harness_instance=harness_instance)
+        self._handles[session_id] = handle
         return handle
 
     def write_input(self, session_handle: str, input_text: str) -> list[RuntimeEvent]:
@@ -45,6 +77,12 @@ class InProcessSessionAdapter:
         handle = self.spawn(session_handle)
         handle.done = True
         handle.current_activity = "killed"
+        if handle.harness_instance is not None:
+            self._runtime.sessions.release_lease(
+                session_handle,
+                handle.harness_instance.harness_instance_id,
+            )
+            handle.harness_instance.status = "stopped"
 
     def get_checkpoint(self, session_handle: str) -> SessionCheckpoint:
         return self._runtime.sessions.get_checkpoint(session_handle)

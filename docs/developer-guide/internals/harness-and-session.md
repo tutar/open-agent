@@ -1,6 +1,6 @@
 # Harness And Session
 
-`harness` 和 `session` 共同负责 turn execution 和状态保持。
+`harness` 和 `session` 共同负责 turn execution、single active lease 和状态保持。
 
 简单说：
 
@@ -98,6 +98,9 @@ session 不放进 harness 内部，是为了把执行和状态持久化拆开。
 
 同时也方便 replay 和 checkpoint。
 
+最新关系模型里，真正推进 turn 的不是 `Gateway`，而是某个 `HarnessInstance` 内部的
+`AgentRuntime`。当前 Python SDK 用 `LocalSessionHandle.harness_instance` 显式表示这一层。
+
 ## Session Model
 
 当前 session 层包含：
@@ -119,6 +122,8 @@ session 不放进 harness 内部，是为了把执行和状态持久化拆开。
 - event index / checkpoint 相关状态
 - restore marker
 - latest stable short-term memory snapshot
+- `agent_id`
+- metadata
 
 durable memory 不保存在 `SessionRecord` 里。
 
@@ -148,6 +153,12 @@ durable memory 不保存在 `SessionRecord` 里。
 
 `build_model_input(...)` 会优先读取稳定短期记忆，并写入 `ModelTurnRequest.short_term_memory`。
 provider adapter 再把这份摘要映射成 provider-specific system context。
+
+同一 session 还带有 single active harness lease 语义：
+
+- 同一时刻只允许一个 `HarnessInstance` 持有 lease
+- resume / handoff 是 lease 转移，不是复制第二个可写 session
+- short-term memory 跟随 session，而不是跟随旧 harness instance
 
 ## Event Log Strategy
 

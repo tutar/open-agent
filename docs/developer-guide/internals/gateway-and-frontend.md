@@ -1,6 +1,6 @@
 # Gateway And Frontend
 
-`gateway` 是当前 frontend 的稳定接入边界。
+`gateway` 是当前 frontend 的稳定接入边界，但它在关系上属于 harness 域。
 
 ## Why Gateway Exists
 
@@ -16,6 +16,7 @@ gateway 的作用是把 frontend 看到的世界收敛成：
 
 - inbound envelope
 - session binding
+- harness instance handle
 - control routing
 - egress projection
 - channel-specific default projection policy
@@ -24,7 +25,7 @@ gateway 的作用是把 frontend 看到的世界收敛成：
 
 当前 terminal TUI 主链路是：
 
-`Ink TUI -> bridge.py -> Gateway -> InProcessSessionAdapter -> SimpleHarness`
+`Ink TUI -> bridge.py -> Gateway -> InProcessSessionAdapter -> HarnessInstance -> SimpleHarness -> RalphLoop`
 
 其中：
 
@@ -38,11 +39,11 @@ gateway 的作用是把 frontend 看到的世界收敛成：
 - `core.py`
 - `models.py`
 - `interfaces.py`
-- `adapters.py`
 - `binding_store.py`
 - `session_adapter.py`
 - `control.py`
 - `projector.py`
+- `channels/`
 
 ## Session Binding
 
@@ -65,6 +66,13 @@ binding 现在还会同步：
 
 这让 gateway 在重启或 replay 后能够知道当前前端绑定到的是 session 的哪个 durable 位置。
 
+当前 gateway 不直接拥有 `AgentRuntime`。它实际管理的是：
+
+- chat-to-session binding
+- session 对应的 `HarnessInstance` 句柄
+- session adapter
+- channel-specific projection policy
+
 当前还支持：
 
 - `get_binding(...)`
@@ -86,18 +94,25 @@ frontend 实际拿到的是 `EgressEnvelope`。
 - 做 event filtering
 - 保留 frontend 真正关心的 session/conversation 信息
 
-当前内置了两种本地 channel adapter：
+当前内置的本地 channel adapter 只有：
 
 - `TerminalChannelAdapter`
-- `DesktopChannelAdapter`
 
-它们当前不负责原始协议收发，只负责声明默认投影事件集，让 gateway 在 `bind_session(...)` 时自动得到 channel 级默认过滤规则。
+它归到 `gateway/channels/local.py`。
+
+terminal TUI 的 Python bridge 也作为 terminal channel 的本地 host：
+
+- bridge 负责和 TUI 之间的 stdio JSON lines 收发
+- bridge 再通过本地 TCP transport 连接已运行的 Python host
+- `Gateway` 负责 session binding / control / egress
+- bridge 不再自己维护第二份 `InProcessSessionAdapter`
+- `/channel`、`/channel-config` 这类 host management command 不进入 session，而是由 host 直接处理
 
 ## Why The Bridge Is In Python
 
 terminal TUI 是 Node/Ink 写的，但 runtime 是 Python。
 
-当前 bridge 用 stdio JSON lines，而不是 HTTP 或 IPC daemon，原因是：
+当前 TUI 和 bridge 之间用 stdio JSON lines，bridge 和 host 之间用本地 TCP transport，原因是：
 
 - 本地调用链更短
 - 调试简单

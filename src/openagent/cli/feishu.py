@@ -1,14 +1,14 @@
-"""CLI wrapper for the Feishu long-connection host."""
+"""CLI wrapper for preloading the Feishu channel on the unified host."""
 
 from __future__ import annotations
 
-from openagent.gateway.feishu import main as _gateway_main
+from openagent.cli.host import main as _host_main
 
 
 def main() -> None:
-    """Start the default Feishu long-connection host."""
+    """Start the unified host with the Feishu channel preloaded."""
 
-    _gateway_main()
+    _host_main(["--channel", "feishu"])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """Session module exports."""
 
+from openagent.object_model import SessionHarnessLease
 from openagent.session.enums import SessionStatus
 from openagent.session.interfaces import SessionStore, ShortTermMemoryStore
 from openagent.session.memory import (
@@ -55,6 +56,7 @@ __all__ = [
     "ResumeSnapshot",
     "SessionCheckpoint",
     "SessionCursor",
+    "SessionHarnessLease",
     "SessionMessage",
     "SessionRecord",
     "SessionStatus",

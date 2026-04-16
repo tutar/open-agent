@@ -110,7 +110,7 @@ pytest -m feishu_group_e2e -q
 测试会启动：
 
 ```bash
-python -m openagent.cli.feishu_e2e
+python -m tests.support.feishu_e2e_host
 ```
 
 这个 host 使用固定测试模型和固定工具集，确保断言稳定。

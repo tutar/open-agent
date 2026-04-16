@@ -38,6 +38,7 @@ class DurableMemoryExtractor(Protocol):
         transcript_slice: builtins.list[SessionMessage],
         existing_memory_context: builtins.list[MemoryRecord] | None = None,
         session_id: str | None = None,
+        agent_id: str | None = None,
     ) -> builtins.list[MemoryRecord]:
         """Extract durable memory candidates from a transcript slice."""
 
@@ -62,6 +63,7 @@ class MemoryConsolidator(Protocol):
         self,
         session_id: str,
         transcript_slice: builtins.list[SessionMessage],
+        agent_id: str | None = None,
     ) -> MemoryConsolidationJob:
         """Schedule a durable memory consolidation job."""
 
@@ -84,6 +86,7 @@ class MemoryStore(
         session_id: str,
         query: str,
         limit: int = 5,
+        agent_id: str | None = None,
     ) -> MemoryRecallResult:
         """Recall durable memories relevant to the current turn."""
 
@@ -91,5 +94,6 @@ class MemoryStore(
         self,
         session_id: str,
         transcript_slice: builtins.list[SessionMessage],
+        agent_id: str | None = None,
     ) -> MemoryConsolidationResult:
         """Extract or merge durable memory from a transcript slice."""

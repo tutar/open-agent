@@ -145,6 +145,68 @@ def test_requires_action_matches_golden() -> None:
     assert second_session.status.value == golden["phase_2"]["lifecycle"][-1]
 
 
+def test_policy_ask_deny_allow_matches_golden() -> None:
+    golden = _load_golden("policy-ask-deny-allow.json")
+    allow_tool = FakeTool(name="allow_tool", permission=PermissionDecision.ALLOW)
+    ask_tool = FakeTool(name="ask_tool", permission=PermissionDecision.ASK)
+    deny_tool = FakeTool(name="deny_tool", permission=PermissionDecision.DENY)
+    registry = StaticToolRegistry([allow_tool, ask_tool, deny_tool])
+    store = InMemorySessionStore()
+
+    allow_harness = SimpleHarness(
+        model=ScriptedModel(
+            [
+                ModelTurnResponse(
+                    tool_calls=[ToolCall(tool_name="allow_tool", arguments={"text": "run"})]
+                ),
+                ModelTurnResponse(assistant_message="allow done"),
+            ]
+        ),
+        sessions=store,
+        tools=registry,
+        executor=SimpleToolExecutor(registry),
+    )
+    allow_events, _ = allow_harness.run_turn("allow", "golden_policy_allow")
+
+    ask_harness = SimpleHarness(
+        model=ScriptedModel(
+            [
+                ModelTurnResponse(
+                    tool_calls=[ToolCall(tool_name="ask_tool", arguments={"text": "run"})]
+                ),
+                ModelTurnResponse(assistant_message="ask done"),
+            ]
+        ),
+        sessions=store,
+        tools=registry,
+        executor=SimpleToolExecutor(registry),
+    )
+    ask_events, _ = ask_harness.run_turn("ask", "golden_policy_ask")
+    resumed_events, _ = ask_harness.continue_turn("golden_policy_ask", approved=True)
+
+    deny_harness = SimpleHarness(
+        model=ScriptedModel(
+            [ModelTurnResponse(tool_calls=[ToolCall(tool_name="deny_tool", arguments={})])]
+        ),
+        sessions=store,
+        tools=registry,
+        executor=SimpleToolExecutor(registry),
+    )
+    deny_events, _ = deny_harness.run_turn("deny", "golden_policy_deny")
+
+    requires_action_payload = ask_events[-1].payload
+    assert golden["constraints"][0] == "allow must continue into normal tool execution"
+    assert RuntimeEventType.TOOL_RESULT in [event.event_type for event in allow_events]
+    assert golden["constraints"][1] == "ask must project to a structured requires_action object"
+    assert requires_action_payload["tool_name"] == "ask_tool"
+    assert requires_action_payload["request_id"] is not None
+    assert requires_action_payload["resumable"] is True
+    assert golden["constraints"][2] == "deny must not create a resumable pending action"
+    assert all(event.event_type is not RuntimeEventType.REQUIRES_ACTION for event in deny_events)
+    assert golden["constraints"][3] == "approval resume must bind back to the original tool_use_id"
+    assert resumed_events[0].payload["tool_use_id"] == resumed_events[1].payload["tool_use_id"]
+
+
 def test_session_resume_matches_golden(tmp_path: Path) -> None:
     golden = _load_golden("session-resume.event-log.json")
     session_root = tmp_path / "sessions"
@@ -231,6 +293,51 @@ def test_memory_recall_and_consolidation_matches_golden(tmp_path: Path) -> None:
         golden["constraints"][0]
         == "recalled memory enters context assembly rather than transcript rewrite"
     )
+
+
+def test_agents_memory_loading_precedence_matches_golden(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    golden = _load_golden("agents-memory-loading-precedence.json")
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    (home / ".openagent").mkdir(parents=True)
+    (home / ".openagent" / "AGENTS.md").write_text("Home guidance\nPriority: home\n", "utf-8")
+    workdir = tmp_path / "repo"
+    subtree = workdir / "pkg" / "feature"
+    sibling = workdir / "pkg" / "other"
+    subtree.mkdir(parents=True)
+    sibling.mkdir(parents=True)
+    (workdir / "AGENTS.md").write_text("Repo guidance\nPriority: repo\n", "utf-8")
+    (subtree / "AGENTS.md").write_text("Feature guidance\nPriority: subtree\n", "utf-8")
+    (sibling / "AGENTS.md").write_text("Sibling guidance\n", "utf-8")
+
+    harness = SimpleHarness(
+        model=ScriptedModel([ModelTurnResponse(assistant_message="ok")]),
+        sessions=InMemorySessionStore(),
+        tools=StaticToolRegistry([]),
+        executor=SimpleToolExecutor(StaticToolRegistry([])),
+    )
+    request = harness.build_model_input(
+        SessionRecord(
+            session_id="golden_agents_md",
+            messages=[SessionMessage(role="user", content="edit pkg/feature/main.py")],
+            metadata={"workdir": str(workdir), "target_path": "pkg/feature/main.py"},
+        ),
+        [],
+    )
+
+    assert golden["expected"]["ordered_merge"] is True
+    assert request.memory_context
+    content = str(request.memory_context[0]["content"])
+    assert "Home guidance" in content
+    assert "Repo guidance" in content
+    assert "Feature guidance" in content
+    assert "Sibling guidance" not in content
+    assert "Priority: subtree" in content
+    assert golden["expected"]["transcript_unchanged"] is True
+    assert request.messages == [{"role": "user", "content": "edit pkg/feature/main.py"}]
 
 
 def test_prompt_cache_stable_prefix_matches_golden() -> None:

@@ -4,8 +4,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from openagent import create_feishu_runtime
-from openagent.gateway import FeishuAppConfig, FeishuChannelAdapter, FeishuLongConnectionHost
-from openagent.gateway.feishu import create_feishu_gateway
+from openagent.gateway import (
+    FeishuAppConfig,
+    FeishuChannelAdapter,
+    FeishuLongConnectionHost,
+    create_feishu_gateway,
+)
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import ToolResult
 from openagent.tools import (
@@ -208,6 +212,22 @@ def test_feishu_adapter_maps_commands_to_control_payloads() -> None:
     assert resume is not None and resume.payload == {"subtype": "resume", "after": 0}
 
 
+def test_feishu_adapter_maps_channel_management_commands() -> None:
+    adapter = FeishuChannelAdapter()
+
+    channel = adapter.normalize_inbound(make_text_event("/channel"))
+    config = adapter.normalize_inbound(
+        make_text_event("/channel-config feishu app_id cli_app", message_id="om_cfg")
+    )
+
+    assert channel is not None
+    assert channel.input_kind == "management"
+    assert channel.payload == {"command": "/channel"}
+    assert config is not None
+    assert config.input_kind == "management"
+    assert config.payload == {"command": "/channel-config feishu app_id cli_app"}
+
+
 def test_feishu_host_lazy_binds_and_replies(tmp_path: Path) -> None:
     client = FakeFeishuClient()
     config = FeishuAppConfig(
@@ -217,8 +237,9 @@ def test_feishu_host_lazy_binds_and_replies(tmp_path: Path) -> None:
         binding_root=str(tmp_path / "bindings"),
     )
     gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="hello via feishu"))
-    adapter = FeishuChannelAdapter(client=client)
-    gateway.register_channel(adapter)
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
     host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
 
     outbound = host.handle_event(make_text_event("hello"))
@@ -241,8 +262,9 @@ def test_feishu_host_supports_command_approval(tmp_path: Path) -> None:
         model=ToolThenReplyModel(),
         tools=[DemoTool(name="admin", permission=PermissionDecision.ASK)],
     )
-    adapter = FeishuChannelAdapter(client=client)
-    gateway.register_channel(adapter)
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
     host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
 
     first = host.handle_event(make_text_event("admin rotate"))
@@ -250,6 +272,30 @@ def test_feishu_host_supports_command_approval(tmp_path: Path) -> None:
 
     assert first[-1]["text"] == "Tool approval required for admin. Reply /approve or /reject."
     assert second[-1]["text"] == "tool completed after approval"
+
+
+def test_feishu_host_routes_management_commands_without_session_binding(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="unused"))
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        management_handler=lambda command: [{"type": "status", "message": f"handled {command}"}],
+    )
+
+    outbound = host.handle_event(make_text_event("/channel"))
+
+    assert outbound == [{"chat_id": "oc_chat_1", "thread_id": None, "text": "handled /channel"}]
 
 
 def test_feishu_host_resume_replays_session(tmp_path: Path) -> None:
@@ -261,8 +307,9 @@ def test_feishu_host_resume_replays_session(tmp_path: Path) -> None:
         binding_root=str(tmp_path / "bindings"),
     )
     gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="hello replay"))
-    adapter = FeishuChannelAdapter(client=client)
-    gateway.register_channel(adapter)
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
     host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
 
     host.handle_event(make_text_event("hello"))
@@ -280,8 +327,9 @@ def test_feishu_host_reports_missing_session_for_control(tmp_path: Path) -> None
         binding_root=str(tmp_path / "bindings"),
     )
     gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="unused"))
-    adapter = FeishuChannelAdapter(client=client)
-    gateway.register_channel(adapter)
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
     host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
 
     outbound = host.handle_event(make_text_event("/approve"))
@@ -308,14 +356,29 @@ def test_feishu_adapter_coalesces_tool_progress_notifications(tmp_path: Path) ->
         model=ToolProgressModel(),
         tools=[StreamingTool(name="stream")],
     )
-    adapter = FeishuChannelAdapter(client=client)
-    gateway.register_channel(adapter)
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
     host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
 
     outbound = host.handle_event(make_text_event("run stream"))
     progress_messages = [item for item in outbound if item["text"] == "Tool stream is working..."]
 
     assert len(progress_messages) == 1
+
+
+def test_feishu_gateway_registers_single_adapter_instance(tmp_path: Path) -> None:
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+
+    gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="hello"))
+
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
 
 
 def test_feishu_runtime_creates_file_backed_runtime(tmp_path: Path) -> None:

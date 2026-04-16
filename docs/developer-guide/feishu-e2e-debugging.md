@@ -80,7 +80,9 @@ lark-cli config init
 
 ## Start The OpenAgent Feishu Host
 
-在 `agent-python-sdk/` 目录启动 Python 侧 host：
+在 `agent-python-sdk/` 目录启动 Python 侧 host。有两种推荐方式。
+
+方式一：启动时预加载 Feishu：
 
 ```bash
 export OPENAGENT_FEISHU_APP_ID=cli_xxx
@@ -96,6 +98,28 @@ openagent-feishu
 ```bash
 python -m openagent.cli.feishu
 ```
+
+方式二：先启动统一 host，再在任意已接入 channel 中运行：
+
+```bash
+python -m openagent.cli.host
+```
+
+然后在 TUI 或已加载的 Feishu chat 中执行：
+
+```text
+/channel
+/channel feishu
+```
+
+如果当前进程中没有 Feishu 配置，host 会提示继续输入：
+
+```text
+/channel-config feishu app_id <value>
+/channel-config feishu app_secret <value>
+```
+
+这些运行中输入的值只对当前 host 进程有效，不落盘。
 
 这个进程负责：
 
@@ -226,11 +250,12 @@ No active session is bound for this chat yet. Send a normal message first.
 
 1. `lark-cli auth status` 是否显示当前账号已登录
 2. Python host 是否已经打印 `feishu-host> starting long connection`
-3. 同一台机器上是否已经有另一个 `openagent-feishu` / `python -m openagent.cli.feishu_e2e` 在运行
+3. 同一台机器上是否已经有另一个 `openagent-feishu` / `python -m tests.support.feishu_e2e_host` 在运行
 4. 环境变量 `OPENAGENT_FEISHU_APP_ID` 和 `OPENAGENT_FEISHU_APP_SECRET` 是否正确
 5. provider 是否可用，特别是 `OPENAGENT_BASE_URL` 和 `OPENAGENT_MODEL`
 6. host 是否打印了 `received raw event`
 7. host 是否打印了 `sdk send_text`
+8. 如果你走的是统一 host 动态加载路径，是否已经执行过 `/channel feishu`
 
 如果看到了 `received raw event` 但没有回复，重点检查：
 

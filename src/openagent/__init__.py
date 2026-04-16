@@ -34,6 +34,7 @@ from openagent.gateway import (
     OfficialFeishuBotClient,
     SessionBinding,
     create_feishu_gateway,
+    create_feishu_host,
     create_feishu_host_from_env,
     create_feishu_runtime,
 )
@@ -302,6 +303,7 @@ __all__ = [
     "RuntimeMetric",
     "LocalTaskKind",
     "create_feishu_gateway",
+    "create_feishu_host",
     "create_feishu_host_from_env",
     "create_feishu_runtime",
     "__version__",

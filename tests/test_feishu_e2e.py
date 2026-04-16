@@ -101,7 +101,7 @@ class HostProcess:
         env["OPENAGENT_SESSION_ROOT"] = str(session_root / "sessions")
         env["OPENAGENT_BINDING_ROOT"] = str(session_root / "bindings")
         process = subprocess.Popen(
-            [sys.executable, "-m", "openagent.cli.feishu_e2e"],
+            [sys.executable, "-m", "tests.support.feishu_e2e_host"],
             cwd=workdir,
             env=env,
             stdout=subprocess.PIPE,

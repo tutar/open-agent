@@ -78,6 +78,7 @@
 - wake / resume snapshot baseline
 - event replay baseline
 - approval continuation state
+- single active harness lease
 - short-term session memory persistence
 - short-term memory safe-point update and stabilization
 - terminal TUI 的多 session 切换与 replay
@@ -140,7 +141,7 @@
 - `resolve_capability(...)`
 - `project_for_host(...)`
 - model-visible / user-visible filtering
-- host projection for `tui` vs `desktop`
+- host projection for `terminal` vs `feishu`
 
 ## Ecosystem Compatibility
 
@@ -175,9 +176,11 @@
 - `InMemoryMemoryStore`
 - `FileMemoryStore`
 - scoped durable memory via `user / project / agent / local`
+- same-agent cross-session long-term memory recall baseline
 - transcript-to-durable-memory consolidation baseline
 - background consolidation job baseline
 - recall into `ModelTurnRequest.memory_context`
+- `AGENTS.md` file-backed context injection with home -> workdir -> subtree precedence
 - restart-safe durable memory recall
 
 当前不支持：
@@ -215,16 +218,16 @@
 
 ## Gateway
 
-gateway 是 frontend 的稳定接入边界。
+gateway 是 harness 域下的 frontend 稳定接入边界。
 
 当前支持：
 
 - inbound normalization
 - built-in `TerminalChannelAdapter`
-- built-in `DesktopChannelAdapter`
 - built-in `FeishuChannelAdapter`
 - channel-specific default event projection
 - session binding
+- harness instance handle projection
 - file-backed session binding persistence
 - binding-level session checkpoint tracking
 - user message processing
@@ -236,6 +239,7 @@ gateway 是 frontend 的稳定接入边界。
 - session replay observation
 - bound-session replay via `resume_bound_session(...)`
 - command-style control projection for chat channels
+- host management command baseline via `/channel` and `/channel-config`
 - Feishu long-connection host baseline
 
 frontend 当前应通过 `Gateway` 使用 agent，不应该直接持有 harness。

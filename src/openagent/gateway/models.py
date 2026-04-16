@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from openagent.object_model import JsonObject, SerializableModel
+from openagent.object_model import HarnessInstance, JsonObject, SerializableModel
 
 
 @dataclass(slots=True)
@@ -104,6 +104,7 @@ class LocalSessionHandle(SerializableModel):
     """Minimal in-process session runtime handle."""
 
     session_id: str
+    harness_instance: HarnessInstance | None = None
     done: bool = False
     activities: list[str] = field(default_factory=list)
     current_activity: str | None = None

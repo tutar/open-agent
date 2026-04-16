@@ -108,7 +108,7 @@ npm run type-check
 - `harness / session / tools`：baseline + conformance tests
 - `gateway`：`tests/test_gateway_baseline.py`
 - `terminal bridge`：`tests/test_terminal_bridge.py`
-- `capability surface / orchestration / profiles`：`tests/test_platform_baseline.py`
+- `capability surface / orchestration / local assembly`：`tests/test_platform_baseline.py`
 
 ## Documentation Maintenance
 

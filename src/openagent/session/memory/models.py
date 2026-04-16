@@ -28,6 +28,7 @@ class MemoryRecord(SerializableModel):
     updated_at: str
     freshness: str = "current"
     session_id: str | None = None
+    agent_id: str | None = None
     metadata: JsonObject = field(default_factory=dict)
 
 

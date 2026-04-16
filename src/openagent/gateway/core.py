@@ -44,6 +44,11 @@ class Gateway:
                 }
             )
 
+    def get_channel_adapter(self, channel_type: str) -> ChannelAdapter:
+        """Return a previously registered channel adapter."""
+
+        return self._channel_adapters[channel_type]
+
     def receive_input(self, inbound_envelope: InboundEnvelope) -> NormalizedInboundMessage:
         """Normalize channel input into the runtime-facing message shape."""
 

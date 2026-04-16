@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 
-from openagent.object_model import RuntimeEvent
+from openagent.object_model import RuntimeEvent, SessionHarnessLease
 from openagent.session.models import (
     ResumeSnapshot,
     SessionCheckpoint,
@@ -27,6 +27,7 @@ class InMemorySessionStore:
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionRecord] = {}
+        self._leases: dict[str, SessionHarnessLease] = {}
 
     def append_event(self, event: RuntimeEvent) -> None:
         self.append_events(event.session_id, [event])
@@ -105,6 +106,34 @@ class InMemorySessionStore:
                 else None
             ),
         )
+
+    def acquire_lease(
+        self,
+        session_id: str,
+        harness_instance_id: str,
+        agent_id: str,
+    ) -> SessionHarnessLease:
+        existing = self._leases.get(session_id)
+        if existing is not None and existing.harness_instance_id != harness_instance_id:
+            raise ValueError("Session already has an active harness lease")
+        lease = SessionHarnessLease(
+            session_id=session_id,
+            harness_instance_id=harness_instance_id,
+            agent_id=agent_id,
+            acquired_at=datetime.now(UTC).isoformat(),
+        )
+        self._leases[session_id] = lease
+        return lease
+
+    def release_lease(self, session_id: str, harness_instance_id: str) -> bool:
+        existing = self._leases.get(session_id)
+        if existing is None or existing.harness_instance_id != harness_instance_id:
+            return False
+        self._leases.pop(session_id, None)
+        return True
+
+    def get_active_lease(self, session_id: str) -> SessionHarnessLease | None:
+        return self._leases.get(session_id)
 
 
 class FileSessionStore:
@@ -219,11 +248,53 @@ class FileSessionStore:
             ),
         )
 
+    def acquire_lease(
+        self,
+        session_id: str,
+        harness_instance_id: str,
+        agent_id: str,
+    ) -> SessionHarnessLease:
+        existing = self.get_active_lease(session_id)
+        if existing is not None and existing.harness_instance_id != harness_instance_id:
+            raise ValueError("Session already has an active harness lease")
+        lease = SessionHarnessLease(
+            session_id=session_id,
+            harness_instance_id=harness_instance_id,
+            agent_id=agent_id,
+            acquired_at=datetime.now(UTC).isoformat(),
+        )
+        self._lease_path(session_id).write_text(
+            json.dumps(lease.to_dict(), indent=2),
+            encoding="utf-8",
+        )
+        return lease
+
+    def release_lease(self, session_id: str, harness_instance_id: str) -> bool:
+        existing = self.get_active_lease(session_id)
+        if existing is None or existing.harness_instance_id != harness_instance_id:
+            return False
+        path = self._lease_path(session_id)
+        if path.exists():
+            path.unlink()
+        return True
+
+    def get_active_lease(self, session_id: str) -> SessionHarnessLease | None:
+        path = self._lease_path(session_id)
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise TypeError("Lease file must contain a JSON object")
+        return SessionHarnessLease.from_dict(data)
+
     def _session_path(self, session_id: str) -> Path:
         return self._root_dir / f"{session_id}.json"
 
     def _event_log_path(self, session_id: str) -> Path:
         return self._root_dir / f"{session_id}.events.jsonl"
+
+    def _lease_path(self, session_id: str) -> Path:
+        return self._root_dir / f"{session_id}.lease.json"
 
 
 class InMemoryShortTermMemoryStore:

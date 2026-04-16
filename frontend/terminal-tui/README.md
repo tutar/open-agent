@@ -1,13 +1,23 @@
 # Terminal TUI
 
-React + Ink terminal frontend for the Python SDK. Ink itself is built on Yoga, so this keeps the
-same terminal UI stack style as `claude-code`.
+`frontend/terminal-tui` 是 `openagent` 的 terminal channel 前端，技术栈是 `React + Ink + Yoga`。
 
-The TUI does not call the harness directly. It talks to a local Python gateway bridge over stdio JSON lines.
+它不再自己拉起 Python runtime。现在的模型是：
+
+- Python host 持有唯一的 `Gateway + runtime`
+- terminal TUI 只连接这个 host
+- terminal channel 会在首次连接时自动加载
 
 ## Run
 
-From `agent-python-sdk/`:
+先启动 Python host：
+
+```bash
+cd agent-python-sdk
+python -m openagent.cli.host
+```
+
+再启动 TUI：
 
 ```bash
 cd frontend/terminal-tui
@@ -15,33 +25,43 @@ npm install
 npm run dev
 ```
 
-If `python3` is not the right interpreter on your machine, set `PYTHON` first:
+如果你已经以 `--channel feishu` 启动了 host，这里仍然直接运行 `npm run dev` 即可，不需要重启 host。
 
-```bash
-PYTHON=/path/to/python npm run dev
+如果 host 没有预加载 Feishu，也可以在 TUI 里运行：
+
+```text
+/channel
+/channel feishu
+```
+
+如果缺少 Feishu 配置，host 会提示继续输入：
+
+```text
+/channel-config feishu app_id <value>
+/channel-config feishu app_secret <value>
 ```
 
 ## Real Provider Mode
 
-If you want the bridge to call a real LLM backend instead of the demo model, set:
+在启动 host 前设置真实模型 provider：
 
 ```bash
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=gpt-4.1
-cd frontend/terminal-tui
-npm run dev
+python -m openagent.cli.host
 ```
 
-Or for Anthropic-compatible proxies:
+或者：
 
 ```bash
 export OPENAGENT_PROVIDER=anthropic
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=claude-sonnet-4-5
-cd frontend/terminal-tui
-npm run dev
+python -m openagent.cli.host
 ```
+
+如果没配置模型，host 会自动回退到 demo model。
 
 ## Demo Commands
 
@@ -51,6 +71,9 @@ npm run dev
 - `/new <name>`: create and bind a local session
 - `/switch <name>`: switch to an existing local session and replay its event log
 - `/sessions`: list known local sessions
+- `/channel`: list loaded channels, loadable channels, and usage
+- `/channel <name>`: load a channel on the running host
+- `/channel-config feishu <key> <value>`: set runtime Feishu config for the current host process
 - `/approve`: approve the pending tool request
 - `/reject`: reject the pending tool request
 - `/interrupt`: interrupt the current session handle

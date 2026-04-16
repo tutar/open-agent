@@ -1,21 +1,15 @@
 # Get Started
 
-`openagent` 是一个面向本地 `TUI` 工作流的 Python SDK。当前仓库提供两部分：
+`openagent` 现在按统一 host 模型运行：
 
-- Python SDK：`src/openagent`
-- terminal TUI：`frontend/terminal-tui`
+- Python host 负责拉起唯一的 `Gateway + runtime + session/memory`
+- `terminal` 和 `feishu` 都只是这个 host 上的 channel
+- `--channel ...` 只表示启动时预加载哪些 channel
+- 未预加载的 channel 可以在运行中通过 `/channel <name>` 加载
 
-另外当前也提供飞书接入基线：
+最重要的结论只有一句：
 
-- Feishu gateway host：`openagent.gateway.feishu`
-
-当前推荐的主流程是：
-
-1. 安装 Python 开发依赖
-2. 跑通 SDK 检查
-3. 配置真实 LLM provider 或使用 demo model
-4. 启动 terminal TUI
-5. 通过 TUI 走一遍消息、工具调用和审批流程
+先启动 `openagent host`，再让 TUI 或 Feishu 接入它。
 
 ## Requirements
 
@@ -32,15 +26,7 @@
 uv sync --dev
 ```
 
-如果你当前不是用 `uv` 管理环境，也可以先保证这些开发依赖已安装：
-
-- `pytest`
-- `ruff`
-- `mypy`
-
 ## Verify The SDK
-
-先确认 Python SDK 本身可用：
 
 ```bash
 pytest -q
@@ -49,9 +35,33 @@ ruff format --check .
 mypy .
 ```
 
-## Install Terminal TUI Dependencies
+## Quickstart 1: Start The Unified Host
 
-terminal TUI 使用 `React + Ink + Yoga`，位于 `frontend/terminal-tui/`：
+最小启动方式：
+
+```bash
+python -m openagent.cli.host
+```
+
+或者使用安装后的命令：
+
+```bash
+openagent-host
+```
+
+默认行为：
+- 默认监听端口8765
+- host 会启动本地 terminal transport
+- 不预加载任何外部 channel
+- `terminal` channel 会在 TUI 首次连接时自动加载
+- 如果没有配置真实模型，会自动回退到 demo model
+- host 会打印 `openagent-host> model=...`，可直接确认当前是否真的接上了真实模型
+
+## Quickstart 2: Connect The Terminal TUI
+
+terminal TUI 是 `React + Ink + Yoga` 前端。它不再自己拉起 runtime，只负责连接已经运行的 host。
+
+先安装前端依赖：
 
 ```bash
 cd frontend/terminal-tui
@@ -59,29 +69,31 @@ npm install
 npm run type-check
 ```
 
-## Start The Terminal TUI
-
-从 `agent-python-sdk/` 目录启动：
+然后启动 TUI：
 
 ```bash
 cd frontend/terminal-tui
 npm run dev
 ```
 
-如果本机的 Python 解释器不是 `python3`，先指定 `PYTHON`：
+启动成功后你会看到：
 
-```bash
-PYTHON=/path/to/python npm run dev
-```
+- `openagent terminal-tui connected`
+- 当前 session 为 `main`
 
-## Connect A Real LLM Backend
+推荐先试这些命令：
 
-当前 terminal bridge 支持两种真实 provider 适配格式：
+1. `hello`
+2. `tool demo`
+3. `admin rotate`
+4. `/approve`
+5. `/sessions`
+6. `/resume`
+7. `/channel`
 
-- OpenAI-compatible: `/v1/chat/completions`
-- Anthropic-compatible: `/v1/messages`
+## Quickstart 3: Connect A Real Model
 
-你当前提供的本地代理 base URL 是 `http://127.0.0.1:8001`，可以直接这样启动：
+如果要接你本地的模型代理 `http://127.0.0.1:8001`，先在启动 host 前设置 provider。
 
 OpenAI-compatible:
 
@@ -89,8 +101,7 @@ OpenAI-compatible:
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=gpt-4.1
-cd frontend/terminal-tui
-npm run dev
+python -m openagent.cli.host
 ```
 
 Anthropic-compatible:
@@ -99,59 +110,20 @@ Anthropic-compatible:
 export OPENAGENT_PROVIDER=anthropic
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=claude-sonnet-4-5
-cd frontend/terminal-tui
-npm run dev
+python -m openagent.cli.host
 ```
 
-如果你的本地代理需要鉴权，也可以额外设置：
+如果代理需要鉴权，也可以额外设置：
 
 - `OPENAGENT_API_KEY`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 
-如果没有设置 `OPENAGENT_MODEL`，bridge 会自动回退到本地 demo model。
+## Quickstart 4: Load Feishu On The Same Host
 
-## Walk Through The Main Flow
+如果你要让同一个 host 同时接入飞书，有两种方式。
 
-启动后可以直接在 TUI 输入：
-
-- 普通文本：触发基础 assistant reply
-- `tool hello`：触发 demo tool
-- `admin rotate`：触发需要审批的 tool
-- `/approve`：批准 pending tool request
-- `/reject`：拒绝 pending tool request
-- `/sessions`：查看当前已知 session
-- `/new ops`：创建并切换到新 session
-- `/switch main`：切回已有 session
-- `/resume`：回放当前 session 的事件流
-
-建议先按这个顺序验证：
-
-1. 输入 `hello`
-2. 输入 `tool demo`
-3. 输入 `admin rotate`
-4. 输入 `/approve`
-5. 输入 `/sessions`
-6. 输入 `/resume`
-
-## Important Architecture Boundary
-
-frontend 不直接调用 harness/runtime。
-
-terminal TUI 通过本地 stdio bridge 接入 Python gateway：
-
-`terminal-tui -> bridge.py -> Gateway -> InProcessSessionAdapter -> SimpleHarness -> RalphLoop -> ModelProviderAdapter -> harness/providers`
-
-这条边界当前是稳定集成入口。
-
-## Where To Look Next
-
-- 运行时能力说明：[`features.md`](./features.md)
-- 继续开发 SDK：[`developer-guide/README.md`](./developer-guide/README.md)
-
-## Start The Feishu Host
-
-飞书接入第一版走长连接 host，不经过 TUI：
+方式一：启动时预加载 `feishu` channel：
 
 ```bash
 export OPENAGENT_FEISHU_APP_ID=cli_xxx
@@ -159,42 +131,57 @@ export OPENAGENT_FEISHU_APP_SECRET=xxx
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=gpt-4.1
-python -m openagent.cli.feishu
+python -m openagent.cli.host --channel feishu
 ```
 
-如果是从已安装包运行，也可以使用：
+兼容入口仍然保留：
 
 ```bash
 openagent-feishu
 ```
 
-默认行为：
+这两种方式的语义是一样的：
 
-- 私聊消息直接进入 agent
-- 群聊消息只有 `@机器人` 才触发
-- `/approve`、`/reject`、`/interrupt`、`/resume` 会作为 control 注入 gateway
-- session 和 binding 默认走文件持久化，可跨重启恢复
+- 启动同一个 Python host
+- 预加载 Feishu channel
+- 飞书首条正常消息进入时，为该 chat 懒创建 `SessionBinding` 和 `HarnessInstance`
 
-## Debug Feishu End-To-End With `lark-cli`
+方式二：运行中从 terminal TUI 或已加载的 Feishu channel 里执行：
 
-如果你要走真实飞书链路联调，建议使用飞书官方 CLI `lark-cli` 作为飞书侧消息入口和结果观察入口。
-
-这条真实链路是：
-
-`人工/机器 -> lark-cli -> 飞书服务 -> openagent gateway -> harness/runtime -> openagent gateway -> 飞书服务 -> lark-cli/飞书客户端`
-
-建议先完成：
-
-```bash
-npm install -g @larksuite/cli
-lark-cli config init
-lark-cli auth login --recommend
-lark-cli auth status
+```text
+/channel
+/channel feishu
 ```
 
-然后启动上面的 `openagent-feishu`，再用 `lark-cli` 给机器人发私聊消息。
+如果当前进程里没有可用的 Feishu 配置，host 会提示你补：
 
-完整联调步骤、日志观测点和 smoke checklist 见：
+```text
+/channel-config feishu app_id <value>
+/channel-config feishu app_secret <value>
+```
 
-- [`developer-guide/feishu-e2e-debugging.md`](./developer-guide/feishu-e2e-debugging.md)
-- [`developer-guide/feishu-e2e-tests.md`](./developer-guide/feishu-e2e-tests.md)
+这些运行中输入的值只在当前 host 进程内有效，不会写回环境变量，也不会落盘。
+
+如果这时你再启动 terminal TUI：
+
+- 不需要重启 host
+- 不需要再执行一次 `--channel terminal`
+- terminal channel 会在首次连接时自动加载
+
+## Runtime Model
+
+统一 host 模型下，这两条链路分别是：
+
+- terminal:
+  `terminal-tui -> bridge.py -> openagent host -> Gateway -> HarnessInstance -> SimpleHarness`
+- feishu:
+  `Feishu service -> Feishu long connection host -> openagent host -> Gateway -> HarnessInstance -> SimpleHarness`
+
+这里真正持有 runtime 的始终是 Python host，不是前端，也不是 Feishu channel。terminal 通过本地 transport 接入；Feishu 通过对飞书服务的长连接接收入站事件，不共享 terminal 那个本地端口。
+
+## Next Docs
+
+- 运行时能力说明：[`features.md`](./features.md)
+- 开发者文档：[`developer-guide/README.md`](./developer-guide/README.md)
+- 飞书真实联调：[`developer-guide/feishu-e2e-debugging.md`](./developer-guide/feishu-e2e-debugging.md)
+- 飞书自动化 E2E：[`developer-guide/feishu-e2e-tests.md`](./developer-guide/feishu-e2e-tests.md)

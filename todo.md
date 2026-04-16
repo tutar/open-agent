@@ -164,3 +164,9 @@
 - Keep GitHub CI required for merges to `main`
 - Keep `pytest`, `ruff check`, `ruff format --check`, and `mypy` as the minimum gate
 - Extend CI once additional conformance suites and profile-specific tests land
+
+
+# todo
+skills/mcp 
+- tui的bridge可以去掉吗？直接连host的端口不行吗
+- agent的规划能力怎么构建

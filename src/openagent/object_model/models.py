@@ -58,11 +58,61 @@ class RequiresAction(SerializableModel):
     action_type: str
     session_id: str
     description: str
+    terminal_state: str = "requires_action"
+    resumable: bool = True
     agent_id: str | None = None
     task_id: str | None = None
     tool_name: str | None = None
     input: JsonObject | None = None
     request_id: str | None = None
+    action_ref: str | None = None
+    policy_decision_id: str | None = None
+
+
+@dataclass(slots=True)
+class HarnessInstance(SerializableModel):
+    harness_instance_id: str
+    agent_id: str
+    gateway_id: str
+    status: str
+    session_id: str | None = None
+    runtime_state_ref: str | None = None
+    metadata: JsonObject = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SessionHarnessLease(SerializableModel):
+    session_id: str
+    harness_instance_id: str
+    agent_id: str
+    acquired_at: str
+    lease_state: str = "active"
+    resume_token: str | None = None
+
+
+@dataclass(slots=True)
+class ShortTermMemoryRef(SerializableModel):
+    session_id: str
+    memory_id: str
+    scope: str = "session"
+
+
+@dataclass(slots=True)
+class AgentLongTermMemoryRef(SerializableModel):
+    agent_id: str
+    memory_id: str
+    scope: str = "agent"
+
+
+@dataclass(slots=True)
+class PolicyDecision(SerializableModel):
+    decision_id: str
+    outcome: str
+    target: str
+    reason: str | None = None
+    session_id: str | None = None
+    agent_id: str | None = None
+    metadata: JsonObject = field(default_factory=dict)
 
 
 @dataclass(slots=True)
