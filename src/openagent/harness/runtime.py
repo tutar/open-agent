@@ -57,12 +57,14 @@ class RalphLoop:
         session_handle: str,
         approved: bool,
     ) -> tuple[list[RuntimeEvent], TerminalState]:
+        observability = self.harness.observability
+        assert observability is not None
         session = self.harness.sessions.load_session(session_handle)
         if not isinstance(session, SessionRecord):
             raise TypeError("SimpleHarness requires SessionRecord-compatible session state")
         if session.status is not SessionStatus.REQUIRES_ACTION or not session.pending_tool_calls:
             raise ValueError("Session has no pending requires_action continuation")
-        interaction_span = self.harness.observability.start_span(
+        interaction_span = observability.start_span(
             "interaction",
             {"continuation": True, "approved": approved},
             session_id=session_handle,
@@ -96,7 +98,7 @@ class RalphLoop:
                 )
             )
             self.harness._emit_session_state(session_handle, "idle", reason="approval_rejected")
-            self.harness.observability.end_span(
+            observability.end_span(
                 interaction_span,
                 {"reason": "approval_rejected"},
                 status="cancelled",
@@ -165,7 +167,7 @@ class RalphLoop:
         self.harness._append_tool_results(session, tool_results)
 
         request = self.harness.build_model_input(session, [])
-        response, _, _ = self.harness._run_model_once(
+        response, _, _, _ = self.harness._run_model_once(
             request=request,
             session=session,
             session_handle=session_handle,
@@ -226,7 +228,7 @@ class RalphLoop:
             )
         )
         self.harness._emit_session_state(session_handle, "idle", reason="approval_continuation")
-        self.harness.observability.end_span(
+        observability.end_span(
             interaction_span,
             {"reason": "approval_continuation"},
             status="completed",
@@ -240,10 +242,12 @@ class RalphLoop:
         session_handle: str,
         control: TurnControl,
     ) -> Iterator[RuntimeEvent]:
+        observability = self.harness.observability
+        assert observability is not None
         session = self.harness.sessions.load_session(session_handle)
         if not isinstance(session, SessionRecord):
             raise TypeError("SimpleHarness requires SessionRecord-compatible session state")
-        interaction_span = self.harness.observability.start_span(
+        interaction_span = observability.start_span(
             "interaction",
             {"input_preview": input[:80]},
             session_id=session_handle,
@@ -296,7 +300,7 @@ class RalphLoop:
                     )
                 )
                 self.harness._emit_session_state(session_handle, "idle", reason="cancelled")
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "cancelled"},
                     status="cancelled",
@@ -332,7 +336,7 @@ class RalphLoop:
                     )
                 )
                 self.harness._emit_session_state(session_handle, "idle", reason="cancelled")
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "cancelled"},
                     status="cancelled",
@@ -358,7 +362,7 @@ class RalphLoop:
                     )
                 )
                 self.harness._emit_session_state(session_handle, "idle", reason="timeout")
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "timeout"},
                     status="error",
@@ -392,7 +396,7 @@ class RalphLoop:
                     "idle",
                     reason="retry_exhausted",
                 )
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "retry_exhausted", "summary": str(exc)},
                     status="error",
@@ -458,7 +462,7 @@ class RalphLoop:
                     "idle",
                     reason="assistant_message",
                 )
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "assistant_message"},
                     status="completed",
@@ -526,7 +530,7 @@ class RalphLoop:
                     "requires_action",
                     reason="tool_permission",
                 )
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "requires_action"},
                     status="blocked",
@@ -550,7 +554,7 @@ class RalphLoop:
                     "idle",
                     reason="tool_permission_denied",
                 )
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "tool_permission_denied", "summary": str(exc)},
                     status="error",
@@ -584,7 +588,7 @@ class RalphLoop:
                     "idle",
                     reason="tool_execution_failed",
                 )
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "tool_execution_failed", "summary": str(exc)},
                     status="error",
@@ -614,7 +618,7 @@ class RalphLoop:
                     )
                 )
                 self.harness._emit_session_state(session_handle, "idle", reason="tool_cancelled")
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "tool_cancelled", "summary": str(exc)},
                     status="cancelled",
@@ -649,7 +653,7 @@ class RalphLoop:
                     "idle",
                     reason="tool_execution_failed",
                 )
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "tool_execution_failed", "summary": str(tool_error)},
                     status="error",
@@ -679,7 +683,7 @@ class RalphLoop:
                     )
                 )
                 self.harness._emit_session_state(session_handle, "idle", reason="tool_cancelled")
-                self.harness.observability.end_span(
+                observability.end_span(
                     interaction_span,
                     {"reason": "tool_cancelled", "summary": str(tool_error)},
                     status="cancelled",
@@ -717,7 +721,7 @@ class RalphLoop:
             "idle",
             reason="iteration_limit_exceeded",
         )
-        self.harness.observability.end_span(
+        observability.end_span(
             interaction_span,
             {"reason": "iteration_limit_exceeded"},
             status="error",

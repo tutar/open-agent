@@ -398,12 +398,12 @@ def test_capability_surface_projects_unified_entries() -> None:
             ),
             (
                 Command(
-                    id="cmd.desktop.panel",
-                    name="desktop-panel",
+                    id="cmd.local.panel",
+                    name="local-panel",
                     kind=CommandKind.LOCAL_UI,
-                    description="Open desktop panel",
+                    description="Open local panel",
                     visibility=CommandVisibility.USER,
-                    source="desktop_extension",
+                    source="local_extension",
                 ),
                 CapabilityOrigin(origin_type=CapabilityOriginType.BUNDLED),
             ),
@@ -415,21 +415,27 @@ def test_capability_surface_projects_unified_entries() -> None:
                     name="Summarize",
                     description="Summarize content",
                     content="Summarize {text}",
+                    scope="project",
+                    trust_level="trusted",
+                    skill_root="/tmp/skills/summarize",
+                    skill_file="/tmp/skills/summarize/SKILL.md",
                 ),
                 CapabilityOrigin(origin_type=CapabilityOriginType.BUNDLED),
             )
         ],
     )
 
-    projected = surface.project_for_host("desktop")
-    tui_projected = surface.project_for_host("tui")
+    terminal_projected = surface.project_for_host("terminal")
+    feishu_projected = surface.project_for_host("feishu")
+    cloud_projected = surface.project_for_host("cloud")
     model_only = surface.list_command_surface(filters={"visibility": "model"})
 
-    assert projected["host_profile"] == "desktop"
-    command_surface = projected["command_surface"]
+    assert terminal_projected["host_profile"] == "terminal"
+    command_surface = terminal_projected["command_surface"]
     assert isinstance(command_surface, list)
     assert len(command_surface) == 3
-    assert projected["capability_count"] == 3
-    assert tui_projected["capability_count"] == 2
+    assert terminal_projected["capability_count"] == 3
+    assert feishu_projected["capability_count"] == 2
+    assert cloud_projected["capability_count"] == 2
     assert len(model_only) == 2
     assert [entry.entry_id for entry in model_only] == ["cmd.review", "skill.summarize"]

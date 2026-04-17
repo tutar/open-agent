@@ -184,6 +184,7 @@ feishu-host> received raw event ...
 feishu-host> normalized input kind=user_message conversation=...
 feishu-host> sending outbound event=assistant_message chat=...
 feishu-host> sdk send_text chat=... thread=... text=...
+feishu-host> skipped duplicate inbound message_id=...
 ```
 
 这些日志对应当前实现里的几个关键阶段：
@@ -193,6 +194,7 @@ feishu-host> sdk send_text chat=... thread=... text=...
 - 已归一化为 gateway 可处理的输入
 - 已将 agent 回复投影为飞书消息
 - 已通过官方 Python SDK 调用发送接口
+- 同一条飞书消息如果被平台重复投递，会按 `message_id` 被 host 去重
 
 ## Session Behavior To Verify
 
@@ -202,6 +204,7 @@ feishu-host> sdk send_text chat=... thread=... text=...
 2. 同一个 chat 的后续消息继续落到同一个 session
 3. `/resume` 会回放当前 chat 绑定 session 的事件
 4. 如果没有已绑定 session 就直接发控制命令，会收到提示消息
+5. 同一条消息如果被飞书重复投递，只会处理一次
 
 当前 session id 规则来自 host：
 

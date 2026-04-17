@@ -9,7 +9,7 @@ import threading
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from openagent.gateway import (
     ChannelIdentity,
@@ -20,17 +20,28 @@ from openagent.gateway import (
     TerminalChannelAdapter,
     create_feishu_host,
 )
-from openagent.harness import ModelProviderAdapter, ModelTurnRequest, ModelTurnResponse
+from openagent.harness import (
+    ModelProviderAdapter,
+    ModelProviderExchange,
+    ModelTurnRequest,
+    ModelTurnResponse,
+)
 from openagent.harness.providers import ProviderConfigurationError, load_model_from_env
 from openagent.local import create_file_runtime, create_gateway_for_runtime
-from openagent.object_model import JsonObject, ToolResult
-from openagent.tools import PermissionDecision, ToolCall, ToolDefinition
+from openagent.object_model import JsonObject, JsonValue, ToolResult
+from openagent.tools import (
+    PermissionDecision,
+    ToolCall,
+    ToolDefinition,
+    create_builtin_toolset,
+)
 
 
 @dataclass(slots=True)
 class EchoTool:
     name: str = "echo"
     input_schema: dict[str, str] = field(default_factory=lambda: {"type": "object"})
+    aliases: list[str] = field(default_factory=list)
 
     def description(self) -> str:
         return "Echo the provided text."
@@ -54,6 +65,7 @@ class EchoTool:
 class AdminTool:
     name: str = "admin"
     input_schema: dict[str, str] = field(default_factory=lambda: {"type": "object"})
+    aliases: list[str] = field(default_factory=list)
 
     def description(self) -> str:
         return "A permission-gated administrative action."
@@ -76,33 +88,47 @@ class AdminTool:
 
 @dataclass(slots=True)
 class DemoModel:
+    provider_family = "demo"
+
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        return self.generate_with_exchange(request).response
+
+    def generate_with_exchange(self, request: ModelTurnRequest) -> ModelProviderExchange:
         latest = request.messages[-1]
         role = str(latest.get("role", "user"))
         content = str(latest.get("content", ""))
 
         if role == "tool":
-            return ModelTurnResponse(assistant_message=f"Tool completed: {content}")
+            response = ModelTurnResponse(assistant_message=f"Tool completed: {content}")
+            return ModelProviderExchange(response=response)
 
         if content.startswith("tool "):
-            return ModelTurnResponse(
+            response = ModelTurnResponse(
                 tool_calls=[ToolCall(tool_name="echo", arguments={"text": content[5:]})]
             )
+            return ModelProviderExchange(response=response)
 
         if content.startswith("admin "):
-            return ModelTurnResponse(
+            response = ModelTurnResponse(
                 tool_calls=[ToolCall(tool_name="admin", arguments={"text": content[6:]})]
             )
+            return ModelProviderExchange(response=response)
 
-        return ModelTurnResponse(assistant_message=f"Echo: {content}")
+        response = ModelTurnResponse(assistant_message=f"Echo: {content}")
+        return ModelProviderExchange(response=response)
 
 
 @dataclass(slots=True)
 class OpenAgentHostConfig:
     session_root: str
     binding_root: str
-    terminal_host: str
-    terminal_port: int
+    terminal_host: str = "127.0.0.1"
+    terminal_port: int = 8765
+    data_root: str = field(default_factory=lambda: str(Path(".openagent") / "data"))
+    model_io_root: str = field(
+        default_factory=lambda: str(Path(".openagent") / "data" / "model-io")
+    )
+    workspace_root: str = field(default_factory=os.getcwd)
     preload_channels: tuple[str, ...] = ()
 
     @classmethod
@@ -111,13 +137,19 @@ class OpenAgentHostConfig:
         preload_channels: Iterable[str] = (),
     ) -> OpenAgentHostConfig:
         root = Path(os.getenv("OPENAGENT_HOST_ROOT", str(Path(".openagent") / "host")))
+        data_root = os.getenv("OPENAGENT_DATA_ROOT", str(root.parent / "data"))
+        model_io_root = os.getenv("OPENAGENT_MODEL_IO_ROOT", str(Path(data_root) / "model-io"))
         session_root = os.getenv("OPENAGENT_SESSION_ROOT", str(root / "sessions"))
         binding_root = os.getenv("OPENAGENT_BINDING_ROOT", str(root / "bindings"))
+        workspace_root = os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd())
         terminal_host = os.getenv("OPENAGENT_TERMINAL_HOST", "127.0.0.1")
         terminal_port = int(os.getenv("OPENAGENT_TERMINAL_PORT", "8765"))
         return cls(
             session_root=session_root,
             binding_root=binding_root,
+            data_root=data_root,
+            model_io_root=model_io_root,
+            workspace_root=workspace_root,
             terminal_host=terminal_host,
             terminal_port=terminal_port,
             preload_channels=tuple(preload_channels),
@@ -127,11 +159,13 @@ class OpenAgentHostConfig:
 class _ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     daemon_threads = True
     allow_reuse_address = False
+    app: Any
 
 
 class _TerminalConnectionHandler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
-        app = cast(OpenAgentHost, self.server.app)
+        server = cast(_ThreadingTCPServer, self.server)
+        app = cast(OpenAgentHost, server.app)
         app.ensure_channel_loaded("terminal")
         sessions: dict[str, ChannelIdentity] = {}
         current_session_name = "main"
@@ -184,7 +218,7 @@ class _TerminalConnectionHandler(socketserver.StreamRequestHandler):
                     {
                         "type": "sessions",
                         "current_session_name": current_session_name,
-                        "sessions": sorted(sessions),
+                        "sessions": cast(list[JsonValue], sorted(sessions)),
                     }
                 )
                 continue
@@ -210,11 +244,13 @@ class _TerminalConnectionHandler(socketserver.StreamRequestHandler):
                 if subtype not in {"permission_response", "interrupt", "resume"}:
                     self._emit({"type": "error", "message": "unknown_control_subtype"})
                     continue
-                control_payload: dict[str, object] = {"subtype": subtype}
+                control_payload: JsonObject = {"subtype": subtype}
                 if subtype == "permission_response":
                     control_payload["approved"] = bool(message.get("approved", False))
                 if subtype == "resume" and message.get("after") is not None:
-                    control_payload["after"] = message.get("after")
+                    after = message.get("after")
+                    if isinstance(after, (str, int, float)) and not isinstance(after, bool):
+                        control_payload["after"] = after
                 egress = app.gateway.process_control_message(
                     sessions[current_session_name],
                     control_payload,
@@ -224,7 +260,7 @@ class _TerminalConnectionHandler(socketserver.StreamRequestHandler):
                 continue
             self._emit({"type": "error", "message": f"unknown_message_kind:{kind}"})
 
-    def _emit(self, payload: dict[str, object]) -> None:
+    def _emit(self, payload: JsonObject) -> None:
         self.wfile.write((json.dumps(payload) + "\n").encode("utf-8"))
         self.wfile.flush()
 
@@ -252,11 +288,13 @@ class OpenAgentHost:
         self.config = config
         self._model_summary = "custom"
         self.model = model or self._load_default_model()
-        self.tools = tools or [EchoTool(), AdminTool()]
+        self.tools = list(tools) if tools is not None else self._default_tools()
         self.runtime = create_file_runtime(
             self.model,
             session_root=self.config.session_root,
             tools=self.tools,
+            workspace_root=self.config.workspace_root,
+            model_io_root=self.config.model_io_root,
         )
         self.gateway = create_gateway_for_runtime(
             self.runtime,
@@ -307,9 +345,9 @@ class OpenAgentHost:
             "/channel-config feishu app_secret <value>",
         ]
         return {
-            "loaded": sorted(self._loaded_channels),
-            "available": list(self._available_channels),
-            "usage": usage,
+            "loaded": cast(list[JsonValue], sorted(self._loaded_channels)),
+            "available": cast(list[JsonValue], list(self._available_channels)),
+            "usage": cast(list[JsonValue], usage),
             "message": (
                 f"loaded={','.join(sorted(self._loaded_channels)) or 'none'} "
                 f"available={','.join(self._available_channels)} "
@@ -420,6 +458,14 @@ class OpenAgentHost:
         thread.start()
         self._channel_threads.append(thread)
 
+    def _default_tools(self) -> list[ToolDefinition]:
+        tools = cast(
+            list[ToolDefinition],
+            create_builtin_toolset(root=self.config.workspace_root),
+        )
+        tools.extend([EchoTool(), AdminTool()])
+        return tools
+
     def _load_channel_from_command(self, channel_name: str) -> JsonObject:
         channel = channel_name.strip().lower()
         if channel not in self._available_channels:
@@ -438,7 +484,7 @@ class OpenAgentHost:
                     + ", ".join(missing)
                     + " | use /channel-config feishu app_id <value> and "
                     "/channel-config feishu app_secret <value>",
-                    missing_fields=missing,
+                    missing_fields=cast(JsonValue, missing),
                 )
             self.ensure_channel_loaded("feishu")
             return self._management_response("status", "feishu channel loaded")
@@ -479,6 +525,7 @@ class OpenAgentHost:
             app_secret=app_secret,
             session_root=session_root,
             binding_root=binding_root,
+            workspace_root=self.config.workspace_root,
             lock_root=lock_root,
             mention_required_in_group=mention_required,
         )
@@ -487,7 +534,7 @@ class OpenAgentHost:
         self,
         response_type: str,
         message: str,
-        **extra: object,
+        **extra: JsonValue,
     ) -> JsonObject:
         response: JsonObject = {"type": response_type, "message": message}
         response.update(extra)

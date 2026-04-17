@@ -24,6 +24,7 @@ from openagent.observability import (
     AgentObservability,
     ProgressUpdate,
     RuntimeMetric,
+    SpanHandle,
 )
 
 
@@ -378,7 +379,7 @@ class LocalBackgroundAgentOrchestrator:
         self._futures: dict[str, Future[JsonObject | str | None]] = {}
         self._lock = Lock()
         self._observability = observability or AgentObservability()
-        self._task_spans: dict[str, object] = {}
+        self._task_spans: dict[str, SpanHandle] = {}
         self._task_started_at: dict[str, float] = {}
 
     def start_background_task(

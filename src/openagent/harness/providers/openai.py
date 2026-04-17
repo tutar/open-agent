@@ -6,7 +6,11 @@ import json
 from dataclasses import dataclass, field
 from typing import cast
 
-from openagent.harness.models import ModelTurnRequest, ModelTurnResponse
+from openagent.harness.models import (
+    ModelProviderExchange,
+    ModelTurnRequest,
+    ModelTurnResponse,
+)
 from openagent.harness.providers.base import (
     HttpTransport,
     ProviderError,
@@ -20,6 +24,8 @@ from openagent.tools import ToolCall
 class OpenAIChatCompletionsModelAdapter:
     """Call an OpenAI-compatible `/v1/chat/completions` endpoint."""
 
+    provider_family = "openai"
+
     model: str
     base_url: str
     api_key: str | None = None
@@ -29,13 +35,24 @@ class OpenAIChatCompletionsModelAdapter:
     transport: HttpTransport = field(default_factory=UrllibHttpTransport)
 
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        return self.generate_with_exchange(request).response
+
+    def generate_with_exchange(self, request: ModelTurnRequest) -> ModelProviderExchange:
+        payload = self._payload(request)
         response = self.transport.post_json(
             self._endpoint_url(),
-            self._payload(request),
+            payload,
             self._headers(),
             self.timeout_seconds,
         )
-        return self._parse_response(response.body)
+        parsed = self._parse_response(response.body)
+        return ModelProviderExchange(
+            response=parsed,
+            provider_payload=payload,
+            raw_response=response.body,
+            reasoning=self._extract_reasoning(response.body),
+            transport_metadata={"status_code": response.status_code},
+        )
 
     def _endpoint_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/v1/chat/completions"
@@ -160,3 +177,28 @@ class OpenAIChatCompletionsModelAdapter:
                 )
             )
         return tool_calls
+
+    def _extract_reasoning(self, body: JsonObject) -> JsonValue | None:
+        choices = body.get("choices")
+        if not isinstance(choices, list) or not choices:
+            return None
+        first = choices[0]
+        if not isinstance(first, dict):
+            return None
+        message = first.get("message")
+        if not isinstance(message, dict):
+            return None
+        for key in ("reasoning", "reasoning_content", "thinking"):
+            value = message.get(key)
+            if value is not None:
+                return cast(JsonValue, value)
+        content = message.get("content")
+        if isinstance(content, list):
+            reasoning_blocks = [
+                item
+                for item in content
+                if isinstance(item, dict) and str(item.get("type", "")).startswith("reason")
+            ]
+            if reasoning_blocks:
+                return cast(JsonValue, reasoning_blocks)
+        return None

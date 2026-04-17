@@ -57,6 +57,7 @@ class SessionRecord(SerializableModel):
         raw_events_value = data.get("events", [])
         raw_pending_value = data.get("pending_tool_calls", [])
         raw_short_term_memory = data.get("short_term_memory")
+        raw_metadata = data.get("metadata")
         raw_messages = raw_messages_value if isinstance(raw_messages_value, list) else []
         raw_events = raw_events_value if isinstance(raw_events_value, list) else []
         raw_pending = raw_pending_value if isinstance(raw_pending_value, list) else []
@@ -86,7 +87,7 @@ class SessionRecord(SerializableModel):
             if data.get("restore_marker") is not None
             else None,
             short_term_memory=short_term_memory,
-            metadata=dict(data["metadata"]) if isinstance(data.get("metadata"), dict) else {},
+            metadata=dict(raw_metadata) if isinstance(raw_metadata, dict) else {},
         )
 
 

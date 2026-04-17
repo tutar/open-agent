@@ -14,6 +14,7 @@
 
 ```bash
 cd agent-python-sdk
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```
 
@@ -49,6 +50,7 @@ npm run dev
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=gpt-4.1
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```
 
@@ -58,6 +60,7 @@ python -m openagent.cli.host
 export OPENAGENT_PROVIDER=anthropic
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=claude-sonnet-4-5
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```
 

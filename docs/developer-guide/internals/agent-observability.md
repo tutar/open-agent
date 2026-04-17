@@ -2,6 +2,8 @@
 
 `AgentObservability` 是当前 SDK 中独立于 `RuntimeEvent` 的观测平面。
 
+注意：它现在也独立于 `.openagent/data/model-io` 这层模型原始数据沉淀。
+
 ## Why It Exists
 
 `RuntimeEvent` 解决的是：
@@ -15,6 +17,7 @@
 - 调试时快速看见当前 session 状态
 - model request / tool call / background task 的 span 关系
 - 本地 host 直接打印结构化观测信息
+- 默认长期保留完整模型输入输出数据
 
 因此 observability 被单独抽出来。
 
@@ -74,6 +77,7 @@
 当前 observability：
 
 - 不替代 session event log
+- 不替代 `.openagent/data/model-io` 模型数据集
 - 不直接绑定 OTel
 - 不单独做 durable trace storage
 - 不负责质量评估或 correctness judgement
@@ -81,3 +85,7 @@
 它只回答一件事：
 
 - 运行时刚才发生了什么
+
+而 `.openagent/data/model-io` 回答的是另一件事：
+
+- 这次到底给模型发了什么，模型原始返回了什么

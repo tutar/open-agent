@@ -64,6 +64,7 @@ class CapabilitySurface:
     def describe_capabilities(self) -> list[CapabilityDescriptor]:
         descriptors: list[CapabilityDescriptor] = []
         for tool, origin in self.tools:
+            aliases = getattr(tool, "aliases", [])
             descriptors.append(
                 CapabilityDescriptor(
                     capability_id=tool.name,
@@ -72,7 +73,10 @@ class CapabilitySurface:
                     description=tool.description(),
                     invocation_mode="tool",
                     origin=origin.to_dict(),
-                    metadata={"input_schema": dict(tool.input_schema)},
+                    metadata={
+                        "input_schema": dict(tool.input_schema),
+                        "aliases": list(aliases) if isinstance(aliases, list) else [],
+                    },
                 )
             )
         for command, origin in self.commands:
@@ -107,6 +111,12 @@ class CapabilitySurface:
                     metadata={
                         "arguments": list(skill.arguments),
                         "allowed_tools": list(skill.allowed_tools),
+                        "scope": skill.scope,
+                        "trust_level": skill.trust_level,
+                        "skill_root": skill.skill_root,
+                        "skill_file": skill.skill_file,
+                        "diagnostics": list(skill.diagnostics),
+                        "invocable_by_model": skill.invocable_by_model,
                         **skill.metadata,
                     },
                 )
@@ -213,14 +223,21 @@ class CapabilitySurface:
         descriptors: list[CapabilityDescriptor],
         host_profile: str,
     ) -> list[CapabilityDescriptor]:
-        if host_profile == "desktop":
+        if host_profile in {"local", "terminal"}:
             return descriptors
 
-        if host_profile == "tui":
+        if host_profile == "feishu":
             return [
                 descriptor
                 for descriptor in descriptors
                 if descriptor.metadata.get("kind") != "local_ui"
+            ]
+
+        if host_profile == "cloud":
+            return [
+                descriptor
+                for descriptor in descriptors
+                if descriptor.metadata.get("kind") not in {"local_ui", "local"}
             ]
 
         return descriptors

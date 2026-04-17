@@ -2,8 +2,9 @@
 
 `openagent` 是一个按 `agent-sdk-spec` 组织的 Python SDK 骨架工程。
 
-当前项目已具备最小本地运行基线：对象模型、内存 session、静态 tool registry、简单 tool executor、
-本地 harness、基础 orchestration，以及最小 sandbox 适配层。
+当前项目已具备完整的本地优先运行基线：对象模型、session/memory、builtin tool baseline、
+tool policy/executor、commands/skills/MCP compatibility、本地 harness、gateway、多 channel host，
+以及最小 sandbox / orchestration 适配层。
 
 ## Quick Try
 
@@ -24,6 +25,7 @@ Feishu：
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=gpt-4.1
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```
 
@@ -43,6 +45,27 @@ python -m openagent.cli.host
 
 `openagent-feishu` 仍然可用，但它现在只是统一 host 的 Feishu 预加载包装。
 
+## Model Data Capture
+
+模型输入输出现在默认会沉淀到：
+
+```text
+.openagent/data/model-io/
+```
+
+这里不是调试 console 输出，而是 agent 级原始数据采集层。它会保留：
+
+- assembled `ModelTurnRequest`
+- provider payload
+- provider raw response
+- parsed `ModelTurnResponse`
+- provider 明确返回的 reasoning / thinking blocks
+
+如需改目录，可设置：
+
+- `OPENAGENT_DATA_ROOT`
+- `OPENAGENT_MODEL_IO_ROOT`
+
 ## Goals
 
 - 对齐 `agent-sdk-spec` 的五大模块边界
@@ -60,7 +83,7 @@ python -m openagent.cli.host
 - `src/openagent/object_model/`: canonical objects and schema envelope
 - `src/openagent/harness/`: harness interfaces, runtime, and provider-backed model integration
 - `src/openagent/session/`: session interfaces
-- `src/openagent/tools/`: tool interfaces
+- `src/openagent/tools/`: tools domain, builtin tools, commands, skills, MCP, policy, executor
 - `src/openagent/sandbox/`: sandbox interfaces
 - `src/openagent/orchestration/`: orchestration interfaces
 - `src/openagent/shared/`: shared constants and helpers
@@ -117,9 +140,9 @@ npm run dev
 
 ## Status
 
-- Done: project scaffolding, object model base, in-memory session store, static tool registry,
-  simple tool executor, minimal local harness, in-memory task manager, and local sandbox baseline
-- Next: expand session persistence semantics, richer permission policies, and conformance cases
+- Done: project scaffolding, object model base, session/memory baseline, builtin tool baseline,
+  policy-aware executor, local harness, gateway/host baseline, and local sandbox baseline
+- Next: deepen tool recovery semantics, expand orchestration-backed tool bridges, and keep conformance aligned
 
 ## CI
 

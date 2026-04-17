@@ -20,6 +20,10 @@ from .hosts.feishu import (
     FeishuLongConnectionHost,
     OfficialFeishuBotClient,
 )
+from .hosts.feishu_dedupe import (
+    FileFeishuInboundDedupeStore,
+    InMemoryFeishuInboundDedupeStore,
+)
 from .interfaces import ChannelAdapter, SessionAdapter, SessionBindingStore
 from .models import (
     ChannelIdentity,
@@ -37,6 +41,7 @@ __all__ = [
     "DesktopChannelAdapter",
     "EgressEnvelope",
     "FileSessionBindingStore",
+    "FileFeishuInboundDedupeStore",
     "FeishuAppConfig",
     "FeishuBotClient",
     "FeishuChannelAdapter",
@@ -44,6 +49,7 @@ __all__ = [
     "FeishuLongConnectionHost",
     "Gateway",
     "InboundEnvelope",
+    "InMemoryFeishuInboundDedupeStore",
     "InProcessSessionAdapter",
     "LocalSessionHandle",
     "NormalizedInboundMessage",

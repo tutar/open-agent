@@ -8,17 +8,17 @@
 - Canonical object model baseline exists with enums, schema envelope, JSON-like serialization, and public exports
 - Minimal local runtime baseline exists:
   - in-memory and file-backed session store
-  - static tool registry and simple tool executor
+  - static tool registry and policy-aware tool executor
   - minimal harness with `turn_started / assistant_delta / tool_started / tool_progress / tool_result / tool_failed / tool_cancelled / requires_action / turn_completed / turn_failed`
   - approval continuation via `continue_turn(...)`
   - model streaming via `stream_generate(...)`
   - local timeout / retry / cancellation baseline
   - in-memory task manager
   - local sandbox baseline
-  - `TuiProfile` runtime assembly
-  - local ingress gateway and in-process session adapter baseline
+  - local runtime / gateway assembly helpers
+  - local gateway and in-process session adapter baseline
   - frontend-ready terminal TUI built with `React + Ink + Yoga`
-  - stdio bridge between TUI and gateway
+  - terminal host client transport between TUI and gateway
   - multi-session terminal workflow with session list / switch / replay
 - Conformance baseline exists for:
   - `basic-turn`
@@ -32,8 +32,15 @@
 - Ecosystem baseline exists for:
   - command shared model
   - file skill discovery / activation / bridge
-  - transport-backed MCP client seam plus deterministic in-memory transport
-  - prompt/skill adapters
+  - transport-backed MCP client seam
+  - deterministic in-memory MCP transport
+  - real stdio MCP transport
+  - real streamable HTTP MCP transport with JSON / SSE parity
+  - MCP protocol lifecycle baseline: `initialize -> initialized -> ping -> cancel -> close`
+  - MCP auth discovery + `WWW-Authenticate` scope upgrade baseline
+  - prompt/tool/resource pagination baseline
+  - roots / sampling / elicitation seam baseline
+  - prompt/resource/skill adapters
 - Memory baseline exists for:
   - in-memory and file-backed short-term session memory stores
   - safe-point short-term memory update and stabilization
@@ -45,7 +52,7 @@
 - Capability surface baseline now includes:
   - capability descriptors with origin and host projection
   - model-visible vs user-visible projection
-  - host filtering for `tui` vs `desktop`
+  - host filtering for `terminal` vs `feishu`
 - Orchestration baseline now includes:
   - background task handles
   - verifier task handles
@@ -55,9 +62,17 @@
 - Gateway baseline now includes:
   - file-backed session binding persistence across gateway restarts
 - Tools baseline now includes:
+  - builtin tool baseline
+    - `Read / Write / Edit / Glob / Grep / Bash`
+    - `WebFetch / WebSearch`
+    - `AskUserQuestion`
+    - optional `Agent / Skill` bridge
   - explicit non-concurrency-safe scheduling coverage
-  - pluggable policy-engine seam on top of per-tool `allow/deny/ask`
-  - rule-based policy-engine baseline
+  - richer tool definition metadata, aliases, provenance, and visibility
+  - pluggable policy-engine seam on top of per-tool `allow/deny/ask/passthrough`
+  - rule-based policy-engine baseline with denial tracking
+  - streaming executor baseline
+  - review command baseline
 
 ## Spec Update: Hosting Profiles And Deployment Boundaries
 
@@ -72,9 +87,8 @@
   - frontend channel adapters should talk to `IngressGateway`
   - gateway should own session binding, normalization, and egress projection
   - frontend should not directly call harness/runtime internals
-- Refactor current `TuiProfile` documentation and interfaces to reflect:
-  - TUI is a local host profile
-  - session/orchestration/sandbox can be optimized for same-process execution in this SDK
+- Keep terminal TUI documented as a local channel client on top of the unified host
+- Keep session/orchestration/sandbox optimized for same-process execution in this SDK
 - Keep a lightweight local binding abstraction only for clarity and future refactor safety
 - Audit existing interfaces for local performance and simplicity rather than remote-capable semantics
 
@@ -104,21 +118,21 @@
 
 ### Tools
 
-- Deepen policy engine beyond the current rule-based baseline
-- Add capability origin metadata required by `capability-surface.md`
-  - builtin
-  - bundled
-  - plugin
-  - user / project
-  - managed
-  - mcp / remote
+- Add a real host-integrated `WebSearch` backend instead of the current placeholder fallback
+- Bridge `Agent` and review commands to orchestration by default instead of keeping them callback-only
+- Deepen tool retry / recovery / cancellation semantics beyond the current local baseline
 
 ### Skills / Commands / MCP
 
-- Harden runtime projection between:
-  - MCP tools -> Tool
+- MCP core now lives under `src/openagent/tools/mcp/`
+- Keep deepening runtime projection between:
+  - MCP tools -> Tool lifecycle
   - MCP prompts -> Command
-  - MCP skills -> Skill
+  - MCP resources -> context / observation surface
+- Keep `mcp skill` explicitly separate as host extension
+- Evaluate whether MCP `tasks` should move from object-model-only baseline to full runtime projection
+- Evaluate whether MCP `logging` should project into observability in addition to runtime events
+- `.mcpb` / bundle host remains out of current product scope
 
 ### Memory
 
@@ -137,9 +151,7 @@
 
 - Harden the explicit `terminal-tui` channel adapter baseline
 - Extend control routing from baseline support to richer host mode semantics
-- Finish Feishu group-chat E2E after app-side group message event delivery is enabled
-  - private-chat E2E is already automated and validated with `lark-cli --as user --chat-id <p2p_chat_id>`
-  - group-chat test path exists, but real verification is still blocked until the Feishu app actually receives group raw events
+- Keep terminal and Feishu host-management command routing aligned as new channels are added
 
 ### Orchestration
 
@@ -148,6 +160,7 @@
 ## Remaining Conformance Work
 
 - Expand conformance beyond the current first four cases
+- Add golden coverage for MCP initialize/version negotiation and auth scope upgrade
 - Add prompt-cache-related conformance cases once context governance exists
 - Add compatibility tests for different model capability profiles
   - native tool calling
@@ -164,9 +177,3 @@
 - Keep GitHub CI required for merges to `main`
 - Keep `pytest`, `ruff check`, `ruff format --check`, and `mypy` as the minimum gate
 - Extend CI once additional conformance suites and profile-specific tests land
-
-
-# todo
-skills/mcp 
-- tui的bridge可以去掉吗？直接连host的端口不行吗
-- agent的规划能力怎么构建

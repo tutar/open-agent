@@ -11,13 +11,14 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from openagent.object_model import JsonObject
 
 from ..channels.feishu import FeishuBotClient, FeishuChannelAdapter
 from ..core import Gateway
 from ..models import ChannelIdentity, EgressEnvelope
+from .feishu_dedupe import FileFeishuInboundDedupeStore, InMemoryFeishuInboundDedupeStore
 
 
 @dataclass(slots=True)
@@ -65,6 +66,7 @@ class FeishuLongConnectionHost:
     client: FeishuBotClient
     run_lock: FeishuHostRunLock | None = None
     management_handler: Callable[[str], list[JsonObject]] | None = None
+    dedupe_store: InMemoryFeishuInboundDedupeStore | FileFeishuInboundDedupeStore | None = None
 
     def run(self) -> None:
         """Start the underlying Feishu long-connection client."""
@@ -72,8 +74,11 @@ class FeishuLongConnectionHost:
         if self.run_lock is not None:
             self.run_lock.acquire()
         print("feishu-host> starting long connection", flush=True)
+        def _dispatch(raw_event: JsonObject) -> None:
+            self.handle_event(raw_event)
+
         try:
-            self.client.start(self.handle_event)
+            self.client.start(_dispatch)
         finally:
             if self.run_lock is not None:
                 self.run_lock.release()
@@ -91,6 +96,18 @@ class FeishuLongConnectionHost:
             json.dumps(raw_event, ensure_ascii=False),
             flush=True,
         )
+        message_id = self._extract_message_id(raw_event)
+        if message_id is None:
+            print(
+                "feishu-host> inbound event missing message_id; dedupe skipped",
+                flush=True,
+            )
+        elif self.dedupe_store is not None and self.dedupe_store.check_and_mark(message_id):
+            print(
+                f"feishu-host> skipped duplicate inbound message_id={message_id}",
+                flush=True,
+            )
+            return []
         inbound = self.adapter.normalize_inbound(raw_event)
         if inbound is None:
             print("feishu-host> ignored event after normalization", flush=True)
@@ -107,7 +124,12 @@ class FeishuLongConnectionHost:
             responses = (
                 self.management_handler(command)
                 if self.management_handler is not None
-                else [{"type": "error", "message": "host management is unavailable"}]
+                else [
+                    cast(
+                        JsonObject,
+                        {"type": "error", "message": "host management is unavailable"},
+                    )
+                ]
             )
             outbound = self._dispatch_management_responses(channel_identity, responses)
             return outbound
@@ -158,6 +180,19 @@ class FeishuLongConnectionHost:
             outbound_messages.append(projected)
         return outbound_messages
 
+    def _extract_message_id(self, raw_event: JsonObject) -> str | None:
+        event = raw_event.get("event")
+        if not isinstance(event, dict):
+            return None
+        message = event.get("message")
+        if not isinstance(message, dict):
+            return None
+        raw_message_id = message.get("message_id")
+        if raw_message_id is None:
+            return None
+        message_id = str(raw_message_id).strip()
+        return message_id or None
+
     def _missing_session_message(self, channel_identity: ChannelIdentity) -> JsonObject:
         conversation_id = channel_identity.conversation_id or "default"
         chat_id, thread_id = self.adapter.parse_conversation_id(conversation_id)
@@ -179,7 +214,7 @@ class FeishuLongConnectionHost:
             text = str(response.get("message", "")).strip()
             if not text:
                 continue
-            projected = {
+            projected: JsonObject = {
                 "chat_id": chat_id,
                 "thread_id": thread_id,
                 "text": text,

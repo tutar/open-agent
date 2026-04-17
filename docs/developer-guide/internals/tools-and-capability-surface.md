@@ -11,11 +11,22 @@
 
 - `StaticToolRegistry`
 - `SimpleToolExecutor`
+- `SimpleStreamingToolExecutor`
 - `ToolCall / ToolExecutionContext`
+- `ToolRecord / ToolExecutionSummary / PersistedToolResultRef`
 
 registry 解决“有哪些 tool”。
 
 executor 解决“怎么执行这些 tool”。
+
+当前 `ToolDefinition` 已经不是最小的 `description + call` 协议，而是带有：
+
+- aliases
+- enabled / visibility
+- read-only / concurrency-safe hints
+- per-tool permission hook
+- result mapping
+- persistence hint
 
 当前本地事件流是：
 
@@ -38,6 +49,7 @@ executor 解决“怎么执行这些 tool”。
 - `allow`
 - `deny`
 - `ask`
+- `passthrough`
 
 当返回 `ask` 时，executor 不直接执行，而是抛出 `RequiresActionError`。
 
@@ -52,7 +64,10 @@ executor 解决“怎么执行这些 tool”。
 
 - 可以按 `tool_name`
 - 或按 `session_id_prefix`
+- 或按 `working_directory_prefix`
+- 或按 read-only / write intent
 - 覆盖默认 `allow / deny / ask`
+- 并带有 denial tracking 和 fallback-to-ask baseline
 
 如果规则未命中，仍可回退到 tool 自身的权限策略。
 
@@ -78,13 +93,42 @@ executor 解决“怎么执行这些 tool”。
 它们的作用不同：
 
 - tool：偏执行
-- command：偏 prompt / local UI action
+- command：偏 prompt / local UI action / review
 - skill：偏可复用 prompt 能力
 
-MCP 当前只是内存兼容层，不是 transport-backed 实现。
-现在已经补上 `TransportBackedMcpClient + McpTransport` seam，默认测试 transport 仍然是
-`InMemoryMcpTransport`。这保证 adapter 和 capability surface 可以先对 transport 抽象编程，
-而不是绑定在单一的内存客户端上。
+当前 skill 子接口已经显式区分三层：
+
+- discovery/import
+- catalog disclosure
+- activation result
+
+`FileSkillRegistry` 现在会做 deterministic precedence 和 shadow diagnostics；`SkillActivator`
+返回结构化 activation wrapper；`SkillInvocationBridge` 继续只负责把 skill 暴露成模型可调用入口。
+
+当前还补上了 builtin tool baseline：
+
+- `Read / Write / Edit / Glob / Grep / Bash`
+- `WebFetch / WebSearch`
+- `AskUserQuestion`
+- optional `Agent / Skill` bridge
+
+MCP 不再只是内存兼容层；现在已经拆到 `src/openagent/tools/mcp/`，并固定成四层：
+
+- `protocol.py`
+- `transport.py` + `auth.py`
+- `runtime.py`
+- `extensions.py`
+
+边界固定为：
+
+- protocol client 负责 `initialize / initialized / ping / cancel / close`
+- transport 负责 `inmemory / stdio / streamable http`
+- auth 只服务 HTTP，不错误套到 stdio
+- runtime adaptation 负责 `tool / command / resource / runtime event` 映射
+- `mcp skill` 保留在 host extension，不算 core
+
+默认 deterministic 测试 transport 仍然是 `InMemoryMcpTransport`，但当前已经有真实
+`StdioMcpTransport` 和 `StreamableHttpMcpTransport`。
 
 ## Policy Engine Seam
 
@@ -131,9 +175,12 @@ executor 现在支持一个可选的 `ToolPolicyEngine`：
 - resolve
 - project
 
+当前 host projection 已经按 `terminal / feishu / cloud` 区分，不再使用旧的 `tui / desktop`
+投影语义。
+
 ## Current Limitation
 
 当前这层还没补齐：
 
-- richer policy engine implementation
-- 更细的 capability origin lineage
+- full orchestration-backed default implementation for `Agent` / review command execution
+- real host-integrated search backend for `WebSearch`

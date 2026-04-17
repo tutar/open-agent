@@ -1,11 +1,19 @@
 """Harness module exports."""
 
 from openagent.harness.interfaces import Harness
+from openagent.harness.model_io import (
+    FileModelIoCapture,
+    ModelIoCapture,
+    ModelIoRecord,
+    NoOpModelIoCapture,
+)
 from openagent.harness.models import (
     AgentRuntime,
     CancelledTurn,
     ModelAdapter,
     ModelProviderAdapter,
+    ModelProviderExchange,
+    ModelProviderExchangeAdapter,
     ModelProviderStreamingAdapter,
     ModelStreamEvent,
     ModelTurnRequest,
@@ -34,11 +42,16 @@ __all__ = [
     "AgentRuntime",
     "AnthropicMessagesModelAdapter",
     "CancelledTurn",
+    "FileModelIoCapture",
     "Harness",
     "HttpResponse",
     "HttpTransport",
     "ModelAdapter",
+    "ModelIoCapture",
+    "ModelIoRecord",
     "ModelProviderAdapter",
+    "ModelProviderExchange",
+    "ModelProviderExchangeAdapter",
     "ModelProviderStreamingAdapter",
     "ModelStreamEvent",
     "ModelTurnRequest",
@@ -56,4 +69,5 @@ __all__ = [
     "TurnStreamResult",
     "UrllibHttpTransport",
     "load_model_from_env",
+    "NoOpModelIoCapture",
 ]

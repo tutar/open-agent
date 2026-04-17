@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import cast
 
-from openagent.harness.models import ModelTurnRequest, ModelTurnResponse
+from openagent.harness.models import (
+    ModelProviderExchange,
+    ModelTurnRequest,
+    ModelTurnResponse,
+)
 from openagent.harness.providers.base import (
     HttpTransport,
     ProviderError,
@@ -19,6 +23,8 @@ from openagent.tools import ToolCall
 class AnthropicMessagesModelAdapter:
     """Call an Anthropic-compatible `/v1/messages` endpoint."""
 
+    provider_family = "anthropic"
+
     model: str
     base_url: str
     api_key: str | None = None
@@ -28,13 +34,24 @@ class AnthropicMessagesModelAdapter:
     transport: HttpTransport = field(default_factory=UrllibHttpTransport)
 
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        return self.generate_with_exchange(request).response
+
+    def generate_with_exchange(self, request: ModelTurnRequest) -> ModelProviderExchange:
+        payload = self._payload(request)
         response = self.transport.post_json(
             self._endpoint_url(),
-            self._payload(request),
+            payload,
             self._headers(),
             self.timeout_seconds,
         )
-        return self._parse_response(response.body)
+        parsed = self._parse_response(response.body)
+        return ModelProviderExchange(
+            response=parsed,
+            provider_payload=payload,
+            raw_response=response.body,
+            reasoning=self._extract_reasoning(response.body),
+            transport_metadata={"status_code": response.status_code},
+        )
 
     def _endpoint_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/v1/messages"
@@ -133,3 +150,16 @@ class AnthropicMessagesModelAdapter:
             tool_calls=tool_calls,
             usage=dict(usage) if isinstance(usage, dict) else None,
         )
+
+    def _extract_reasoning(self, body: JsonObject) -> JsonValue | None:
+        content = body.get("content")
+        if not isinstance(content, list):
+            return None
+        reasoning_blocks = [
+            dict(block)
+            for block in content
+            if isinstance(block, dict) and str(block.get("type", "")) not in {"text", "tool_use"}
+        ]
+        if not reasoning_blocks:
+            return None
+        return cast(JsonValue, reasoning_blocks)

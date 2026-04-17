@@ -15,10 +15,13 @@ from openagent.context_governance import (
     ContextGovernance,
     ContextReport,
 )
+from openagent.harness.model_io import ModelIoCapture, NoOpModelIoCapture
 from openagent.harness.models import (
     AgentRuntime,
     CancelledTurn,
     ModelProviderAdapter,
+    ModelProviderExchange,
+    ModelProviderExchangeAdapter,
     ModelProviderStreamingAdapter,
     ModelTurnRequest,
     ModelTurnResponse,
@@ -40,6 +43,7 @@ from openagent.observability import (
     ProgressUpdate,
     RuntimeMetric,
     SessionStateSignal,
+    SpanHandle,
 )
 from openagent.session import (
     MemoryStore,
@@ -80,6 +84,7 @@ class SimpleHarness:
     short_term_memory_store: ShortTermMemoryStore | None = None
     last_memory_consolidation_job_id: str | None = None
     observability: AgentObservability | None = None
+    model_io_capture: ModelIoCapture = field(default_factory=NoOpModelIoCapture)
     runtime_loop: AgentRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -403,13 +408,15 @@ class SimpleHarness:
         session: SessionRecord,
         session_handle: str,
         control: TurnControl,
-        parent_span: object | None = None,
+        parent_span: SpanHandle | None = None,
     ) -> tuple[ModelTurnResponse, list[RuntimeEvent]]:
+        observability = self.observability
+        assert observability is not None
         last_error: Exception | None = None
         for attempt in range(max(0, control.max_retries) + 1):
             if self._check_cancelled(control):
                 raise CancelledTurn()
-            llm_span = self.observability.start_span(
+            llm_span = observability.start_span(
                 "llm_request",
                 {
                     "provider_adapter": type(self.model).__name__,
@@ -417,16 +424,23 @@ class SimpleHarness:
                     "retry_index": attempt,
                     "streaming": callable(getattr(self.model, "stream_generate", None)),
                 },
-                parent=parent_span if isinstance(parent_span, object) else None,
+                parent=parent_span,
                 session_id=session_handle,
             )
             started_at = perf_counter()
             try:
-                response, events, ttft_ms = self._run_model_once(
+                response, events, ttft_ms, exchange = self._run_model_once(
                     request=request,
                     session=session,
                     session_handle=session_handle,
                     control=control,
+                )
+                self._capture_model_io_success(
+                    request=request,
+                    session=session,
+                    exchange=exchange,
+                    retry_index=attempt,
+                    streaming=callable(getattr(self.model, "stream_generate", None)),
                 )
                 duration_ms = (perf_counter() - started_at) * 1000
                 self._emit_metric(
@@ -438,7 +452,7 @@ class SimpleHarness:
                         attributes={"retry_index": attempt},
                     )
                 )
-                self.observability.end_span(
+                observability.end_span(
                     llm_span,
                     {"retry_index": attempt},
                     status="completed",
@@ -459,7 +473,7 @@ class SimpleHarness:
                 return response, events
             except (CancelledTurn, TimedOutTurn):
                 duration_ms = (perf_counter() - started_at) * 1000
-                self.observability.end_span(
+                observability.end_span(
                     llm_span,
                     {"retry_index": attempt},
                     status="cancelled",
@@ -468,8 +482,15 @@ class SimpleHarness:
                 raise
             except Exception as exc:
                 last_error = exc
+                self._capture_model_io_error(
+                    request=request,
+                    session=session,
+                    retry_index=attempt,
+                    streaming=callable(getattr(self.model, "stream_generate", None)),
+                    error=exc,
+                )
                 duration_ms = (perf_counter() - started_at) * 1000
-                self.observability.end_span(
+                observability.end_span(
                     llm_span,
                     {"retry_index": attempt, "error": str(exc)},
                     status="error",
@@ -485,7 +506,7 @@ class SimpleHarness:
         session: SessionRecord,
         session_handle: str,
         control: TurnControl,
-    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None]:
+    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None, ModelProviderExchange | None]:
         stream_generate = getattr(self.model, "stream_generate", None)
         if callable(stream_generate):
             streaming_model = cast(ModelProviderStreamingAdapter, self.model)
@@ -502,13 +523,20 @@ class SimpleHarness:
         self,
         request: ModelTurnRequest,
         control: TurnControl,
-    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None]:
+    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None, ModelProviderExchange | None]:
+        exchange_method = getattr(self.model, "generate_with_exchange", None)
+        if callable(exchange_method):
+            exchange = cast(
+                ModelProviderExchangeAdapter,
+                self.model,
+            ).generate_with_exchange(request)
+            return exchange.response, [], None, exchange
         if control.timeout_seconds is None:
-            return self.model.generate(request), [], None
+            return self.model.generate(request), [], None, None
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(self.model.generate, request)
             try:
-                return future.result(timeout=control.timeout_seconds), [], None
+                return future.result(timeout=control.timeout_seconds), [], None, None
             except FutureTimeoutError as exc:
                 raise TimedOutTurn() from exc
 
@@ -519,7 +547,7 @@ class SimpleHarness:
         session: SessionRecord,
         session_handle: str,
         control: TurnControl,
-    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None]:
+    ) -> tuple[ModelTurnResponse, list[RuntimeEvent], float | None, ModelProviderExchange | None]:
         stream = model.stream_generate(request)
         aggregated_message = ""
         final_message: str | None = None
@@ -527,6 +555,7 @@ class SimpleHarness:
         streamed_events: list[RuntimeEvent] = []
         stream_started_at = perf_counter()
         ttft_ms: float | None = None
+        stream_deltas: list[str] = []
         for stream_event in stream:
             if self._check_cancelled(control):
                 raise CancelledTurn()
@@ -534,6 +563,7 @@ class SimpleHarness:
                 if ttft_ms is None:
                     ttft_ms = (perf_counter() - stream_started_at) * 1000
                 aggregated_message += stream_event.assistant_delta
+                stream_deltas.append(stream_event.assistant_delta)
                 runtime_event = self._append_event(
                     session,
                     self._new_event(
@@ -551,13 +581,19 @@ class SimpleHarness:
         assistant_message = (
             final_message if final_message is not None else aggregated_message or None
         )
+        response = ModelTurnResponse(
+            assistant_message=assistant_message,
+            tool_calls=final_tool_calls,
+        )
         return (
-            ModelTurnResponse(
-                assistant_message=assistant_message,
-                tool_calls=final_tool_calls,
-            ),
+            response,
             streamed_events,
             ttft_ms,
+            ModelProviderExchange(
+                response=response,
+                transport_metadata={"streaming": True},
+                stream_deltas=stream_deltas,
+            ),
         )
 
     def _append_tool_results(self, session: SessionRecord, tool_results: list[ToolResult]) -> None:
@@ -649,10 +685,14 @@ class SimpleHarness:
         return control.cancellation_check is not None and control.cancellation_check()
 
     def _emit_metric(self, metric: RuntimeMetric) -> None:
-        self.observability.emit_runtime_metric(metric)
+        observability = self.observability
+        assert observability is not None
+        observability.emit_runtime_metric(metric)
 
     def _emit_progress(self, progress: ProgressUpdate) -> None:
-        self.observability.emit_progress(progress)
+        observability = self.observability
+        assert observability is not None
+        observability.emit_progress(progress)
 
     def _emit_session_state(
         self,
@@ -661,7 +701,9 @@ class SimpleHarness:
         reason: str | None = None,
         attributes: JsonObject | None = None,
     ) -> None:
-        self.observability.emit_session_state(
+        observability = self.observability
+        assert observability is not None
+        observability.emit_session_state(
             SessionStateSignal(
                 session_id=session_id,
                 state=state,
@@ -701,3 +743,53 @@ class SimpleHarness:
             if isinstance(cached, int):
                 return cached
         return None
+
+    def _capture_model_io_success(
+        self,
+        *,
+        request: ModelTurnRequest,
+        session: SessionRecord,
+        exchange: ModelProviderExchange | None,
+        retry_index: int,
+        streaming: bool,
+    ) -> None:
+        lease = self.sessions.get_active_lease(session.session_id)
+        self.model_io_capture.capture_success(
+            request=request,
+            exchange=exchange,
+            session_id=session.session_id,
+            agent_id=session.agent_id,
+            harness_instance_id=lease.harness_instance_id if lease is not None else None,
+            provider_adapter=type(self.model).__name__,
+            provider_family=self._provider_family(),
+            model=str(getattr(self.model, "model", "")) or None,
+            retry_index=retry_index,
+            streaming=streaming,
+        )
+
+    def _capture_model_io_error(
+        self,
+        *,
+        request: ModelTurnRequest,
+        session: SessionRecord,
+        retry_index: int,
+        streaming: bool,
+        error: Exception,
+    ) -> None:
+        lease = self.sessions.get_active_lease(session.session_id)
+        self.model_io_capture.capture_error(
+            request=request,
+            session_id=session.session_id,
+            agent_id=session.agent_id,
+            harness_instance_id=lease.harness_instance_id if lease is not None else None,
+            provider_adapter=type(self.model).__name__,
+            provider_family=self._provider_family(),
+            model=str(getattr(self.model, "model", "")) or None,
+            retry_index=retry_index,
+            streaming=streaming,
+            error=error,
+        )
+
+    def _provider_family(self) -> str | None:
+        family = getattr(self.model, "provider_family", None)
+        return str(family) if family is not None else None

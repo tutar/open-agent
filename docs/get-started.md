@@ -40,6 +40,7 @@ mypy .
 最小启动方式：
 
 ```bash
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```
 
@@ -56,6 +57,7 @@ openagent-host
 - `terminal` channel 会在 TUI 首次连接时自动加载
 - 如果没有配置真实模型，会自动回退到 demo model
 - host 会打印 `openagent-host> model=...`，可直接确认当前是否真的接上了真实模型
+- 每次模型调用默认都会沉淀到 `.openagent/data/model-io`
 
 ## Quickstart 2: Connect The Terminal TUI
 
@@ -101,6 +103,7 @@ OpenAI-compatible:
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=gpt-4.1
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```
 
@@ -110,6 +113,7 @@ Anthropic-compatible:
 export OPENAGENT_PROVIDER=anthropic
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=claude-sonnet-4-5
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```
 
@@ -118,6 +122,25 @@ python -m openagent.cli.host
 - `OPENAGENT_API_KEY`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
+
+模型输入输出数据默认会落到：
+
+```text
+.openagent/data/model-io/
+```
+
+这里会同时写：
+
+- `index.jsonl`
+- `records/<session_id>/<timestamp>-<capture_id>.json`
+
+如果你要改位置，可以在启动 host 前设置：
+
+- `OPENAGENT_DATA_ROOT`
+- `OPENAGENT_MODEL_IO_ROOT`
+
+这层数据不是 observability stdout，也不是 session event log；它是默认保留的模型原始数据资产，
+适合后续做离线分析、微调和强化学习数据整理。
 
 ## Quickstart 4: Load Feishu On The Same Host
 
@@ -131,6 +154,7 @@ export OPENAGENT_FEISHU_APP_SECRET=xxx
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=gpt-4.1
+export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host --channel feishu
 ```
 

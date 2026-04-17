@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -15,7 +16,7 @@ from .local import _default_local_event_types
 class FeishuBotClient(Protocol):
     """Minimal Feishu client surface used by the host."""
 
-    def start(self, event_handler: object) -> None:
+    def start(self, event_handler: Callable[[JsonObject], None]) -> None:
         """Start receiving Feishu events and forward them to the host."""
 
     def close(self) -> None:

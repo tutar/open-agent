@@ -1,6 +1,14 @@
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from openagent.harness import ModelTurnRequest, ModelTurnResponse, SimpleHarness
+from openagent.harness import (
+    FileModelIoCapture,
+    ModelProviderExchange,
+    ModelTurnRequest,
+    ModelTurnResponse,
+    SimpleHarness,
+)
 from openagent.harness.providers import (
     AnthropicMessagesModelAdapter,
     OpenAIChatCompletionsModelAdapter,
@@ -60,6 +68,19 @@ class ToolThenReplyModel:
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
         del request
         return self.responses.pop(0)
+
+
+@dataclass(slots=True)
+class ExchangeBackedModel:
+    exchange: ModelProviderExchange
+
+    def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        del request
+        return self.exchange.response
+
+    def generate_with_exchange(self, request: ModelTurnRequest) -> ModelProviderExchange:
+        del request
+        return self.exchange
 
 
 def test_openai_chat_adapter_builds_tool_payload_and_parses_tool_calls() -> None:
@@ -224,6 +245,66 @@ def test_provider_adapters_include_short_term_memory_summary() -> None:
     )
 
 
+def test_openai_adapter_generate_with_exchange_exposes_payload_and_raw_response() -> None:
+    transport = FakeTransport(
+        response_body={
+            "choices": [
+                {
+                    "message": {
+                        "content": "ok",
+                        "reasoning_content": "draft reasoning",
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 4},
+        }
+    )
+    adapter = OpenAIChatCompletionsModelAdapter(
+        model="gpt-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+
+    exchange = adapter.generate_with_exchange(
+        ModelTurnRequest(
+            session_id="sess_exchange",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+    )
+
+    assert exchange.provider_payload == transport.seen_payload
+    assert exchange.raw_response == transport.response_body
+    assert exchange.reasoning == "draft reasoning"
+    assert exchange.response.assistant_message == "ok"
+
+
+def test_anthropic_adapter_generate_with_exchange_exposes_reasoning_blocks() -> None:
+    transport = FakeTransport(
+        response_body={
+            "content": [
+                {"type": "thinking", "thinking": "chain"},
+                {"type": "text", "text": "answer"},
+            ]
+        }
+    )
+    adapter = AnthropicMessagesModelAdapter(
+        model="claude-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+
+    exchange = adapter.generate_with_exchange(
+        ModelTurnRequest(
+            session_id="sess_reasoning",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+    )
+
+    assert exchange.raw_response == transport.response_body
+    assert exchange.reasoning == [{"type": "thinking", "thinking": "chain"}]
+    assert exchange.response.assistant_message == "answer"
+
+
 def test_harness_build_model_input_includes_tool_definitions() -> None:
     tool = EchoTool()
     harness = SimpleHarness(
@@ -295,3 +376,49 @@ def test_tool_results_preserve_tool_use_id_in_session_messages() -> None:
 
     assert len(tool_messages) == 1
     assert tool_messages[0].metadata["tool_use_id"] == "toolu_1"
+
+
+def test_model_io_capture_persists_request_and_response_records(tmp_path: Path) -> None:
+    model_io_root = tmp_path / "data" / "model-io"
+    harness = SimpleHarness(
+        model=ExchangeBackedModel(
+            exchange=ModelProviderExchange(
+                response=ModelTurnResponse(assistant_message="captured"),
+                provider_payload={"model": "gpt-test", "messages": [{"role": "user"}]},
+                raw_response={
+                    "choices": [{"message": {"content": "captured"}}],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+                },
+                reasoning="deliberation",
+            )
+        ),
+        sessions=InMemorySessionStore(),
+        tools=StaticToolRegistry([]),
+        executor=SimpleToolExecutor(StaticToolRegistry([])),
+        short_term_memory_store=InMemoryShortTermMemoryStore(),
+        model_io_capture=FileModelIoCapture(model_io_root),
+    )
+    session = harness.sessions.load_session("sess_capture")
+    session.messages.append(harness._new_session_message(role="user", content="first"))
+    harness.schedule_memory_maintenance(session)
+    harness.stabilize_short_term_memory(session, timeout_ms=1000)
+
+    events, terminal = harness.run_turn("hello", "sess_capture")
+
+    assert terminal.reason == "assistant_message"
+    assert any(event.event_type.value == "assistant_message" for event in events)
+    index_path = model_io_root / "index.jsonl"
+    assert index_path.exists()
+    rows = [json.loads(line) for line in index_path.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["session_id"] == "sess_capture"
+    assert row["assembled_request"]["messages"][-1]["content"] == "hello"
+    assert row["assembled_request"]["short_term_memory"]["summary"]
+    assert row["provider_payload"]["model"] == "gpt-test"
+    assert row["provider_response_raw"]["usage"]["prompt_tokens"] == 3
+    assert row["parsed_response"]["assistant_message"] == "captured"
+    assert row["reasoning"] == "deliberation"
+    assert row["record_path"]
+    record = json.loads(Path(row["record_path"]).read_text(encoding="utf-8"))
+    assert record["capture_id"] == row["capture_id"]

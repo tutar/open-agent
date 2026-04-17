@@ -6,7 +6,13 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from openagent.object_model import JsonObject, RuntimeEvent, SerializableModel, TerminalState
+from openagent.object_model import (
+    JsonObject,
+    JsonValue,
+    RuntimeEvent,
+    SerializableModel,
+    TerminalState,
+)
 from openagent.tools import ToolCall
 
 
@@ -28,6 +34,16 @@ class ModelTurnResponse(SerializableModel):
 
 
 @dataclass(slots=True)
+class ModelProviderExchange(SerializableModel):
+    response: ModelTurnResponse
+    provider_payload: JsonObject | None = None
+    raw_response: JsonObject | None = None
+    reasoning: JsonValue | None = None
+    transport_metadata: JsonObject = field(default_factory=dict)
+    stream_deltas: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ModelStreamEvent(SerializableModel):
     assistant_delta: str | None = None
     assistant_message: str | None = None
@@ -38,6 +54,11 @@ class ModelStreamEvent(SerializableModel):
 class ModelProviderAdapter(Protocol):
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
         """Produce the next model response for the current turn."""
+
+
+class ModelProviderExchangeAdapter(ModelProviderAdapter, Protocol):
+    def generate_with_exchange(self, request: ModelTurnRequest) -> ModelProviderExchange:
+        """Produce the next model response with provider exchange details."""
 
 
 class ModelProviderStreamingAdapter(ModelProviderAdapter, Protocol):

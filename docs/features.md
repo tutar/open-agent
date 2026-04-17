@@ -119,16 +119,39 @@
 
 - `StaticToolRegistry`
 - `SimpleToolExecutor`
+- `SimpleStreamingToolExecutor`
+- richer `ToolDefinition` surface
+  - aliases
+  - context-aware description
+  - `is_enabled / is_read_only / is_concurrency_safe`
+  - permission check hook
+  - result mapping
+- `ToolRecord`
+- `ToolExecutionHandle / ToolExecutionEvent / ToolExecutionSummary`
+- `PersistedToolResultRef`
 - 完整的本地 tool event stream baseline
 - `tool_started / tool_progress / tool_result / tool_failed / tool_cancelled`
-- per-tool permission: `allow / deny / ask`
+- per-tool permission: `allow / deny / ask / passthrough`
 - `RuleBasedToolPolicyEngine`
+- denial tracking and fallback-to-ask baseline
 - approval continuation
 - concurrency-safe tool 的并发执行 baseline
+- builtin tool baseline
+  - `Read / Write / Edit / Glob / Grep / Bash`
+  - `WebFetch / WebSearch`
+  - `AskUserQuestion`
+  - optional `Agent / Skill` bridge
+- review command baseline via `CommandKind.REVIEW`
+- tool provenance / visibility metadata
+- MCP tool / prompt / skill adaptation seam
+- runtime 默认注入 builtin tool baseline；host 默认 demo tools 只是额外叠加
+- builtin file / shell tools 默认作用于当前工作目录，或显式 `OPENAGENT_WORKSPACE_ROOT`
 
 当前不支持：
 
 - 更细的 tool retry / recovery policy
+- real host-integrated search backend for `WebSearch`
+- full orchestration-backed default implementation for `Agent` / review commands
 
 ## Capability Surface
 
@@ -157,15 +180,52 @@
 - `FileSkillRegistry`
 - `SkillActivator`
 - `SkillInvocationBridge`
+- `SkillCatalogEntry`
+- `SkillActivationResult`
 - `InMemoryMcpClient`
 - `TransportBackedMcpClient`
 - `InMemoryMcpTransport`
+- `StdioMcpTransport`
+- `StreamableHttpMcpTransport`
+- `McpProtocolClient`
+- `McpAuthorizationAdapter`
+- `McpRootsProvider`
+- `McpSamplingBridge`
+- `McpElicitationBridge`
 - `McpToolAdapter`
 - `McpPromptAdapter`
+- `McpResourceAdapter`
 - `McpSkillAdapter`
 - MCP tool/prompt/skill conformance baseline
 
-当前 MCP 已经有 transport-backed client seam，但默认 deterministic transport 仍然是本地内存实现。
+当前 MCP 已经拆到 `src/openagent/tools/mcp/`，并按四层组织：
+
+- protocol client
+- transport + auth
+- runtime adaptation
+- host extension
+
+当前已经支持：
+
+- `initialize -> initialized`
+- protocol version / capability negotiation
+- deterministic in-memory transport
+- real `stdio` transport
+- real `Streamable HTTP` transport with JSON / SSE parity
+- auth discovery + token acquire + `WWW-Authenticate` scope upgrade
+- tools/prompts/resources pagination
+- roots list + `list_changed`
+- resource subscribe + change notification observation
+- sampling / elicitation host bridge seams
+
+`mcp skill` 继续保留，但明确属于 host extension，不属于 MCP core。
+
+当前 skills 还支持：
+
+- deterministic discovery precedence across scopes
+- shadow diagnostics for conflicting skills
+- catalog disclosure distinct from activation disclosure
+- wrapped activation result for dedupe / replay / compaction-friendly semantics
 
 ## Memory
 
@@ -216,6 +276,30 @@
 - standalone durable trace storage
 - precise provider token/cost accounting when the provider does not expose it
 
+## Model I/O Capture
+
+当前 SDK 默认开启 agent 级模型输入输出沉淀。
+
+当前支持：
+
+- file-backed model dataset capture under `.openagent/data/model-io`
+- append-only `index.jsonl`
+- per-call record files under `records/<session_id>/`
+- assembled `ModelTurnRequest` capture
+- provider payload capture
+- provider raw response capture
+- parsed `ModelTurnResponse` capture
+- provider-exposed reasoning / thinking block capture
+- non-streaming and streaming final result capture
+- error-path capture for provider failure / timeout / retry exhaustion
+- configurable roots via `OPENAGENT_DATA_ROOT` and `OPENAGENT_MODEL_IO_ROOT`
+
+当前不支持：
+
+- automatic retention cleanup
+- transcript-level redaction policy
+- provider-hidden reasoning recovery
+
 ## Gateway
 
 gateway 是 harness 域下的 frontend 稳定接入边界。
@@ -241,6 +325,7 @@ gateway 是 harness 域下的 frontend 稳定接入边界。
 - command-style control projection for chat channels
 - host management command baseline via `/channel` and `/channel-config`
 - Feishu long-connection host baseline
+- Feishu inbound idempotency baseline via `message_id` dedupe
 
 frontend 当前应通过 `Gateway` 使用 agent，不应该直接持有 harness。
 

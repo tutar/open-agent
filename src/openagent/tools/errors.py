@@ -34,6 +34,12 @@ class ToolExecutionFailedError(Exception, SerializableModel):
 
 
 @dataclass(slots=True)
+class ToolValidationError(ToolExecutionFailedError):
+    def __str__(self) -> str:
+        return f"{self.tool_name}: validation_failed: {self.reason}"
+
+
+@dataclass(slots=True)
 class ToolCancelledError(Exception, SerializableModel):
     tool_name: str
     reason: str = "cancelled"

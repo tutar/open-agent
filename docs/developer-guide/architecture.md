@@ -127,9 +127,13 @@ terminal TUI 的多 session 工作流基于这套能力实现。
 
 - `StaticToolRegistry`
 - `SimpleToolExecutor`
-- `allow / deny / ask`
+- `SimpleStreamingToolExecutor`
+- richer `ToolDefinition` metadata and provenance
+- `allow / deny / ask / passthrough`
 - optional policy engine override seam
 - rule-based policy engine baseline
+- builtin tool baseline injected by default in local runtimes
+- command / review / skill / MCP capability bridges in the same tools domain
 
 基础事件包括：
 
@@ -142,6 +146,14 @@ terminal TUI 的多 session 工作流基于这套能力实现。
 
 并发上，executor 对 concurrency-safe tool 提供基础并发执行语义。
 tool 事件由 executor 单点发出，harness 负责持久化这些事件，并把失败或取消折叠成 turn 终态。
+
+默认 runtime 装配会注入 builtin tools：
+
+- `Read / Write / Edit / Glob / Grep / Bash`
+- `WebFetch / WebSearch`
+- `AskUserQuestion`
+
+host 默认 demo tools 只是在此基础上额外叠加，不会覆盖 builtin baseline。
 
 ## Model Integration
 
@@ -248,6 +260,8 @@ capability surface 当前统一投影三类能力：
 - origin metadata
 - model/user visibility
 - host projection
+- skill scope / trust / diagnostics metadata
+- catalog disclosure vs activation disclosure separation
 
 这使 frontend 或 host 侧可以做更稳定的能力展示和筛选。
 

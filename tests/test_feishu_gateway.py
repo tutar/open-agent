@@ -8,6 +8,8 @@ from openagent.gateway import (
     FeishuAppConfig,
     FeishuChannelAdapter,
     FeishuLongConnectionHost,
+    FileFeishuInboundDedupeStore,
+    InMemoryFeishuInboundDedupeStore,
     create_feishu_gateway,
 )
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
@@ -240,7 +242,12 @@ def test_feishu_host_lazy_binds_and_replies(tmp_path: Path) -> None:
     adapter = gateway.get_channel_adapter("feishu")
     assert isinstance(adapter, FeishuChannelAdapter)
     adapter.client = client
-    host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
 
     outbound = host.handle_event(make_text_event("hello"))
 
@@ -265,7 +272,12 @@ def test_feishu_host_supports_command_approval(tmp_path: Path) -> None:
     adapter = gateway.get_channel_adapter("feishu")
     assert isinstance(adapter, FeishuChannelAdapter)
     adapter.client = client
-    host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
 
     first = host.handle_event(make_text_event("admin rotate"))
     second = host.handle_event(make_text_event("/approve", message_id="om_approve"))
@@ -291,6 +303,7 @@ def test_feishu_host_routes_management_commands_without_session_binding(tmp_path
         adapter=adapter,
         client=client,
         management_handler=lambda command: [{"type": "status", "message": f"handled {command}"}],
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
     )
 
     outbound = host.handle_event(make_text_event("/channel"))
@@ -310,7 +323,12 @@ def test_feishu_host_resume_replays_session(tmp_path: Path) -> None:
     adapter = gateway.get_channel_adapter("feishu")
     assert isinstance(adapter, FeishuChannelAdapter)
     adapter.client = client
-    host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
 
     host.handle_event(make_text_event("hello"))
     replay = host.handle_event(make_text_event("/resume", message_id="om_resume"))
@@ -330,7 +348,12 @@ def test_feishu_host_reports_missing_session_for_control(tmp_path: Path) -> None
     adapter = gateway.get_channel_adapter("feishu")
     assert isinstance(adapter, FeishuChannelAdapter)
     adapter.client = client
-    host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
 
     outbound = host.handle_event(make_text_event("/approve"))
 
@@ -359,7 +382,12 @@ def test_feishu_adapter_coalesces_tool_progress_notifications(tmp_path: Path) ->
     adapter = gateway.get_channel_adapter("feishu")
     assert isinstance(adapter, FeishuChannelAdapter)
     adapter.client = client
-    host = FeishuLongConnectionHost(gateway=gateway, adapter=adapter, client=client)
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
 
     outbound = host.handle_event(make_text_event("run stream"))
     progress_messages = [item for item in outbound if item["text"] == "Tool stream is working..."]
@@ -379,6 +407,103 @@ def test_feishu_gateway_registers_single_adapter_instance(tmp_path: Path) -> Non
 
     adapter = gateway.get_channel_adapter("feishu")
     assert isinstance(adapter, FeishuChannelAdapter)
+
+
+def test_feishu_host_dedupes_duplicate_user_message(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="hello once"))
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
+
+    first = host.handle_event(make_text_event("hello", message_id="om_dup"))
+    second = host.handle_event(make_text_event("hello", message_id="om_dup"))
+
+    assert first == [{"chat_id": "oc_chat_1", "thread_id": None, "text": "hello once"}]
+    assert second == []
+
+
+def test_feishu_host_dedupes_duplicate_control_message(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(
+        config=config,
+        model=ToolThenReplyModel(),
+        tools=[DemoTool(name="admin", permission=PermissionDecision.ASK)],
+    )
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
+
+    host.handle_event(make_text_event("admin rotate", message_id="om_admin"))
+    first = host.handle_event(make_text_event("/approve", message_id="om_approve_dup"))
+    second = host.handle_event(make_text_event("/approve", message_id="om_approve_dup"))
+
+    assert first[-1]["text"] == "tool completed after approval"
+    assert second == []
+
+
+def test_feishu_host_missing_message_id_skips_dedupe(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="hello repeat"))
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
+    raw_event = make_text_event("hello", message_id="om_unused")
+    message = raw_event["event"]["message"]
+    assert isinstance(message, dict)
+    message.pop("message_id", None)
+
+    first = host.handle_event(raw_event)
+    second = host.handle_event(raw_event)
+
+    assert first == [{"chat_id": "oc_chat_1", "thread_id": None, "text": "hello repeat"}]
+    assert second == [{"chat_id": "oc_chat_1", "thread_id": None, "text": "hello repeat"}]
+
+
+def test_file_backed_feishu_dedupe_store_survives_reopen(tmp_path: Path) -> None:
+    storage_path = tmp_path / "dedupe" / "feishu.json"
+
+    first_store = FileFeishuInboundDedupeStore(str(storage_path))
+    second_store = FileFeishuInboundDedupeStore(str(storage_path))
+
+    assert first_store.check_and_mark("om_persist") is False
+    assert second_store.check_and_mark("om_persist") is True
 
 
 def test_feishu_runtime_creates_file_backed_runtime(tmp_path: Path) -> None:

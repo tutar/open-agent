@@ -14,7 +14,9 @@ from openagent.tools import (
     McpServerDescriptor,
     McpSkillAdapter,
     McpToolDescriptor,
+    SkillActivationResult,
     SkillActivator,
+    SkillDiscoveryRoot,
     SkillInvocationBridge,
     StaticCommandRegistry,
     TransportBackedMcpClient,
@@ -53,6 +55,42 @@ def test_file_skill_registry_and_bridge(tmp_path: Path) -> None:
     )
     assert "engineers" in rendered
     assert "release notes" in rendered
+
+    catalog = registry.list_catalog_entries()
+    activation = bridge.invoke_skill_wrapped(
+        "summarize",
+        args={"audience": "engineers"},
+        runtime_context={"source": "release notes"},
+    )
+
+    assert catalog[0].name == "Summarize"
+    assert "Summarize the input" in catalog[0].description
+    assert isinstance(activation, SkillActivationResult)
+    assert activation.skill_name == "Summarize"
+    assert activation.wrapped is True
+    assert activation.activation_mode == "model"
+
+
+def test_skill_registry_resolves_precedence_and_emits_shadow_diagnostics(tmp_path: Path) -> None:
+    user_root = tmp_path / "user" / "skills" / "summarize"
+    project_root = tmp_path / "project" / "skills" / "summarize"
+    user_root.mkdir(parents=True)
+    project_root.mkdir(parents=True)
+    (user_root / "SKILL.md").write_text("# Summarize\n\nUser version.\n", encoding="utf-8")
+    (project_root / "SKILL.md").write_text("# Summarize\n\nProject version.\n", encoding="utf-8")
+
+    registry = FileSkillRegistry(
+        [
+            SkillDiscoveryRoot(path=str(user_root.parent), scope="user"),
+            SkillDiscoveryRoot(path=str(project_root.parent), scope="project"),
+        ]
+    )
+
+    skills = registry.discover_skills()
+
+    assert len(skills) == 1
+    assert skills[0].scope == "project"
+    assert "shadowed skill 'summarize' from user:" in skills[0].diagnostics[0]
 
 
 def test_static_command_registry() -> None:
