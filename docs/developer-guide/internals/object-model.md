@@ -1,6 +1,6 @@
 # Object Model
 
-`object_model` 是整个 SDK 的底层公共语言层。
+`object_model` 是整个 OpenAgent 的底层公共语言层。
 
 它不负责执行逻辑，而负责把跨模块共享的数据结构固定下来，让 `harness`、`session`、`tools`、
 `gateway` 和测试层可以围绕同一套事件和记录工作。

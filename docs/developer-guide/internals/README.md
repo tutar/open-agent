@@ -1,6 +1,6 @@
 # Internals
 
-这组文档解释 `openagent` Python SDK 内部各模块的职责、数据流和当前实现原则。
+这组文档解释 `openagent` 内部各模块的职责、数据流和当前实现原则。
 
 入口按模块拆分：
 

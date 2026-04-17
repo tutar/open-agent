@@ -13,7 +13,7 @@
 先启动 Python host：
 
 ```bash
-cd agent-python-sdk
+cd <project-root>
 export OPENAGENT_WORKSPACE_ROOT=$PWD
 python -m openagent.cli.host
 ```

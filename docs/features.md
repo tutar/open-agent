@@ -1,6 +1,6 @@
 # Features
 
-这份文档描述当前 `openagent` Python SDK 已经落地的能力边界，不讨论未来规划。
+这份文档描述当前 `openagent` 已经落地的能力边界，不讨论未来规划。
 
 ## Runtime
 
@@ -44,7 +44,7 @@
 - `load_model_from_env()`
 - stdlib-based `UrllibHttpTransport`
 
-这些 provider adapter 当前归属 `harness/providers`，而不是 SDK 根目录。
+这些 provider adapter 当前归属 `harness/providers`，而不是 agent 根目录。
 
 当前 terminal bridge 会在设置 `OPENAGENT_MODEL` 时自动尝试加载真实 provider。
 
@@ -278,7 +278,7 @@
 
 ## Model I/O Capture
 
-当前 SDK 默认开启 agent 级模型输入输出沉淀。
+当前 OpenAgent 默认开启 agent 级模型输入输出沉淀。
 
 当前支持：
 

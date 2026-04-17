@@ -1,6 +1,6 @@
 # Contributing
 
-这份文档描述如何继续开发、测试并合入 `openagent` Python SDK。
+这份文档描述如何继续开发、测试并合入 `openagent`。
 
 如果你需要快速理解系统结构，先看 [`architecture.md`](./architecture.md)。
 
@@ -17,7 +17,7 @@
 
 ## Local Setup
 
-推荐在 `agent-python-sdk/` 目录下工作。
+推荐在当前项目根目录下工作。
 
 Python 环境基线：
 
@@ -39,7 +39,7 @@ npm install
 
 ## Required Checks
 
-Python SDK 合入前的最低检查：
+OpenAgent 合入前的最低检查：
 
 ```bash
 pytest -q

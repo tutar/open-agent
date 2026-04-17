@@ -122,7 +122,7 @@ feishu-host> starting long connection
 feishu-host> received raw event
 feishu-host> normalized input
 feishu-host> sending outbound
-feishu-host> sdk send_text
+feishu-host> agent send_text
 ```
 
 ## Notes

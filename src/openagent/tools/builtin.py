@@ -1,4 +1,4 @@
-"""Required builtin tool baseline for the local Python SDK."""
+"""Required builtin tool baseline for the local OpenAgent runtime."""
 
 from __future__ import annotations
 
@@ -290,7 +290,7 @@ class WebFetchTool(_BuiltinTool):
 
     def call(self, arguments: dict[str, object]) -> ToolResult:
         url = str(arguments["url"])
-        request = Request(url, headers={"User-Agent": "openagent-python-sdk/0.1"})
+        request = Request(url, headers={"User-Agent": "openagent/0.1"})
         with urlopen(request, timeout=10) as response:
             body = response.read().decode("utf-8", errors="replace")
         return ToolResult(tool_name=self.name, success=True, content=cast(list[JsonValue], [body]))

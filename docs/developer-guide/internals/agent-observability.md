@@ -1,6 +1,6 @@
 # Agent Observability
 
-`AgentObservability` 是当前 SDK 中独立于 `RuntimeEvent` 的观测平面。
+`AgentObservability` 是当前 OpenAgent 中独立于 `RuntimeEvent` 的观测平面。
 
 注意：它现在也独立于 `.openagent/data/model-io` 这层模型原始数据沉淀。
 

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "openagent"
 version = "0.1.0"
-description = "Python SDK skeleton aligned with the agent-sdk-spec."
+description = "OpenAgent local-first Python agent aligned with the agent-spec."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

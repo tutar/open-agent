@@ -149,18 +149,15 @@ def test_in_memory_runtime_creates_working_runtime() -> None:
 
 def test_local_runtimes_use_in_process_binding(tmp_path: Path) -> None:
     tui_runtime = create_in_memory_runtime(StaticModel(message="tui"))
-    desktop_runtime = create_file_runtime(
-        StaticModel(message="desktop"),
-        str(tmp_path / "desktop"),
-    )
+    file_runtime = create_file_runtime(StaticModel(message="file"), str(tmp_path / "file"))
 
     tui_events, tui_terminal = tui_runtime.run_turn("hello", "sess_tui")
-    desktop_events, desktop_terminal = desktop_runtime.run_turn("hello", "sess_desktop")
+    file_events, file_terminal = file_runtime.run_turn("hello", "sess_file")
 
     assert tui_terminal.status is TerminalStatus.COMPLETED
-    assert desktop_terminal.status is TerminalStatus.COMPLETED
+    assert file_terminal.status is TerminalStatus.COMPLETED
     assert tui_events[1].payload["message"] == "tui"
-    assert desktop_events[1].payload["message"] == "desktop"
+    assert file_events[1].payload["message"] == "file"
 
 
 def test_file_task_manager_can_be_created_directly(tmp_path: Path) -> None:

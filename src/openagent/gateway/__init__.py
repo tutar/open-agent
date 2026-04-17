@@ -9,7 +9,6 @@ from .assemblies.feishu import (
 )
 from .binding_store import FileSessionBindingStore
 from .channels import (
-    DesktopChannelAdapter,
     FeishuBotClient,
     FeishuChannelAdapter,
     TerminalChannelAdapter,
@@ -38,7 +37,6 @@ from .session_adapter import InProcessSessionAdapter
 __all__ = [
     "ChannelAdapter",
     "ChannelIdentity",
-    "DesktopChannelAdapter",
     "EgressEnvelope",
     "FileSessionBindingStore",
     "FileFeishuInboundDedupeStore",

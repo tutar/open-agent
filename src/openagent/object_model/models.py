@@ -1,4 +1,4 @@
-"""Canonical object model placeholders aligned with the agent-sdk-spec."""
+"""Canonical object model placeholders aligned with the agent-spec."""
 
 from __future__ import annotations
 

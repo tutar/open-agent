@@ -82,7 +82,7 @@ executor 解决“怎么执行这些 tool”。
 
 ## Commands / Skills / MCP
 
-当前 SDK 里不只有 tool。
+当前 OpenAgent 里不只有 tool。
 
 还存在三类相关能力：
 
@@ -175,8 +175,7 @@ executor 现在支持一个可选的 `ToolPolicyEngine`：
 - resolve
 - project
 
-当前 host projection 已经按 `terminal / feishu / cloud` 区分，不再使用旧的 `tui / desktop`
-投影语义。
+当前 host projection 已经按 `terminal / feishu / cloud` 区分，统一使用 channel 语义。
 
 ## Current Limitation
 

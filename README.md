@@ -1,6 +1,6 @@
-# openagent Python SDK
+# OpenAgent
 
-`openagent` 是一个按 `agent-sdk-spec` 组织的 Python SDK 骨架工程。
+`openagent` 是一个按 `agent-spec` 组织的本地优先 agent 工程。
 
 当前项目已具备完整的本地优先运行基线：对象模型、session/memory、builtin tool baseline、
 tool policy/executor、commands/skills/MCP compatibility、本地 harness、gateway、多 channel host，
@@ -68,7 +68,7 @@ python -m openagent.cli.host
 
 ## Goals
 
-- 对齐 `agent-sdk-spec` 的五大模块边界
+- 对齐 `agent-spec` 的五大模块边界
 - 提供跨语言 canonical object model 的 Python 占位实现
 - 为后续本地 gateway / frontend 装配与行为实现预留稳定入口
 
@@ -92,7 +92,7 @@ python -m openagent.cli.host
 
 ## Spec Mapping
 
-本项目中的目录边界映射到 `agent-sdk-spec`：
+本项目中的目录边界映射到 `agent-spec`：
 
 - `harness`
 - `session`
@@ -101,12 +101,12 @@ python -m openagent.cli.host
 - `orchestration`
 - `object_model`
 
-当前 Python SDK 只面向本地 `terminal` 和 `feishu` 场景，不考虑 `Cloud`。模块之间默认使用同进程直接函数调用，
+当前 OpenAgent 只面向本地 `terminal` 和 `feishu` 场景，不考虑 `Cloud`。模块之间默认使用同进程直接函数调用，
 优先降低复杂度和调用开销，而不是为远程绑定或 IPC 预留抽象成本。
 
-`frontend/` 目录现在位于 `agent-python-sdk/` 内。terminal TUI 采用 `React + Ink + Yoga`，
+`frontend/` 目录现在位于项目根目录内。terminal TUI 采用 `React + Ink + Yoga`，
 terminal TUI 通过 gateway 使用 agent runtime，而不是直接持有 harness。
-因此 Python SDK 当前推荐的集成入口是 `openagent.local.create_*_runtime(...)`
+因此当前推荐的本地集成入口是 `openagent.local.create_*_runtime(...)`
 和 `openagent.local.create_gateway_for_runtime(...)`。
 
 ## Development
@@ -146,7 +146,7 @@ npm run dev
 
 ## CI
 
-GitHub CI should block merges to `main` unless the `agent-python-sdk` checks pass:
+GitHub CI should block merges to `main` unless the OpenAgent checks pass:
 
 - `pytest -q`
 - `ruff check .`

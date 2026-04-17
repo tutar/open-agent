@@ -120,7 +120,7 @@ class HostProcess:
         thread.start()
         host = cls(process=process, lines=lines, _thread=thread)
         host.wait_for("feishu-host> starting long connection", timeout=20)
-        # The Feishu SDK reports websocket readiness asynchronously after startup.
+        # The Feishu client reports websocket readiness asynchronously after startup.
         host.wait_for("connected to wss://", timeout=20)
         return host
 
@@ -264,7 +264,7 @@ def test_feishu_e2e_private_reply_and_resume(
 
     host.wait_for("feishu-host> received raw event", after=offset)
     host.wait_for("normalized input kind=user_message", after=offset)
-    host.wait_for("sdk send_text", after=offset)
+    host.wait_for("agent send_text", after=offset)
     host.wait_for("e2e reply: hello", after=offset)
 
     resume_offset = host.snapshot()

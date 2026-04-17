@@ -5,7 +5,6 @@ from pathlib import Path
 from openagent.gateway import (
     ChannelAdapter,
     ChannelIdentity,
-    DesktopChannelAdapter,
     FileSessionBindingStore,
     Gateway,
     InboundEnvelope,
@@ -14,7 +13,6 @@ from openagent.gateway import (
 )
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
 from openagent.local import (
-    create_file_runtime,
     create_gateway_for_runtime,
     create_in_memory_runtime,
 )
@@ -135,15 +133,6 @@ def build_terminal_gateway(
     )
 
 
-def build_desktop_gateway(model: object, *, session_root: str) -> Gateway:
-    runtime = create_file_runtime(model=model, session_root=session_root)
-    return create_gateway_for_runtime(
-        runtime,
-        [DesktopChannelAdapter()],
-        binding_root=str(Path(session_root) / "bindings"),
-    )
-
-
 def test_tui_gateway_processes_user_message() -> None:
     gateway = build_terminal_gateway(StaticModel(message="hello via gateway"))
     channel = ChannelIdentity(
@@ -181,47 +170,6 @@ def test_tui_profile_registers_terminal_channel_defaults() -> None:
 
     assert binding.event_types == TerminalChannelAdapter().accepted_event_types()
 
-
-def test_desktop_gateway_uses_file_backed_runtime(tmp_path: Path) -> None:
-    gateway = build_desktop_gateway(
-        StaticModel(message="desktop gateway"),
-        session_root=str(tmp_path / "desktop_sessions"),
-    )
-    channel = ChannelIdentity(
-        channel_type="desktop",
-        user_id="user_2",
-        conversation_id="conv_desktop",
-    )
-    binding = gateway.bind_session(channel, "sess_gateway_desktop")
-
-    egress = gateway.process_user_message(
-        InboundEnvelope(
-            channel_identity=channel.to_dict(),
-            input_kind="user_message",
-            payload={"content": "open"},
-            delivery_metadata={"message_id": "msg_2"},
-        )
-    )
-
-    assert binding.session_id == "sess_gateway_desktop"
-    assert egress[0].conversation_id == "conv_desktop"
-    assert egress[-1].event["event_type"] == RuntimeEventType.TURN_COMPLETED.value
-
-
-def test_desktop_profile_registers_desktop_channel_defaults(tmp_path: Path) -> None:
-    gateway = build_desktop_gateway(
-        StaticModel(message="desktop gateway"),
-        session_root=str(tmp_path / "desktop_sessions"),
-    )
-    channel = ChannelIdentity(
-        channel_type="desktop",
-        user_id="user_desktop_default",
-        conversation_id="conv_desktop_default",
-    )
-
-    binding = gateway.bind_session(channel, "sess_gateway_desktop_default")
-
-    assert binding.event_types == DesktopChannelAdapter().accepted_event_types()
 
 
 def test_gateway_route_control_accepts_known_subtypes() -> None:
@@ -485,26 +433,6 @@ def test_gateway_get_binding_restores_persisted_binding(tmp_path: Path) -> None:
     restored = restored_gateway.get_binding("terminal", "conv_binding_restore")
 
     assert restored.session_id == "sess_binding_restore"
-
-
-def test_desktop_gateway_persists_binding_store_by_default(tmp_path: Path) -> None:
-    session_root = tmp_path / "desktop_sessions"
-    gateway = build_desktop_gateway(
-        StaticModel(message="desktop gateway"),
-        session_root=str(session_root),
-    )
-    channel = ChannelIdentity(
-        channel_type="desktop",
-        user_id="user_6",
-        conversation_id="conv_desktop_binding",
-    )
-    gateway.bind_session(channel, "sess_gateway_desktop_binding")
-
-    store = FileSessionBindingStore(session_root / "bindings")
-    restored = store.load_binding("desktop", "conv_desktop_binding")
-
-    assert restored is not None
-    assert restored.session_id == "sess_gateway_desktop_binding"
 
 
 def test_gateway_enforces_one_chat_one_session() -> None:

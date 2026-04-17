@@ -16,7 +16,7 @@ from openagent.session import (
 )
 from openagent.tools import PermissionDecision, SimpleToolExecutor, StaticToolRegistry, ToolCall
 
-GOLDEN_DIR = Path(__file__).resolve().parents[2] / "agent-sdk-spec" / "conformance" / "golden"
+GOLDEN_DIR = Path(__file__).resolve().parents[2] / "agent-spec" / "conformance" / "golden"
 
 
 def _load_golden(name: str) -> dict[str, Any]:

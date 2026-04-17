@@ -20,13 +20,13 @@
 
 ## Install Python Dependencies
 
-在 `agent-python-sdk/` 目录下执行：
+在当前项目根目录下执行：
 
 ```bash
 uv sync --dev
 ```
 
-## Verify The SDK
+## Verify OpenAgent
 
 ```bash
 pytest -q

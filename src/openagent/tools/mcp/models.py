@@ -1,4 +1,4 @@
-"""Shared MCP models aligned with the SDK object model."""
+"""Shared MCP models aligned with the OpenAgent object model."""
 
 from __future__ import annotations
 

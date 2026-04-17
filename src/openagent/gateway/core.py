@@ -18,7 +18,7 @@ from .projector import project_runtime_event
 
 
 class Gateway:
-    """Channel gateway for terminal and desktop style frontends."""
+    """Channel gateway for terminal and chat-style frontends."""
 
     def __init__(
         self,

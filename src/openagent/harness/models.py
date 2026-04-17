@@ -66,7 +66,7 @@ class ModelProviderStreamingAdapter(ModelProviderAdapter, Protocol):
         """Produce streamed model events for the current turn."""
 
 
-# Backward-compatible aliases while the SDK migrates to the clearer provider-aware names.
+# Backward-compatible aliases while OpenAgent migrates to the clearer provider-aware names.
 ModelAdapter = ModelProviderAdapter
 StreamingModelAdapter = ModelProviderStreamingAdapter
 

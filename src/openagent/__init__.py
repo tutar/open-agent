@@ -1,4 +1,4 @@
-"""Public package exports for the openagent Python SDK skeleton."""
+"""Public package exports for OpenAgent."""
 
 from openagent.capability_surface import (
     CapabilityDescriptor,

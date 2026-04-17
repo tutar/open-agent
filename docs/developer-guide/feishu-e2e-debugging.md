@@ -6,7 +6,7 @@
 
 这里的 `lark-cli` 指飞书官方 CLI：<https://github.com/larksuite/cli>
 
-对当前 SDK 而言，它的角色是：
+对当前 OpenAgent 而言，它的角色是：
 
 - 飞书侧的消息发送入口
 - 飞书侧的结果观察入口
@@ -40,7 +40,7 @@
 
 本地需要满足这些前置条件：
 
-- 已激活 `agent-python-sdk` 的 Python 开发环境
+- 已激活当前项目的 Python 开发环境
 - 能正常启动 `openagent-feishu`
 - 已配置可用的模型 provider
 - 已拥有可接收机器人私聊的飞书账号
@@ -80,7 +80,7 @@ lark-cli config init
 
 ## Start The OpenAgent Feishu Host
 
-在 `agent-python-sdk/` 目录启动 Python 侧 host。有两种推荐方式。
+在当前项目根目录启动 Python 侧 host。有两种推荐方式。
 
 方式一：启动时预加载 Feishu：
 
@@ -183,7 +183,7 @@ feishu-host> starting long connection
 feishu-host> received raw event ...
 feishu-host> normalized input kind=user_message conversation=...
 feishu-host> sending outbound event=assistant_message chat=...
-feishu-host> sdk send_text chat=... thread=... text=...
+feishu-host> agent send_text chat=... thread=... text=...
 feishu-host> skipped duplicate inbound message_id=...
 ```
 
@@ -218,7 +218,7 @@ feishu-session:<conversation_id>
 
 - 向机器人发送 `hello`
 - 期望飞书侧收到一条 assistant reply
-- 期望 host 日志出现 `received raw event` 和 `sdk send_text`
+- 期望 host 日志出现 `received raw event` 和 `agent send_text`
 
 ### Case 2: Session reuse
 
@@ -257,7 +257,7 @@ No active session is bound for this chat yet. Send a normal message first.
 4. 环境变量 `OPENAGENT_FEISHU_APP_ID` 和 `OPENAGENT_FEISHU_APP_SECRET` 是否正确
 5. provider 是否可用，特别是 `OPENAGENT_BASE_URL` 和 `OPENAGENT_MODEL`
 6. host 是否打印了 `received raw event`
-7. host 是否打印了 `sdk send_text`
+7. host 是否打印了 `agent send_text`
 8. 如果你走的是统一 host 动态加载路径，是否已经执行过 `/channel feishu`
 
 如果看到了 `received raw event` 但没有回复，重点检查：
@@ -272,7 +272,7 @@ No active session is bound for this chat yet. Send a normal message first.
 - 发出的命令是否是 `/approve`、`/reject`、`/interrupt`、`/resume`
 
 如果私聊正常、但群聊 `@openagent` 完全没有任何 `received raw event`，优先检查飞书开放平台里的群消息事件投递配置。
-当前 SDK 的群聊 E2E 代码路径已经准备好，但如果应用侧没有把群消息投递给 bot，Python host 端不会收到任何原始事件。
+当前 OpenAgent 的群聊 E2E 代码路径已经准备好，但如果应用侧没有把群消息投递给 bot，Python host 端不会收到任何原始事件。
 
 如果启动 host 时直接报“Another local Feishu host is already running for this app_id”，说明同一台机器上已经有另一个进程占用了这只 bot 的长连接。先停掉旧进程，再继续联调。
 

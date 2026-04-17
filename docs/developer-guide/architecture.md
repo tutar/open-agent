@@ -1,12 +1,12 @@
 # Architecture
 
-这份文档描述当前 `openagent` Python SDK 的本地架构边界和主流程。
+这份文档描述当前 `openagent` 的本地架构边界和主流程。
 
 ## Design Constraints
 
 当前实现遵循这些约束：
 
-- 只做本地 `TUI` 主路径
+- 只做本地 `terminal` 主路径
 - 不做 `Cloud`
 - 不引入 remote binding
 - 不为了未来扩展提前引入 IPC / daemon 分层
@@ -280,7 +280,7 @@ capability surface 当前统一投影三类能力：
 
 ## Local Assembly
 
-当前不再保留 `profile` 抽象。SDK 直接暴露本地装配 helper：
+当前不再保留 `profile` 抽象。OpenAgent 直接暴露本地装配 helper：
 
 - `create_in_memory_runtime(...)`
 - `create_file_runtime(...)`

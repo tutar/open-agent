@@ -58,7 +58,7 @@ class McpProtocolClient:
     sampling_bridge: McpSamplingBridge | None = None
     elicitation_bridge: McpElicitationBridge | None = None
     client_capabilities: McpClientCapabilities = field(default_factory=McpClientCapabilities)
-    client_info: JsonObject = field(default_factory=lambda: {"name": "openagent-python-sdk"})
+    client_info: JsonObject = field(default_factory=lambda: {"name": "openagent"})
     _sessions: dict[str, _ConnectedSession] = field(default_factory=dict, init=False, repr=False)
 
     def initialize(

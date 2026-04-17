@@ -2,11 +2,11 @@
 
 `ModelProviderAdapter` 是 harness 对模型层暴露的稳定接口。
 
-当前 `agent-python-sdk` 把真实 provider 实现放在：
+当前 `openagent` 把真实 provider 实现放在：
 
 - `src/openagent/harness/providers`
 
-这表示 provider adapter 是 harness 的 `model provider` 子层，而不是 SDK 根级公共模块。
+这表示 provider adapter 是 harness 的 `model provider` 子层，而不是 agent 根级公共模块。
 
 ## Layering
 

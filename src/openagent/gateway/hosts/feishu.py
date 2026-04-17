@@ -288,7 +288,7 @@ class OfficialFeishuBotClient:
         """Send a text message to the target chat."""
 
         print(
-            "feishu-host> sdk send_text"
+            "feishu-host> agent send_text"
             f" chat={chat_id} thread={thread_id} text={text}",
             flush=True,
         )

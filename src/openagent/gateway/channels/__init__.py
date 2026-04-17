@@ -1,10 +1,9 @@
 """Channel-specific gateway integrations."""
 
 from .feishu import FeishuBotClient, FeishuChannelAdapter
-from .local import DesktopChannelAdapter, TerminalChannelAdapter
+from .local import TerminalChannelAdapter
 
 __all__ = [
-    "DesktopChannelAdapter",
     "FeishuBotClient",
     "FeishuChannelAdapter",
     "TerminalChannelAdapter",

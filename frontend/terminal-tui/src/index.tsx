@@ -42,7 +42,7 @@ type SessionState = {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const bridgePath = path.resolve(__dirname, '../scripts/bridge.py');
-const sdkRoot = path.resolve(__dirname, '../../');
+const projectRoot = path.resolve(__dirname, '../../');
 const pythonBin = process.env.PYTHON ?? 'python3';
 const lineLimit = 20;
 const helpText =
@@ -84,7 +84,7 @@ function App() {
 
 	useEffect(() => {
 		const child = spawn(pythonBin, [bridgePath], {
-			cwd: sdkRoot,
+			cwd: projectRoot,
 			stdio: ['pipe', 'pipe', 'pipe'],
 		});
 		bridgeRef.current = child;

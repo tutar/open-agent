@@ -99,7 +99,7 @@ session 不放进 harness 内部，是为了把执行和状态持久化拆开。
 同时也方便 replay 和 checkpoint。
 
 最新关系模型里，真正推进 turn 的不是 `Gateway`，而是某个 `HarnessInstance` 内部的
-`AgentRuntime`。当前 Python SDK 用 `LocalSessionHandle.harness_instance` 显式表示这一层。
+`AgentRuntime`。当前 OpenAgent 用 `LocalSessionHandle.harness_instance` 显式表示这一层。
 
 ## Session Model
 

@@ -7,9 +7,9 @@
 - CI 负责稳定、可重复、无外部依赖的门禁
 - 这份清单补充本地人工验收，尤其是 Feishu 真实网络链路
 
-## 1. Python SDK Baseline
+## 1. OpenAgent Python Baseline
 
-在 `agent-python-sdk/` 根目录执行：
+在当前项目根目录执行：
 
 ```bash
 ruff check src tests
@@ -103,7 +103,7 @@ feishu-host> starting long connection
 feishu-host> received raw event
 feishu-host> normalized input
 feishu-host> sending outbound
-feishu-host> sdk send_text
+feishu-host> agent send_text
 ```
 
 ## 6. Docs And TODO Hygiene
