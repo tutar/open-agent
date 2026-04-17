@@ -25,12 +25,12 @@ gateway 的作用是把 frontend 看到的世界收敛成：
 
 当前 terminal TUI 主链路是：
 
-`Ink TUI -> bridge.py -> Gateway -> InProcessSessionAdapter -> HarnessInstance -> SimpleHarness -> RalphLoop`
+`Ink TUI -> terminal TCP client -> Gateway -> InProcessSessionAdapter -> HarnessInstance -> SimpleHarness -> RalphLoop`
 
 其中：
 
 - TUI 负责 UI
-- bridge 负责 stdio JSON lines
+- TUI 内建 terminal client，直接和 host 的 terminal 端口收发 line-delimited JSON
 - gateway 负责协议归一化
 - session adapter 负责把 frontend session 映射到 runtime session
 
@@ -100,23 +100,19 @@ frontend 实际拿到的是 `EgressEnvelope`。
 
 它归到 `gateway/channels/local.py`。
 
-terminal TUI 的 Python bridge 也作为 terminal channel 的本地 host：
+terminal TUI 直接作为 terminal channel 的本地 client：
 
-- bridge 负责和 TUI 之间的 stdio JSON lines 收发
-- bridge 再通过本地 TCP transport 连接已运行的 Python host
+- TUI 直接通过本地 TCP transport 连接已运行的 Python host
 - `Gateway` 负责 session binding / control / egress
-- bridge 不再自己维护第二份 `InProcessSessionAdapter`
 - `/channel`、`/channel-config` 这类 host management command 不进入 session，而是由 host 直接处理
 
-## Why The Bridge Is In Python
+## Why The TUI Connects Directly
 
-terminal TUI 是 Node/Ink 写的，但 runtime 是 Python。
-
-当前 TUI 和 bridge 之间用 stdio JSON lines，bridge 和 host 之间用本地 TCP transport，原因是：
+terminal TUI 是 Node/Ink 写的，但 runtime 是 Python。当前 terminal channel 直接走 host 暴露的本地 TCP transport，原因是：
 
 - 本地调用链更短
 - 调试简单
-- 没有多余服务进程
+- 不需要额外的桥接进程
 - 符合当前项目“只做本地 TUI 主路径”的约束
 
 ## Terminal TUI Internals
@@ -141,6 +137,6 @@ terminal TUI 当前内部负责：
 
 当前 gateway / frontend 这层仍有待增强的部分：
 
-- richer bridge transport abstraction
+- richer terminal transport abstraction
 - more complete reconnect cursor / dedup semantics
 - channel-native outbound projection for non-local adapters

@@ -151,7 +151,10 @@ class FeishuChannelAdapter:
     ) -> str | None:
         if event_type == "assistant_message":
             message = payload.get("message")
-            return str(message) if message is not None else None
+            if message is None:
+                return None
+            text = str(message).strip()
+            return text or None
         if event_type == "requires_action":
             tool_name = str(payload.get("tool_name", "unknown"))
             return f"Tool approval required for {tool_name}. Reply /approve or /reject."
@@ -175,7 +178,12 @@ class FeishuChannelAdapter:
         if event_type == "tool_failed":
             tool_name = str(payload.get("tool_name", "unknown"))
             self._clear_tool_progress(session_id, tool_name)
-            reason = payload.get("error") or payload.get("message") or "unknown error"
+            reason = (
+                payload.get("reason")
+                or payload.get("error")
+                or payload.get("message")
+                or "unknown error"
+            )
             return f"Tool {tool_name} failed: {reason}"
         if event_type == "tool_cancelled":
             tool_name = str(payload.get("tool_name", "unknown"))

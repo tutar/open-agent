@@ -33,6 +33,7 @@ from openagent.tools.errors import (
     ToolCancelledError,
     ToolExecutionFailedError,
     ToolPermissionDeniedError,
+    ToolValidationError,
 )
 from openagent.tools.interfaces import (
     StreamingToolExecutor,
@@ -369,11 +370,27 @@ class SimpleToolExecutor:
         arguments: JsonObject,
     ) -> dict[str, object]:
         if not isinstance(arguments, dict):
-            raise ToolExecutionFailedError(
+            raise ToolValidationError(
                 tool_name=tool.name,
-                reason="validation_failed: tool arguments must be an object",
+                reason="tool arguments must be an object",
             )
-        return tool_validate_input(tool, dict(arguments))
+        schema = getattr(tool, "input_schema", None)
+        normalized = dict(arguments)
+        if isinstance(schema, dict):
+            required = schema.get("required")
+            if isinstance(required, list):
+                for field_name in required:
+                    if field_name not in normalized:
+                        raise ToolValidationError(
+                            tool_name=tool.name,
+                            reason=f"missing required field {field_name}",
+                        )
+        try:
+            return tool_validate_input(tool, normalized)
+        except ToolValidationError:
+            raise
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ToolValidationError(tool_name=tool.name, reason=str(exc)) from exc
 
     def _record_runtime_event(self, summary: ToolExecutionSummary, event: RuntimeEvent) -> None:
         tool_use_id = (

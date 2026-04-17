@@ -1,0 +1,764 @@
+openapi: "3.1.0"
+
+info:
+  title: OpenAI Chat Completions API
+  version: "2024-11"
+  description: |
+    OpenAI /v1/chat/completions 接口的 OpenAPI 规范。
+    官方文档: https://platform.openai.com/docs/api-reference/chat
+
+servers:
+  - url: https://api.openai.com/v1
+    description: OpenAI 生产环境
+
+security:
+  - BearerAuth: []
+
+paths:
+  /chat/completions:
+    post:
+      operationId: createChatCompletion
+      summary: 创建聊天补全
+      description: |
+        给定一组消息历史，模型生成下一条 assistant 消息。
+        支持流式（SSE）和非流式两种响应模式。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+            examples:
+              minimal:
+                summary: 最简请求
+                value:
+                  model: gpt-4o
+                  messages:
+                    - role: user
+                      content: "Hello!"
+              with_system_and_tools:
+                summary: 含 system prompt 与工具
+                value:
+                  model: gpt-4o
+                  messages:
+                    - role: system
+                      content: "You are a helpful assistant."
+                    - role: user
+                      content: "What's the weather in Beijing?"
+                  tools:
+                    - type: function
+                      function:
+                        name: get_weather
+                        description: "Get the current weather"
+                        parameters:
+                          type: object
+                          properties:
+                            location:
+                              type: string
+                          required: [location]
+                  tool_choice: auto
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionChunk"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: "使用 OpenAI API Key：Authorization: Bearer sk-..."
+
+  # ─────────────────────────────────────────
+  # 请求 schemas
+  # ─────────────────────────────────────────
+  schemas:
+    ChatCompletionRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+
+        # ── 必填顶层字段 ──────────────────────
+        model:
+          type: string
+          description: |
+            要使用的模型 ID，例如 gpt-4o、gpt-4o-mini、o1、gpt-4-turbo 等。
+          example: gpt-4o
+
+        messages:
+          type: array
+          description: |
+            对话消息历史。必须按 user/assistant 交替排列，
+            可在首条消息前插入 role=system 的系统消息。
+            支持最多约 128k token（视模型而定）。
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Message"
+
+        # ── 工具调用 ──────────────────────────
+        tools:
+          type: array
+          description: |
+            可供模型调用的工具列表（函数定义）。
+            模型会根据对话内容自主决定是否调用以及调用哪个工具。
+          items:
+            $ref: "#/components/schemas/Tool"
+
+        tool_choice:
+          description: |
+            控制模型调用工具的策略：
+            - "none"：禁止调用工具
+            - "auto"（默认）：模型自主决定
+            - "required"：强制必须调用至少一个工具
+            - {type: "function", function: {name: "..."}}：强制调用指定函数
+          oneOf:
+            - type: string
+              enum: [none, auto, required]
+            - $ref: "#/components/schemas/ToolChoiceObject"
+
+        parallel_tool_calls:
+          type: boolean
+          default: true
+          description: 是否允许模型在一次响应中并行调用多个工具。
+
+        # ── 输出控制 ──────────────────────────
+        max_tokens:
+          type: integer
+          description: |
+            已废弃，推荐使用 max_completion_tokens。
+            输出的最大 token 数量上限。
+          deprecated: true
+
+        max_completion_tokens:
+          type: integer
+          description: |
+            模型生成的最大 token 数（包含可见 token 与内部推理 token）。
+            不设置则使用模型默认上限。
+          example: 2048
+
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 1
+          description: |
+            采样温度。值越高输出越随机，越低越确定性强。
+            建议不要同时修改 temperature 和 top_p。
+          example: 0.7
+
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1
+          description: |
+            nucleus sampling 概率阈值。
+            值为 0.1 表示只考虑概率累计前 10% 的 token。
+            建议不要同时修改 temperature 和 top_p。
+
+        n:
+          type: integer
+          minimum: 1
+          maximum: 128
+          default: 1
+          description: 为每条输入消息生成多少个候选补全结果。
+
+        stream:
+          type: boolean
+          default: false
+          description: |
+            是否以 SSE（Server-Sent Events）方式流式返回结果。
+            流式响应时每个 chunk 为 ChatCompletionChunk 格式，
+            最后一个 chunk 的 data 为 [DONE]。
+
+        stream_options:
+          type: object
+          description: 流式模式下的额外配置（仅 stream=true 时有效）。
+          properties:
+            include_usage:
+              type: boolean
+              description: 是否在最后一个 chunk 中包含 usage 统计信息。
+
+        stop:
+          description: 生成到此字符串（最多 4 个）时停止，不包含该字符串本身。
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+              maxItems: 4
+
+        presence_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: |
+            对已出现过的 token 施加惩罚，增加模型谈及新话题的概率。
+
+        frequency_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: |
+            对出现频率高的 token 施加惩罚，降低模型逐字重复的概率。
+
+        logit_bias:
+          type: object
+          description: |
+            修改特定 token 的采样概率。Key 为 token ID（字符串形式），
+            Value 为 -100 到 100 的偏置值。
+          additionalProperties:
+            type: integer
+
+        logprobs:
+          type: boolean
+          default: false
+          description: 是否在响应中返回输出 token 的对数概率。
+
+        top_logprobs:
+          type: integer
+          minimum: 0
+          maximum: 20
+          description: 返回每个 token 位置概率最高的前 N 个 token（需 logprobs=true）。
+
+        seed:
+          type: integer
+          description: |
+            随机种子。设置后尽量保证采样确定性（但不完全保证）。
+            响应中 system_fingerprint 字段可追踪后端配置变化。
+
+        response_format:
+          description: |
+            控制模型输出格式：
+            - {type: "text"}（默认）
+            - {type: "json_object"}：JSON 模式，需在 prompt 中要求模型输出 JSON
+            - {type: "json_schema", json_schema: {...}}：结构化输出，严格遵循 schema
+          oneOf:
+            - $ref: "#/components/schemas/ResponseFormatText"
+            - $ref: "#/components/schemas/ResponseFormatJsonObject"
+            - $ref: "#/components/schemas/ResponseFormatJsonSchema"
+
+        user:
+          type: string
+          description: |
+            终端用户的唯一标识符，用于 OpenAI 的滥用检测。
+
+        metadata:
+          type: object
+          description: 开发者自定义的键值对，附加到请求上，最多 16 个键。
+          additionalProperties:
+            type: string
+
+        store:
+          type: boolean
+          default: false
+          description: 是否将此次请求的输入输出存储用于模型蒸馏/评估。
+
+        reasoning_effort:
+          type: string
+          enum: [low, medium, high]
+          description: |
+            仅适用于 o 系列推理模型（o1、o3 等）。
+            控制模型的推理深度，low 最快，high 最慢但质量最高。
+
+        modalities:
+          type: array
+          description: 指定模型输出的模态，默认 ["text"]，支持 ["text", "audio"]。
+          items:
+            type: string
+            enum: [text, audio]
+
+        audio:
+          type: object
+          description: 音频输出配置（仅 modalities 含 audio 时有效）。
+          properties:
+            voice:
+              type: string
+              enum: [alloy, ash, ballad, coral, echo, sage, shimmer, verse]
+            format:
+              type: string
+              enum: [mp3, opus, aac, flac, wav, pcm16]
+
+        service_tier:
+          type: string
+          enum: [auto, default, flex]
+          description: |
+            请求使用的服务层级：
+            - "auto"：自动降级到默认层
+            - "default"：标准延迟
+            - "flex"：弹性处理（允许延迟换取更低成本）
+
+    # ── Message（核心数据结构）──────────────
+    Message:
+      type: object
+      required:
+        - role
+      description: |
+        对话中的一条消息。role 决定消息的发送方：
+        - system：系统指令，通常放在 messages[0]
+        - user：用户输入
+        - assistant：模型输出（含可能的 tool_calls）
+        - tool：工具执行结果，与 assistant 的 tool_call_id 对应
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+          description: 消息发送方角色。
+        content:
+          description: |
+            消息内容，可以是：
+            - 纯文本字符串（string）
+            - content part 数组（支持 text、image_url、audio、file 等多模态）
+            - 当 role=assistant 且只有 tool_calls 时可为 null
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: "#/components/schemas/ContentPart"
+            - type: "null"
+        name:
+          type: string
+          description: |
+            消息发送方的名称，用于区分同一 role 的多个参与者。
+            当 role=tool 时为必填，值为对应的 function name。
+        tool_calls:
+          type: array
+          description: 模型发起的工具调用列表（仅 role=assistant 时有效）。
+          items:
+            $ref: "#/components/schemas/ToolCall"
+        tool_call_id:
+          type: string
+          description: |
+            工具调用的 ID（仅 role=tool 时有效），
+            必须与对应 assistant 消息中 tool_calls[].id 匹配。
+
+    ContentPart:
+      type: object
+      required:
+        - type
+      description: 多模态内容块，通过 type 区分不同模态。
+      properties:
+        type:
+          type: string
+          enum: [text, image_url, input_audio, file, refusal]
+          description: 内容块类型。
+        text:
+          type: string
+          description: 文本内容（type=text 时）。
+        image_url:
+          type: object
+          description: 图片内容（type=image_url 时）。
+          required: [url]
+          properties:
+            url:
+              type: string
+              description: 图片 URL 或 base64 data URL（data:image/jpeg;base64,...）。
+            detail:
+              type: string
+              enum: [auto, low, high]
+              default: auto
+              description: 图片分辨率处理方式，影响 token 消耗。
+        input_audio:
+          type: object
+          description: 音频输入（type=input_audio 时）。
+          required: [data, format]
+          properties:
+            data:
+              type: string
+              description: base64 编码的音频数据。
+            format:
+              type: string
+              enum: [mp3, wav]
+        file:
+          type: object
+          description: 文件引用（type=file 时）。
+          properties:
+            file_id:
+              type: string
+              description: 通过 Files API 上传后得到的 file_id。
+            filename:
+              type: string
+            file_data:
+              type: string
+              description: base64 编码的文件数据（与 file_id 二选一）。
+
+    Tool:
+      type: object
+      required:
+        - type
+        - function
+      properties:
+        type:
+          type: string
+          enum: [function]
+          description: 工具类型，目前仅支持 function。
+        function:
+          $ref: "#/components/schemas/FunctionDefinition"
+
+    FunctionDefinition:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: 函数名称，须匹配 ^[a-zA-Z0-9_-]{1,64}$。
+          pattern: "^[a-zA-Z0-9_-]{1,64}$"
+        description:
+          type: string
+          description: 函数功能描述，帮助模型决定是否及何时调用。
+        parameters:
+          type: object
+          description: 函数参数的 JSON Schema 定义。
+        strict:
+          type: boolean
+          default: false
+          description: 是否严格遵循 parameters 中的 JSON Schema（结构化输出模式）。
+
+    ToolCall:
+      type: object
+      required:
+        - id
+        - type
+        - function
+      properties:
+        id:
+          type: string
+          description: 工具调用的唯一 ID，对应 tool 角色消息的 tool_call_id。
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required:
+            - name
+            - arguments
+          properties:
+            name:
+              type: string
+              description: 被调用的函数名称。
+            arguments:
+              type: string
+              description: JSON 字符串形式的函数参数（需自行解析）。
+
+    ToolChoiceObject:
+      type: object
+      required:
+        - type
+        - function
+      properties:
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              description: 强制调用的函数名称。
+
+    ResponseFormatText:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text]
+
+    ResponseFormatJsonObject:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [json_object]
+
+    ResponseFormatJsonSchema:
+      type: object
+      required: [type, json_schema]
+      properties:
+        type:
+          type: string
+          enum: [json_schema]
+        json_schema:
+          type: object
+          required: [name, schema]
+          properties:
+            name:
+              type: string
+              description: Schema 的名称标识符。
+            description:
+              type: string
+            schema:
+              type: object
+              description: 严格遵循的 JSON Schema 对象。
+            strict:
+              type: boolean
+              default: false
+              description: 是否启用严格模式（要求 schema 中所有字段 required 且不含 additionalProperties）。
+
+    # ─────────────────────────────────────────
+    # 响应 schemas
+    # ─────────────────────────────────────────
+    ChatCompletionResponse:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+          description: 补全的唯一 ID，格式为 chatcmpl-xxx。
+          example: chatcmpl-abc123
+        object:
+          type: string
+          enum: [chat.completion]
+        created:
+          type: integer
+          description: 创建时间的 Unix 时间戳（秒）。
+        model:
+          type: string
+          description: 实际使用的模型（可能与请求的 model 不完全一致）。
+        choices:
+          type: array
+          description: 补全结果列表（n > 1 时有多个）。
+          items:
+            $ref: "#/components/schemas/Choice"
+        usage:
+          $ref: "#/components/schemas/Usage"
+        system_fingerprint:
+          type: string
+          description: 后端配置的指纹，可用于判断是否因配置变化导致结果不一致。
+        service_tier:
+          type: string
+          description: 实际使用的服务层级。
+
+    Choice:
+      type: object
+      required:
+        - index
+        - message
+        - finish_reason
+      properties:
+        index:
+          type: integer
+          description: 在 choices 数组中的索引（n > 1 时有意义）。
+        message:
+          $ref: "#/components/schemas/AssistantMessage"
+        finish_reason:
+          type: string
+          enum: [stop, length, tool_calls, content_filter, function_call]
+          description: |
+            生成停止原因：
+            - stop：自然结束或命中 stop 序列
+            - length：达到 max_tokens 上限
+            - tool_calls：模型要调用工具
+            - content_filter：内容被安全过滤
+        logprobs:
+          description: token 对数概率信息（需请求时指定 logprobs=true）。
+          nullable: true
+          type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TokenLogprob"
+
+    AssistantMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: string
+          nullable: true
+          description: 文本回复内容（当有 tool_calls 时可能为 null）。
+        refusal:
+          type: string
+          nullable: true
+          description: 模型拒绝回答时的拒绝说明文本。
+        tool_calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolCall"
+        audio:
+          type: object
+          nullable: true
+          description: 音频输出数据（需请求时指定 modalities 含 audio）。
+          properties:
+            id:
+              type: string
+            data:
+              type: string
+              description: base64 编码的音频数据。
+            expires_at:
+              type: integer
+            transcript:
+              type: string
+
+    ChatCompletionChunk:
+      type: object
+      description: 流式响应时每条 SSE data 的格式（最后一条为 data: [DONE]）。
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          enum: [chat.completion.chunk]
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              delta:
+                type: object
+                description: 本次 chunk 的增量内容。
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                  content:
+                    type: string
+                    nullable: true
+                  tool_calls:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ToolCall"
+              finish_reason:
+                type: string
+                nullable: true
+        usage:
+          $ref: "#/components/schemas/Usage"
+          nullable: true
+          description: 仅在最后一个有意义的 chunk 中出现（需 stream_options.include_usage=true）。
+
+    Usage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+          description: 输入（prompt）消耗的 token 数。
+        completion_tokens:
+          type: integer
+          description: 输出（completion）消耗的 token 数。
+        total_tokens:
+          type: integer
+          description: 总 token 数。
+        prompt_tokens_details:
+          type: object
+          properties:
+            cached_tokens:
+              type: integer
+              description: 命中 prompt cache 的 token 数。
+            audio_tokens:
+              type: integer
+        completion_tokens_details:
+          type: object
+          properties:
+            reasoning_tokens:
+              type: integer
+              description: 推理模型（o 系列）内部推理消耗的 token 数。
+            audio_tokens:
+              type: integer
+            accepted_prediction_tokens:
+              type: integer
+            rejected_prediction_tokens:
+              type: integer
+
+    TokenLogprob:
+      type: object
+      properties:
+        token:
+          type: string
+        logprob:
+          type: number
+        bytes:
+          type: array
+          items:
+            type: integer
+        top_logprobs:
+          type: array
+          items:
+            type: object
+            properties:
+              token:
+                type: string
+              logprob:
+                type: number
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+            type:
+              type: string
+            param:
+              type: string
+              nullable: true
+            code:
+              type: string
+              nullable: true
+
+  # ─────────────────────────────────────────
+  # 公共响应
+  # ─────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: 请求参数有误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: API Key 无效或缺失
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: 超出速率限制
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: 服务端内部错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

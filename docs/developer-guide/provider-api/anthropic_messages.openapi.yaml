@@ -1,0 +1,913 @@
+openapi: "3.1.0"
+
+info:
+  title: Anthropic Messages API
+  version: "2023-06-01"
+  description: |
+    Anthropic /v1/messages 接口的 OpenAPI 规范。
+    官方文档: https://docs.anthropic.com/en/api/messages
+
+servers:
+  - url: https://api.anthropic.com/v1
+    description: Anthropic 生产环境
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /messages:
+    post:
+      operationId: createMessage
+      summary: 创建消息
+      description: |
+        发送一组结构化消息，模型生成下一条 assistant 消息。
+        支持多模态输入（文本、图片、文档）、工具调用、流式输出。
+        注意：system prompt 不在 messages 数组中，而是顶层独立字段。
+      parameters:
+        - name: anthropic-version
+          in: header
+          required: true
+          schema:
+            type: string
+            default: "2023-06-01"
+          description: |
+            API 版本号。当前稳定版为 2023-06-01。
+            某些 beta 功能需通过 anthropic-beta 头部额外启用。
+        - name: anthropic-beta
+          in: header
+          required: false
+          schema:
+            type: string
+          description: |
+            逗号分隔的 beta 功能标签，例如：
+            - interleaved-thinking-2025-05-14（扩展思考）
+            - prompt-caching-2024-07-31（prompt cache）
+            - computer-use-2024-10-22（计算机控制）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageRequest"
+            examples:
+              minimal:
+                summary: 最简请求
+                value:
+                  model: claude-opus-4-6
+                  max_tokens: 1024
+                  messages:
+                    - role: user
+                      content: "Hello, Claude!"
+              with_system_and_tools:
+                summary: 含 system prompt 与工具
+                value:
+                  model: claude-opus-4-6
+                  max_tokens: 2048
+                  system: "You are a helpful assistant."
+                  messages:
+                    - role: user
+                      content: "What's the weather in Beijing?"
+                  tools:
+                    - name: get_weather
+                      description: "Get the current weather for a location"
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: "City name"
+                        required: [location]
+                  tool_choice:
+                    type: auto
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/StreamEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: "使用 Anthropic API Key：x-api-key: sk-ant-..."
+
+  # ─────────────────────────────────────────
+  # 请求 schemas
+  # ─────────────────────────────────────────
+  schemas:
+    MessageRequest:
+      type: object
+      required:
+        - model
+        - max_tokens
+        - messages
+      properties:
+
+        # ── 必填顶层字段 ──────────────────────
+        model:
+          type: string
+          description: |
+            要使用的模型 ID，例如：
+            - claude-opus-4-6
+            - claude-sonnet-4-6
+            - claude-haiku-4-5-20251001
+          example: claude-opus-4-6
+
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: |
+            【必填】输出的最大 token 数量上限。
+            注意：与 OpenAI 不同，此字段在 Anthropic API 中是必填项，
+            不传会导致 400 错误。不同模型有不同的上限值，请参考文档。
+          example: 1024
+
+        messages:
+          type: array
+          description: |
+            对话消息历史。
+            - 只支持 role=user 和 role=assistant 两种角色
+            - 必须以 user 角色消息开头
+            - user 和 assistant 须严格交替排列
+            - system prompt 不放在此处，使用顶层 system 字段
+            - 工具调用结果作为 user 消息的 content block（type=tool_result），
+              而非独立的 tool role 消息
+            - 最多 100,000 条消息
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/InputMessage"
+
+        # ── 可选顶层字段 ──────────────────────
+        system:
+          description: |
+            系统提示词（System Prompt）。
+            这是 Anthropic 与 OpenAI 最显著的区别之一：
+            system 是顶层独立字段，不是 messages 数组中的一个 role=system 消息。
+            支持两种形式：
+            - 纯字符串
+            - content block 数组（可在 block 级别控制 cache_control 等）
+          oneOf:
+            - type: string
+              description: 纯文本 system prompt。
+            - type: array
+              description: content block 数组形式的 system prompt，支持精细控制。
+              items:
+                $ref: "#/components/schemas/SystemContentBlock"
+
+        tools:
+          type: array
+          description: |
+            可供模型调用的工具列表。
+            Anthropic 工具使用 input_schema（JSON Schema），
+            而非 OpenAI 的 function.parameters 嵌套结构。
+            也支持内置工具：web_search、computer、text_editor 等（需 beta header）。
+          items:
+            $ref: "#/components/schemas/Tool"
+
+        tool_choice:
+          description: |
+            控制模型是否及如何调用工具：
+            - {type: "auto"}（默认）：模型自主决定
+            - {type: "any"}：必须调用至少一个工具（相当于 OpenAI 的 required）
+            - {type: "tool", name: "..."}：强制调用指定工具
+            - {type: "none"}：禁止调用工具
+          oneOf:
+            - $ref: "#/components/schemas/ToolChoiceAuto"
+            - $ref: "#/components/schemas/ToolChoiceAny"
+            - $ref: "#/components/schemas/ToolChoiceTool"
+            - $ref: "#/components/schemas/ToolChoiceNone"
+
+        # ── 生成控制 ──────────────────────────
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            采样温度，范围 0~1（注意 OpenAI 是 0~2）。
+            值越高输出越随机，越低越确定。
+            建议不要同时修改 temperature 和 top_p。
+          example: 0.7
+
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            nucleus sampling 概率阈值，范围 0~1。
+            建议不要同时修改 temperature 和 top_p。
+
+        top_k:
+          type: integer
+          minimum: 1
+          description: |
+            【Anthropic 独有，OpenAI 不支持】
+            每步采样时只考虑概率最高的前 K 个 token。
+            有助于减少输出中的随机性。
+
+        stop_sequences:
+          type: array
+          description: |
+            自定义停止序列列表。遇到任一字符串时停止生成，
+            响应中 stop_reason 为 stop_sequence，stop_sequence 字段记录触发的序列。
+            注意：OpenAI 对应字段名为 stop，Anthropic 为 stop_sequences。
+          items:
+            type: string
+
+        stream:
+          type: boolean
+          default: false
+          description: |
+            是否以 SSE（Server-Sent Events）方式流式返回。
+            Anthropic 的流式事件类型比 OpenAI 更细分，
+            包括 message_start、content_block_start、content_block_delta、
+            content_block_stop、message_delta、message_stop 等。
+
+        # ── 其他顶层字段 ──────────────────────
+        metadata:
+          type: object
+          description: 请求的元数据，目前支持 user_id 字段用于滥用检测。
+          properties:
+            user_id:
+              type: string
+              description: 终端用户的唯一标识符（UUID 推荐）。
+              maxLength: 256
+
+        service_tier:
+          type: string
+          enum: [auto, standard_only]
+          description: |
+            请求使用的服务层级：
+            - "auto"（默认）：优先使用优先容量，不可用时降级到标准容量
+            - "standard_only"：只使用标准容量
+
+        container:
+          type: object
+          description: 代码执行容器配置（需 beta 功能）。
+          properties:
+            id:
+              type: string
+              description: 跨请求复用的容器 ID。
+
+        context_management:
+          type: object
+          description: |
+            上下文管理配置（需 context-management-2025-06-27 beta header）。
+            控制模型在长上下文场景下如何自动清理旧的工具结果或思考 block。
+          properties:
+            edits:
+              type: array
+              items:
+                type: object
+
+    # ── InputMessage ─────────────────────────
+    InputMessage:
+      type: object
+      required:
+        - role
+        - content
+      description: |
+        对话中的一条消息。
+        Anthropic 只支持 user 和 assistant 两种 role（无 system、无 tool）：
+        - user：用户输入，也用于承载工具调用结果（type=tool_result block）
+        - assistant：模型输出，含文本和/或工具调用请求（type=tool_use block）
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+          description: |
+            消息角色，仅支持 user 和 assistant：
+            - user：用于用户输入和工具结果回传
+            - assistant：用于模型输出（也可用于 prefill 技巧）
+        content:
+          description: |
+            消息内容，两种形式：
+            - 纯字符串（简单文本场景）
+            - content block 数组（多模态、工具调用结果等复杂场景）
+          oneOf:
+            - type: string
+              description: 纯文本内容（等价于 [{type:"text", text:"..."}]）。
+            - type: array
+              description: content block 数组，支持多种类型混合。
+              items:
+                $ref: "#/components/schemas/ContentBlock"
+
+    # ── Content Blocks ────────────────────────
+    ContentBlock:
+      description: |
+        content block 是 Anthropic 消息系统的核心扩展点。
+        通过 type 字段区分不同类型的内容，可以在同一条消息中混合多种内容。
+      oneOf:
+        - $ref: "#/components/schemas/TextBlock"
+        - $ref: "#/components/schemas/ImageBlock"
+        - $ref: "#/components/schemas/DocumentBlock"
+        - $ref: "#/components/schemas/ToolUseBlock"
+        - $ref: "#/components/schemas/ToolResultBlock"
+        - $ref: "#/components/schemas/ThinkingBlock"
+
+    TextBlock:
+      type: object
+      required: [type, text]
+      description: 文本内容块。
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+          description: 文本内容。
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+
+    ImageBlock:
+      type: object
+      required: [type, source]
+      description: 图片内容块，支持 base64、URL、文件引用三种来源。
+      properties:
+        type:
+          type: string
+          enum: [image]
+        source:
+          oneOf:
+            - $ref: "#/components/schemas/ImageSourceBase64"
+            - $ref: "#/components/schemas/ImageSourceUrl"
+            - $ref: "#/components/schemas/ImageSourceFile"
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+
+    ImageSourceBase64:
+      type: object
+      required: [type, media_type, data]
+      properties:
+        type:
+          type: string
+          enum: [base64]
+        media_type:
+          type: string
+          enum: [image/jpeg, image/png, image/gif, image/webp]
+        data:
+          type: string
+          description: base64 编码的图片数据。
+
+    ImageSourceUrl:
+      type: object
+      required: [type, url]
+      properties:
+        type:
+          type: string
+          enum: [url]
+        url:
+          type: string
+          description: 图片的公开 URL。
+
+    ImageSourceFile:
+      type: object
+      required: [type, file_id]
+      properties:
+        type:
+          type: string
+          enum: [file]
+        file_id:
+          type: string
+          description: 通过 Files API 上传的文件 ID。
+
+    DocumentBlock:
+      type: object
+      required: [type, source]
+      description: |
+        文档内容块，用于传入 PDF 或文本文档。
+        支持 citations（引用）功能。
+      properties:
+        type:
+          type: string
+          enum: [document]
+        source:
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [base64, text, url, file]
+            media_type:
+              type: string
+              enum: [application/pdf, text/plain]
+            data:
+              type: string
+              description: base64 编码的文档内容（type=base64 时）。
+            text:
+              type: string
+              description: 纯文本内容（type=text 时）。
+            url:
+              type: string
+              description: 文档 URL（type=url 时）。
+            file_id:
+              type: string
+              description: Files API 上传的文件 ID（type=file 时）。
+        title:
+          type: string
+          description: 文档标题（可选）。
+        context:
+          type: string
+          description: 为模型提供的关于此文档的上下文说明。
+        citations:
+          type: object
+          description: 引用功能配置。
+          properties:
+            enabled:
+              type: boolean
+              default: false
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+
+    ToolUseBlock:
+      type: object
+      required: [type, id, name, input]
+      description: |
+        工具调用请求块（出现在 assistant 消息的 content 中）。
+        表示模型希望调用某个工具，客户端需执行后将结果
+        以 ToolResultBlock 放入下一条 user 消息中。
+      properties:
+        type:
+          type: string
+          enum: [tool_use]
+        id:
+          type: string
+          description: 此次工具调用的唯一 ID，格式如 toolu_xxx，对应 tool_result 的 tool_use_id。
+        name:
+          type: string
+          description: 被调用的工具名称。
+        input:
+          type: object
+          description: 工具调用的参数（已解析的 JSON 对象，非字符串）。
+
+    ToolResultBlock:
+      type: object
+      required: [type, tool_use_id]
+      description: |
+        工具执行结果块（放在 user 消息的 content 中）。
+        这是 Anthropic 与 OpenAI 设计差异的核心体现：
+        - OpenAI：工具结果是独立的 role=tool 消息
+        - Anthropic：工具结果是 user 消息内的一个 content block
+      properties:
+        type:
+          type: string
+          enum: [tool_result]
+        tool_use_id:
+          type: string
+          description: 对应 ToolUseBlock 的 id，用于匹配工具调用和结果。
+        content:
+          description: 工具执行的结果，可以是字符串或 content block 数组（支持图片等）。
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                oneOf:
+                  - $ref: "#/components/schemas/TextBlock"
+                  - $ref: "#/components/schemas/ImageBlock"
+        is_error:
+          type: boolean
+          default: false
+          description: 工具执行是否失败，为 true 时 content 为错误信息。
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+
+    ThinkingBlock:
+      type: object
+      description: |
+        扩展思考块（需 interleaved-thinking beta header）。
+        包含模型的内部推理过程，可出现在 assistant 消息的 content 中。
+        多轮对话时需将 thinking block 原样放回 messages 历史。
+      properties:
+        type:
+          type: string
+          enum: [thinking]
+        thinking:
+          type: string
+          description: 模型的内部推理文本。
+        signature:
+          type: string
+          description: Anthropic 签名，用于验证 thinking block 的完整性。
+
+    SystemContentBlock:
+      type: object
+      description: system 字段为数组形式时的每个 block，目前仅支持 text 类型。
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+
+    CacheControl:
+      type: object
+      description: |
+        Prompt Cache 控制（需 prompt-caching-2024-07-31 beta header）。
+        标记此 block 为缓存断点，后续请求命中缓存可减少 token 消耗。
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [ephemeral]
+
+    # ── Tools ────────────────────────────────
+    Tool:
+      description: 工具定义，支持自定义函数工具和内置工具。
+      oneOf:
+        - $ref: "#/components/schemas/CustomTool"
+        - $ref: "#/components/schemas/BuiltinTool"
+
+    CustomTool:
+      type: object
+      required:
+        - name
+        - input_schema
+      description: |
+        自定义函数工具定义。
+        注意结构与 OpenAI 不同：
+        - Anthropic 无 type: function 外层包装
+        - 参数 schema 在 input_schema 字段（OpenAI 为 function.parameters）
+      properties:
+        name:
+          type: string
+          description: 工具名称，须唯一，建议使用 snake_case。
+        description:
+          type: string
+          description: 工具功能描述，帮助模型决定何时调用。
+        input_schema:
+          type: object
+          description: 工具参数的 JSON Schema，type 必须为 object。
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [object]
+            properties:
+              type: object
+              additionalProperties:
+                type: object
+            required:
+              type: array
+              items:
+                type: string
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+
+    BuiltinTool:
+      type: object
+      required:
+        - type
+        - name
+      description: Anthropic 内置工具（需对应 beta header）。
+      properties:
+        type:
+          type: string
+          enum:
+            - computer_20241022
+            - text_editor_20241022
+            - bash_20241022
+            - web_search_20250305
+          description: 内置工具类型标识符。
+        name:
+          type: string
+          enum: [computer, str_replace_editor, bash, web_search]
+
+    ToolChoiceAuto:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [auto]
+        disable_parallel_tool_use:
+          type: boolean
+          default: false
+          description: 是否禁止并行工具调用。
+
+    ToolChoiceAny:
+      type: object
+      required: [type]
+      description: 强制模型必须调用至少一个工具（对应 OpenAI 的 required）。
+      properties:
+        type:
+          type: string
+          enum: [any]
+        disable_parallel_tool_use:
+          type: boolean
+          default: false
+
+    ToolChoiceTool:
+      type: object
+      required: [type, name]
+      description: 强制调用指定名称的工具。
+      properties:
+        type:
+          type: string
+          enum: [tool]
+        name:
+          type: string
+          description: 强制调用的工具名称。
+        disable_parallel_tool_use:
+          type: boolean
+          default: false
+
+    ToolChoiceNone:
+      type: object
+      required: [type]
+      description: 禁止调用任何工具。
+      properties:
+        type:
+          type: string
+          enum: [none]
+
+    # ─────────────────────────────────────────
+    # 响应 schemas
+    # ─────────────────────────────────────────
+    MessageResponse:
+      type: object
+      required:
+        - id
+        - type
+        - role
+        - content
+        - model
+        - stop_reason
+        - usage
+      properties:
+        id:
+          type: string
+          description: 消息的唯一 ID，格式为 msg_xxx。
+          example: msg_013Zva2CMHLNnXjNJJKqJ2EF
+        type:
+          type: string
+          enum: [message]
+        role:
+          type: string
+          enum: [assistant]
+          description: 响应消息的角色，始终为 assistant。
+        content:
+          type: array
+          description: |
+            响应内容的 block 列表，可能包含：
+            - TextBlock（文本回复）
+            - ToolUseBlock（工具调用请求）
+            - ThinkingBlock（扩展思考，需 beta）
+          items:
+            oneOf:
+              - $ref: "#/components/schemas/TextBlock"
+              - $ref: "#/components/schemas/ToolUseBlock"
+              - $ref: "#/components/schemas/ThinkingBlock"
+        model:
+          type: string
+          description: 实际使用的模型 ID。
+        stop_reason:
+          type: string
+          enum: [end_turn, max_tokens, stop_sequence, tool_use, pause_turn]
+          description: |
+            生成停止的原因：
+            - end_turn：模型自然结束
+            - max_tokens：达到 max_tokens 上限
+            - stop_sequence：命中自定义停止序列
+            - tool_use：模型请求调用工具
+            - pause_turn：上下文管理暂停（beta）
+        stop_sequence:
+          type: string
+          nullable: true
+          description: 触发停止的具体序列字符串（stop_reason=stop_sequence 时非 null）。
+        usage:
+          $ref: "#/components/schemas/Usage"
+        context_management:
+          type: object
+          nullable: true
+          description: 上下文管理策略的应用结果（beta）。
+        container:
+          type: object
+          nullable: true
+          description: 本次请求使用的容器信息（beta）。
+
+    Usage:
+      type: object
+      required:
+        - input_tokens
+        - output_tokens
+      properties:
+        input_tokens:
+          type: integer
+          description: 输入消耗的 token 数（不含缓存部分）。
+        output_tokens:
+          type: integer
+          description: 输出消耗的 token 数。
+        cache_creation_input_tokens:
+          type: integer
+          description: 创建 prompt cache 消耗的 token 数（需 prompt caching beta）。
+        cache_read_input_tokens:
+          type: integer
+          description: 命中 prompt cache 读取的 token 数（需 prompt caching beta）。
+        server_tool_use:
+          type: object
+          description: 服务端工具（如 web_search）的使用统计。
+          properties:
+            web_search_requests:
+              type: integer
+
+    # ── 流式事件 ──────────────────────────────
+    StreamEvent:
+      description: |
+        SSE 流式响应的事件格式，每行格式为：
+          event: <event_type>
+          data: <json>
+
+        事件序列（顺序固定）：
+        1. message_start         ← 消息开始，含 id/model/usage 初始值
+        2. content_block_start   ← 每个 content block 开始
+        3. content_block_delta   ← block 的增量内容（可多个）
+        4. content_block_stop    ← block 结束
+        5. message_delta         ← 消息级别的增量（stop_reason/usage 更新）
+        6. message_stop          ← 消息结束
+        （可穿插 ping 事件用于保活）
+      oneOf:
+        - $ref: "#/components/schemas/MessageStartEvent"
+        - $ref: "#/components/schemas/ContentBlockStartEvent"
+        - $ref: "#/components/schemas/ContentBlockDeltaEvent"
+        - $ref: "#/components/schemas/ContentBlockStopEvent"
+        - $ref: "#/components/schemas/MessageDeltaEvent"
+        - $ref: "#/components/schemas/MessageStopEvent"
+        - $ref: "#/components/schemas/PingEvent"
+
+    MessageStartEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [message_start]
+        message:
+          type: object
+          description: 消息元数据初始值（content 为空数组，usage 初始计数）。
+          properties:
+            id:
+              type: string
+            type:
+              type: string
+            role:
+              type: string
+              enum: [assistant]
+            content:
+              type: array
+              items: {}
+            model:
+              type: string
+            stop_reason:
+              nullable: true
+            usage:
+              $ref: "#/components/schemas/Usage"
+
+    ContentBlockStartEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [content_block_start]
+        index:
+          type: integer
+          description: content block 在数组中的索引。
+        content_block:
+          type: object
+          description: block 的初始结构（text block 含空 text，tool_use block 含 id/name）。
+
+    ContentBlockDeltaEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [content_block_delta]
+        index:
+          type: integer
+        delta:
+          type: object
+          description: 增量内容。
+          properties:
+            type:
+              type: string
+              enum: [text_delta, input_json_delta, thinking_delta, signature_delta]
+            text:
+              type: string
+              description: 文本增量（type=text_delta 时）。
+            partial_json:
+              type: string
+              description: tool_use 的 input JSON 增量（type=input_json_delta 时）。
+            thinking:
+              type: string
+              description: 思考文本增量（type=thinking_delta 时）。
+
+    ContentBlockStopEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [content_block_stop]
+        index:
+          type: integer
+
+    MessageDeltaEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [message_delta]
+        delta:
+          type: object
+          properties:
+            stop_reason:
+              type: string
+            stop_sequence:
+              nullable: true
+              type: string
+        usage:
+          type: object
+          properties:
+            output_tokens:
+              type: integer
+
+    MessageStopEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [message_stop]
+
+    PingEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [ping]
+
+    ErrorResponse:
+      type: object
+      required: [type, error]
+      properties:
+        type:
+          type: string
+          enum: [error]
+        error:
+          type: object
+          required: [type, message]
+          properties:
+            type:
+              type: string
+              enum:
+                - invalid_request_error
+                - authentication_error
+                - permission_error
+                - not_found_error
+                - request_too_large
+                - rate_limit_error
+                - api_error
+                - overloaded_error
+            message:
+              type: string
+
+  # ─────────────────────────────────────────
+  # 公共响应
+  # ─────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: 请求参数有误（invalid_request_error）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: API Key 无效或缺失（authentication_error）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: 超出速率限制（rate_limit_error）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: 服务端内部错误（api_error / overloaded_error）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

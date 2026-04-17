@@ -46,7 +46,7 @@
 
 这些 provider adapter 当前归属 `harness/providers`，而不是 agent 根目录。
 
-当前 terminal bridge 会在设置 `OPENAGENT_MODEL` 时自动尝试加载真实 provider。
+当前 openagent host 会在设置 `OPENAGENT_MODEL` 时自动尝试加载真实 provider。
 
 当前支持：
 

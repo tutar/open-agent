@@ -1,8 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, render, useApp, useInput} from 'ink';
-import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import net, {type Socket} from 'node:net';
 
 type BridgeEvent = {
 	type: 'event';
@@ -39,15 +37,12 @@ type SessionState = {
 	knownSessions: string[];
 };
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const bridgePath = path.resolve(__dirname, '../scripts/bridge.py');
-const projectRoot = path.resolve(__dirname, '../../');
-const pythonBin = process.env.PYTHON ?? 'python3';
 const lineLimit = 20;
 const helpText =
 	'Commands: tool <text>, admin <text>, /new <name>, /switch <name>, /sessions, /resume, /approve, /reject, /interrupt, /session, /channel, /channel <name>, /channel-config feishu <key> <value>, /clear, /help, /exit';
 const interactiveTerminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+const terminalHost = process.env.OPENAGENT_TERMINAL_HOST ?? '127.0.0.1';
+const terminalPort = Number(process.env.OPENAGENT_TERMINAL_PORT ?? '8765');
 
 type ShellProps = {
 	input: string;
@@ -71,8 +66,8 @@ function App() {
 		sessionId: 'terminal-main-session',
 		knownSessions: ['main'],
 	});
-	const bridgeRef = useRef<ChildProcessWithoutNullStreams | null>(null);
-	const stdoutBufferRef = useRef('');
+	const socketRef = useRef<Socket | null>(null);
+	const bufferRef = useRef('');
 
 	const pushLine = (line: string) => {
 		setLines(prev => [...prev.slice(-(lineLimit - 1)), line]);
@@ -83,16 +78,17 @@ function App() {
 	};
 
 	useEffect(() => {
-		const child = spawn(pythonBin, [bridgePath], {
-			cwd: projectRoot,
-			stdio: ['pipe', 'pipe', 'pipe'],
-		});
-		bridgeRef.current = child;
+		const socket = net.createConnection({host: terminalHost, port: terminalPort});
+		socketRef.current = socket;
 
-		child.stdout.on('data', chunk => {
-			stdoutBufferRef.current += chunk.toString();
-			const parts = stdoutBufferRef.current.split('\n');
-			stdoutBufferRef.current = parts.pop() ?? '';
+		socket.on('connect', () => {
+			pushLine(`system> connected to host ${terminalHost}:${String(terminalPort)}`);
+		});
+
+		socket.on('data', chunk => {
+			bufferRef.current += chunk.toString();
+			const parts = bufferRef.current.split('\n');
+			bufferRef.current = parts.pop() ?? '';
 
 			for (const raw of parts) {
 				if (!raw.trim()) {
@@ -129,36 +125,38 @@ function App() {
 					continue;
 				}
 				if (message.type === 'error') {
-					pushLine(`bridge> ${message.message}`);
+					pushLine(`host> ${message.message}`);
 					continue;
 				}
 				renderBridgeEvent(message, pushLine, setSessionState);
 			}
 		});
 
-		child.on('exit', code => {
-			pushLine(`system> bridge exited (${String(code)})`);
+		socket.on('error', error => {
+			pushLine(
+				`system> host unavailable: start python -m openagent.cli.host (terminal=${terminalHost}:${String(terminalPort)})`,
+			);
+			pushLine(`system> connection error: ${error.message}`);
+		});
+
+		socket.on('close', hadError => {
+			pushLine(`system> host disconnected${hadError ? ' after error' : ''}`);
 			exit();
 		});
 
-		child.stderr.on('data', chunk => {
-			const output = chunk.toString().trim();
-			if (output) {
-				pushLine(`bridge-stderr> ${output}`);
-			}
-		});
-
 		return () => {
-			child.kill();
+			socket.end();
+			socket.destroy();
 		};
 	}, [exit]);
 
 	const send = (payload: Record<string, unknown>) => {
-		const child = bridgeRef.current;
-		if (!child) {
+		const socket = socketRef.current;
+		if (!socket || socket.destroyed) {
+			pushLine('system> not connected to host');
 			return;
 		}
-		child.stdin.write(`${JSON.stringify(payload)}\n`);
+		socket.write(`${JSON.stringify(payload)}\n`);
 	};
 
 	const header = useMemo(
@@ -196,7 +194,7 @@ function App() {
 					<Text>active={sessionState.sessionName}</Text>
 					<Text>known={sessionState.knownSessions.join(', ')}</Text>
 					<Text>pending={sessionState.pendingApproval ? 'yes' : 'no'}</Text>
-					<Text>python={pythonBin}</Text>
+					<Text>host={terminalHost}:{String(terminalPort)}</Text>
 				</Box>
 			</Box>
 			<Box>

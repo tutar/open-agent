@@ -5,6 +5,7 @@ from openagent.local import create_file_runtime, create_in_memory_runtime
 from openagent.object_model import RuntimeEventType
 from openagent.tools import (
     AskUserQuestionTool,
+    BashTool,
     CommandKind,
     CommandVisibility,
     DenialTrackingState,
@@ -17,8 +18,11 @@ from openagent.tools import (
     StaticToolRegistry,
     ToolCall,
     ToolExecutionContext,
+    ToolExecutionFailedError,
     ToolPolicyRule,
     ToolSource,
+    WebFetchTool,
+    WebSearchTool,
     create_builtin_commands,
     create_builtin_toolset,
 )
@@ -123,6 +127,56 @@ def test_builtin_file_tools_roundtrip(tmp_path: Path) -> None:
     assert edit_result.content == [str((tmp_path / "notes.txt").resolve())]
     assert glob_result.content == ["notes.txt"]
     assert grep_result.content == ["notes.txt:2:gamma"]
+
+
+def test_builtin_tools_validate_required_arguments() -> None:
+    executor = SimpleToolExecutor(
+        StaticToolRegistry(
+            [
+                BashTool("."),
+                WebFetchTool(),
+                WebSearchTool(),
+                next(tool for tool in create_builtin_toolset() if tool.name == "Glob"),
+            ]
+        )
+    )
+    context = ToolExecutionContext(session_id="sess_required")
+
+    cases = [
+        ("Bash", {}, "missing required field command"),
+        ("Glob", {}, "missing required field pattern"),
+        ("WebFetch", {}, "missing required field url"),
+        ("WebSearch", {}, "missing required field query"),
+    ]
+
+    for tool_name, arguments, reason in cases:
+        try:
+            executor.execute([ToolCall(tool_name=tool_name, arguments=arguments)], context)
+        except ToolExecutionFailedError as exc:
+            assert exc.tool_name == tool_name
+            assert exc.reason == reason
+        else:
+            raise AssertionError(f"Expected ToolExecutionFailedError for {tool_name}")
+
+
+def test_bash_tool_executes_successfully(tmp_path: Path) -> None:
+    tool = BashTool(str(tmp_path))
+
+    result = tool.call({"command": "pwd"})
+
+    assert result.success is True
+    assert result.content == [str(tmp_path)]
+
+
+def test_bash_tool_reports_non_zero_exit(tmp_path: Path) -> None:
+    tool = BashTool(str(tmp_path))
+
+    try:
+        tool.call({"command": "bash -lc 'echo nope >&2; exit 7'"})
+    except RuntimeError as exc:
+        assert str(exc) == "nope"
+    else:
+        raise AssertionError("Expected RuntimeError for non-zero bash command")
 
 
 def test_ask_user_question_tool_raises_requires_action() -> None:

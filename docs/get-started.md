@@ -197,7 +197,7 @@ openagent-feishu
 统一 host 模型下，这两条链路分别是：
 
 - terminal:
-  `terminal-tui -> bridge.py -> openagent host -> Gateway -> HarnessInstance -> SimpleHarness`
+  `terminal-tui -> openagent host terminal port -> Gateway -> HarnessInstance -> SimpleHarness`
 - feishu:
   `Feishu service -> Feishu long connection host -> openagent host -> Gateway -> HarnessInstance -> SimpleHarness`
 

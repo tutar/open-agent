@@ -5,6 +5,7 @@ from pathlib import Path
 
 from openagent import create_feishu_runtime
 from openagent.gateway import (
+    EgressEnvelope,
     FeishuAppConfig,
     FeishuChannelAdapter,
     FeishuLongConnectionHost,
@@ -228,6 +229,43 @@ def test_feishu_adapter_maps_channel_management_commands() -> None:
     assert config is not None
     assert config.input_kind == "management"
     assert config.payload == {"command": "/channel-config feishu app_id cli_app"}
+
+
+def test_feishu_adapter_drops_empty_assistant_messages() -> None:
+    adapter = FeishuChannelAdapter()
+
+    projected = adapter.project_outbound(
+        EgressEnvelope(
+            channel="feishu",
+            conversation_id="feishu:chat:oc_chat_1",
+            event={"event_type": "assistant_message", "payload": {"message": ""}},
+            session_id="sess_1",
+        )
+    )
+
+    assert projected is None
+
+
+def test_feishu_adapter_projects_tool_failure_reason() -> None:
+    adapter = FeishuChannelAdapter()
+
+    projected = adapter.project_outbound(
+        EgressEnvelope(
+            channel="feishu",
+            conversation_id="feishu:chat:oc_chat_1",
+            event={
+                "event_type": "tool_failed",
+                "payload": {"tool_name": "Bash", "reason": "missing required field command"},
+            },
+            session_id="sess_1",
+        )
+    )
+
+    assert projected == {
+        "chat_id": "oc_chat_1",
+        "thread_id": None,
+        "text": "Tool Bash failed: missing required field command",
+    }
 
 
 def test_feishu_host_lazy_binds_and_replies(tmp_path: Path) -> None:

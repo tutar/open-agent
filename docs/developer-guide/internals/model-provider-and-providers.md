@@ -55,4 +55,4 @@ provider adapter 不负责：
 - `load_model_from_env`
 - `UrllibHttpTransport`
 
-terminal bridge 在检测到 `OPENAGENT_MODEL` 时，会优先通过 `load_model_from_env()` 装配真实 provider。
+openagent host 在检测到 `OPENAGENT_MODEL` 时，会优先通过 `load_model_from_env()` 装配真实 provider。
