@@ -262,6 +262,7 @@ capability surface 当前统一投影三类能力：
 - host projection
 - skill scope / trust / diagnostics metadata
 - catalog disclosure vs activation disclosure separation
+- activation dedupe / compaction protection / bound-resource allowlisting baseline
 
 这使 frontend 或 host 侧可以做更稳定的能力展示和筛选。
 

@@ -414,6 +414,9 @@ def test_capability_surface_projects_unified_entries() -> None:
                     content="Summarize {text}",
                     scope="project",
                     trust_level="trusted",
+                    disclosure="catalog",
+                    listed_resources=["scripts"],
+                    frontmatter_mode="stripped",
                     skill_root="/tmp/skills/summarize",
                     skill_file="/tmp/skills/summarize/SKILL.md",
                 ),
@@ -436,3 +439,10 @@ def test_capability_surface_projects_unified_entries() -> None:
     assert cloud_projected["capability_count"] == 2
     assert len(model_only) == 2
     assert [entry.entry_id for entry in model_only] == ["cmd.review", "skill.summarize"]
+    skill_descriptor = next(
+        descriptor
+        for descriptor in terminal_projected["capabilities"]
+        if descriptor["capability_id"] == "skill.summarize"
+    )
+    assert skill_descriptor["metadata"]["disclosure"] == "catalog"
+    assert skill_descriptor["metadata"]["listed_resources"] == ["scripts"]

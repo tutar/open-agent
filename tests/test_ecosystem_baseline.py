@@ -4,7 +4,9 @@ from openagent.object_model import JsonObject, ToolResult
 from openagent.tools import (
     CommandKind,
     CommandVisibility,
+    DiscoveredSkillRef,
     FileSkillRegistry,
+    ImportedSkillManifest,
     InMemoryMcpClient,
     InMemoryMcpTransport,
     McpPromptAdapter,
@@ -16,6 +18,7 @@ from openagent.tools import (
     McpToolDescriptor,
     SkillActivationResult,
     SkillActivator,
+    SkillContextManager,
     SkillDiscoveryRoot,
     SkillInvocationBridge,
     StaticCommandRegistry,
@@ -31,22 +34,44 @@ def test_file_skill_registry_and_bridge(tmp_path: Path) -> None:
     skill_dir = tmp_path / "skills" / "summarize"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: Summarize\n"
+        "description: Summarize content for a target audience.\n"
+        "allowed-tools: [Read, Grep]\n"
+        "arguments:\n"
+        "  - audience\n"
+        "when_to_use: Use when the user wants a concise recap.\n"
+        "user-invocable: true\n"
+        "metadata:\n"
+        "  owner: docs\n"
+        "---\n"
         "# Summarize\n\nSummarize the input for {audience}.\n\nUse source: {source}\n",
         encoding="utf-8",
     )
+    (skill_dir / "scripts").mkdir()
+    (skill_dir / "references").mkdir()
 
     registry = FileSkillRegistry([tmp_path / "skills"])
-    activator = SkillActivator()
+    context_manager = SkillContextManager()
+    activator = SkillActivator(context_manager=context_manager)
     bridge = SkillInvocationBridge(registry, activator)
 
     skills = registry.discover_skills()
     assert len(skills) == 1
     assert skills[0].id == "summarize"
-    assert skills[0].arguments == ["audience", "source"]
+    assert skills[0].arguments == ["audience"]
+    assert skills[0].allowed_tools == ["Read", "Grep"]
+    assert skills[0].when_to_use == "Use when the user wants a concise recap."
+    assert skills[0].invocable_by_user is True
+    assert skills[0].frontmatter_mode == "stripped"
+    assert skills[0].listed_resources == ["scripts", "references"]
+    assert isinstance(skills[0].imported_manifest, ImportedSkillManifest)
+    assert isinstance(skills[0].discovered_ref, DiscoveredSkillRef)
 
     commands = bridge.list_model_invocable_skills()
     assert commands[0].kind is CommandKind.PROMPT
     assert commands[0].visibility is CommandVisibility.MODEL
+    assert commands[0].metadata["listed_resources"] == ["scripts", "references"]
 
     rendered = bridge.invoke_skill(
         "summarize",
@@ -64,11 +89,24 @@ def test_file_skill_registry_and_bridge(tmp_path: Path) -> None:
     )
 
     assert catalog[0].name == "Summarize"
-    assert "Summarize the input" in catalog[0].description
+    assert catalog[0].description == "Summarize content for a target audience."
     assert isinstance(activation, SkillActivationResult)
     assert activation.skill_name == "Summarize"
     assert activation.wrapped is True
     assert activation.activation_mode == "model"
+    assert activation.frontmatter_mode == "stripped"
+    assert activation.listed_resources == ["scripts", "references"]
+    assert activation.metadata["already_active"] is False
+    assert activation.metadata["compaction_protected"] is True
+    assert context_manager.is_already_active("summarize") is True
+    assert context_manager.list_bound_resources("summarize") == ["scripts", "references"]
+
+    repeated = bridge.invoke_skill_wrapped(
+        "summarize",
+        args={"audience": "engineers"},
+        runtime_context={"source": "release notes"},
+    )
+    assert repeated.metadata["already_active"] is True
 
 
 def test_skill_registry_resolves_precedence_and_emits_shadow_diagnostics(tmp_path: Path) -> None:
@@ -91,6 +129,64 @@ def test_skill_registry_resolves_precedence_and_emits_shadow_diagnostics(tmp_pat
     assert len(skills) == 1
     assert skills[0].scope == "project"
     assert "shadowed skill 'summarize' from user:" in skills[0].diagnostics[0]
+
+
+def test_skill_registry_parses_lenient_frontmatter_and_filters_untrusted_model_invocation(
+    tmp_path: Path,
+) -> None:
+    skill_dir = tmp_path / "skills" / "triage"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: Triage\n"
+        "\tdescription: Triage an issue quickly.\n"
+        "disable-model-invocation: true\n"
+        "paths:\n"
+        "  - src\n"
+        "  - tests\n"
+        "shell: bash\n"
+        "---\n"
+        "Triage {issue}\n",
+        encoding="utf-8",
+    )
+
+    registry = FileSkillRegistry(
+        [
+            SkillDiscoveryRoot(
+                path=str(tmp_path / "skills"),
+                scope="project",
+                trust_level="untrusted",
+            )
+        ]
+    )
+
+    skills = registry.discover_skills()
+
+    assert len(skills) == 1
+    assert skills[0].invocable_by_model is False
+    assert skills[0].host_extensions["paths"] == ["src", "tests"]
+    assert skills[0].host_extensions["shell"] == "bash"
+    assert any("frontmatter_lenient_retry" in item for item in skills[0].diagnostics)
+    assert any("trust_blocked" in item for item in skills[0].diagnostics)
+    assert registry.list_catalog_entries(audience="model") == []
+    assert len(registry.list_catalog_entries(audience="user")) == 1
+
+
+def test_skill_context_manager_tracks_activation_and_bound_resources() -> None:
+    manager = SkillContextManager()
+    binding = manager.mark_activated(
+        "summarize",
+        "summarize:model",
+        skill_root="/tmp/skills/summarize",
+        listed_resources=["scripts", "assets"],
+    )
+
+    assert binding.skill_name == "summarize"
+    assert manager.is_already_active("summarize") is True
+    assert manager.list_bound_resources("summarize") == ["scripts", "assets"]
+
+    manager.protect_from_compaction("summarize:model")
+    assert binding.protected_from_compaction is True
 
 
 def test_static_command_registry() -> None:

@@ -102,8 +102,12 @@ executor 解决“怎么执行这些 tool”。
 - catalog disclosure
 - activation result
 
-`FileSkillRegistry` 现在会做 deterministic precedence 和 shadow diagnostics；`SkillActivator`
-返回结构化 activation wrapper；`SkillInvocationBridge` 继续只负责把 skill 暴露成模型可调用入口。
+`FileSkillRegistry` 现在会做 deterministic precedence、frontmatter import、lenient parsing
+和 shadow diagnostics；`SkillActivator` 返回结构化 activation wrapper，并通过
+`SkillContextManager` 维护 dedupe、compaction protection 和 bound-resource allowlisting；
+`SkillInvocationBridge` 继续只负责把 skill 暴露成模型可调用入口。
+
+更完整的 skills 生命周期单独整理在 [Skills](./skills.md)。
 
 当前还补上了 builtin tool baseline：
 

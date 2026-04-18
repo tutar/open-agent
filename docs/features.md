@@ -230,6 +230,11 @@
 
 - deterministic discovery precedence across scopes
 - shadow diagnostics for conflicting skills
+- `SKILL.md` frontmatter import with lenient parsing and diagnostics
+- source / scope / trust metadata on discovered skills
+- catalog disclosure vs activation disclosure vs resource disclosure separation
+- structured activation wrapper with activation identity and resource listing
+- activation dedupe, compaction protection, and bound-resource allowlisting baseline
 - catalog disclosure distinct from activation disclosure
 - wrapped activation result for dedupe / replay / compaction-friendly semantics
 
