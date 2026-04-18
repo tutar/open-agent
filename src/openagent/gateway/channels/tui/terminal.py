@@ -1,4 +1,4 @@
-"""Built-in local channel adapter for the terminal frontend."""
+"""Terminal/TUI channel adapter for the local frontend."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from openagent.object_model import RuntimeEventType
 
 
-def _default_local_event_types() -> list[str]:
+def _default_terminal_event_types() -> list[str]:
     """Return the default UI-facing event projection set for the terminal channel."""
 
     return [
@@ -35,4 +35,4 @@ class TerminalChannelAdapter:
     def accepted_event_types(self) -> list[str]:
         """Project only UI-relevant runtime events to the terminal frontend."""
 
-        return _default_local_event_types()
+        return _default_terminal_event_types()

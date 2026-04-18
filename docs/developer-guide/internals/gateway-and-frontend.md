@@ -98,13 +98,17 @@ frontend 实际拿到的是 `EgressEnvelope`。
 
 - `TerminalChannelAdapter`
 
-它归到 `gateway/channels/local.py`。
+它现在归到 `gateway/channels/tui/terminal.py`。
 
 terminal TUI 直接作为 terminal channel 的本地 client：
 
 - TUI 直接通过本地 TCP transport 连接已运行的 Python host
 - `Gateway` 负责 session binding / control / egress
 - `/channel`、`/channel-config` 这类 host management command 不进入 session，而是由 host 直接处理
+
+对应的本地 terminal transport 也已经归到同一个 channel 包里：
+
+- `gateway/channels/tui/transport.py`
 
 ## Why The TUI Connects Directly
 

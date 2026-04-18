@@ -10,7 +10,7 @@ from typing import Protocol
 from openagent.object_model import JsonObject
 
 from ...models import ChannelIdentity, EgressEnvelope, InboundEnvelope
-from ..local import _default_local_event_types
+from ..tui.terminal import _default_terminal_event_types
 
 
 class FeishuBotClient(Protocol):
@@ -44,7 +44,7 @@ class FeishuChannelAdapter:
     def accepted_event_types(self) -> list[str]:
         """Expose the local frontend event surface to Feishu."""
 
-        return _default_local_event_types()
+        return _default_terminal_event_types()
 
     def normalize_inbound(self, raw_event: JsonObject) -> InboundEnvelope | None:
         """Convert a Feishu message event into a gateway input envelope."""

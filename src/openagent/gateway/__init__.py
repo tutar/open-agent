@@ -1,23 +1,21 @@
 """Gateway package exports."""
 
-from .assemblies.feishu import (
-    FeishuAppConfig,
-    create_feishu_gateway,
-    create_feishu_host,
-    create_feishu_host_from_env,
-    create_feishu_runtime,
-)
 from .binding_store import FileSessionBindingStore
 from .channels import FeishuChannelAdapter, TerminalChannelAdapter
 from .channels.feishu import (
     FEISHU_REACTION_COMPLETED,
     FEISHU_REACTION_IN_PROGRESS,
+    FeishuAppConfig,
     FeishuBotClient,
     FeishuHostRunLock,
     FeishuLongConnectionHost,
     FileFeishuInboundDedupeStore,
     InMemoryFeishuInboundDedupeStore,
     OfficialFeishuBotClient,
+    create_feishu_gateway,
+    create_feishu_host,
+    create_feishu_host_from_env,
+    create_feishu_runtime,
 )
 from .core import Gateway
 from .interfaces import ChannelAdapter, SessionAdapter, SessionBindingStore

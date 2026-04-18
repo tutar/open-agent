@@ -120,20 +120,25 @@
 - `gateway/`
   - 当前作为 harness 域下的 frontend integration boundary 存在
 
-### Partially Aligned Or Mixed
+### Intentionally Top-Level Or Facade-Based
 
-- `local.py`
-  - 当前是本地装配 facade
-  - 混合了 runtime assembly、gateway assembly、workspace/model-io 路径策略
-- `capability_surface.py`
-  - 当前同时包含对象模型、filtering、host projection、lookup 逻辑
-  - 更像 shared surface seam，而不是单纯顶层工具函数
-- `context_governance.py`
-  - 语义上属于 `harness/context-assembly`
-  - 但当前仍停在顶层，并混合：
-    - 数据模型
-    - budget/cache 治理
-    - tool result externalization
+- `gateway/`
+  - 继续保留为 harness 域下的 frontend / channel boundary
+  - 这不是“第六个核心模块”，但保留顶层目录是可接受的结构选择
+- `observability/`
+  - 语义接近 `harness/extension-and-projection`
+  - 当前同时被 harness、tools executor、orchestration、gateway 使用
+  - 作为 shared top-level seam 保留更合理，不强行迁移
+- `host/`
+  - 当前已经拆成：
+    - `config.py`
+    - `app.py`
+    - `terminal.py`
+    - `demo.py`
+  - `service.py` 只保留兼容导出
+- `gateway/channels/feishu/assembly.py`
+  - Feishu-specific runtime / gateway / host assembly 已经归到 channel 子包旁边
+  - `gateway/assemblies/feishu.py` 只保留兼容导出
 
 ## Refactor Rules
 
@@ -213,6 +218,30 @@
 - `governance.py`
 
 顶层 `context_governance.py` 只保留兼容 re-export，不再承载真实实现。
+
+## Current Alignment Status
+
+按当前仓库状态，`src/openagent` 已经没有明显的“需要立刻再迁”的核心 mixed area。
+
+剩余顶层模块主要分两类：
+
+- shared seams
+  - `gateway/`
+  - `observability/`
+- compatibility facades
+  - `local.py`
+  - `context_governance.py`
+  - `host/service.py`
+  - `gateway/assemblies/feishu.py`
+
+后续如果继续调整，应该只在出现新的职责漂移时再动，而不是为了机械贴近规范目录继续搬模块。
+
+`terminal` channel 当前也已经统一收口为：
+
+- `gateway/channels/tui/terminal.py`
+- `gateway/channels/tui/transport.py`
+
+这里的 `tui` 是目录名，不是新的 channel 名；canonical channel 仍然是 `terminal`。
 
 ## Recommended Reading Order
 

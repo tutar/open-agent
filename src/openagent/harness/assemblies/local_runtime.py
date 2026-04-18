@@ -5,12 +5,10 @@ from __future__ import annotations
 import os
 from typing import cast
 
-from openagent.gateway import (
-    ChannelAdapter,
-    FileSessionBindingStore,
-    Gateway,
-    InProcessSessionAdapter,
-)
+from openagent.gateway.binding_store import FileSessionBindingStore
+from openagent.gateway.core import Gateway
+from openagent.gateway.interfaces import ChannelAdapter
+from openagent.gateway.session_adapter import InProcessSessionAdapter
 from openagent.harness.context import ContextGovernance
 from openagent.harness.model_io import FileModelIoCapture, NoOpModelIoCapture
 from openagent.harness.models import ModelProviderAdapter

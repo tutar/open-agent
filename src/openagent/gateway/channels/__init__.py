@@ -1,7 +1,7 @@
 """Channel-specific gateway integrations."""
 
 from .feishu import FeishuChannelAdapter
-from .local import TerminalChannelAdapter
+from .tui import TerminalChannelAdapter
 
 __all__ = [
     "FeishuChannelAdapter",

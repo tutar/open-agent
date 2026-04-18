@@ -54,7 +54,7 @@ openagent-host
 
 默认行为：
 - 默认监听端口8765
-- host 会启动本地 terminal transport
+- host 会启动 `terminal` channel 对应的本地 TUI transport
 - 不预加载任何外部 channel
 - `terminal` channel 会在 TUI 首次连接时自动加载
 - 如果没有配置真实模型，会自动回退到 demo model
