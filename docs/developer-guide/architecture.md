@@ -155,6 +155,12 @@ tool 事件由 executor 单点发出，harness 负责持久化这些事件，并
 
 host 默认 demo tools 只是在此基础上额外叠加，不会覆盖 builtin baseline。
 
+`WebFetch / WebSearch` 当前已经收口为 backend-driven 装配：
+
+- tool surface 继续稳定
+- backend 负责真正的网页抓取或搜索实现
+- Firecrawl 只是其中一种 backend，不是唯一实现
+
 ## Model Integration
 
 当前 harness/runtime 支持两类模型接入方式：

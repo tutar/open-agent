@@ -348,6 +348,16 @@ class ContextGovernance:
         result.metadata = metadata
         return result
 
+    def tool_result_message_content(self, result: ToolResult) -> str:
+        content_text = "\n".join(str(item) for item in result.content)
+        if result.persisted_ref is None:
+            return f"{result.tool_name}: {content_text}"
+        return (
+            f"{result.tool_name}: {content_text}\n"
+            "[tool result externalized to internal storage; this is not a workspace file path "
+            "and should not be read with local file tools]"
+        )
+
     def _provider_cache_key(self, messages: list[SessionMessage]) -> str | None:
         if not messages:
             return None

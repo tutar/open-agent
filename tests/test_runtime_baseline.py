@@ -167,6 +167,37 @@ def test_simple_harness_skips_empty_assistant_event_before_tool_failure() -> Non
     ]
 
 
+def test_simple_harness_skips_nonempty_assistant_event_when_model_also_requests_tool() -> None:
+    echo = FakeTool(name="echo")
+    session_store = InMemorySessionStore()
+    tools = StaticToolRegistry([echo])
+    executor = SimpleToolExecutor(tools)
+    model = ScriptedModel(
+        responses=[
+            ModelTurnResponse(
+                assistant_message="Let me check that for you.",
+                tool_calls=[ToolCall(tool_name="echo", arguments={"text": "payload"})],
+            ),
+            ModelTurnResponse(assistant_message="tool completed"),
+        ]
+    )
+    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+
+    events, terminal = harness.run_turn("use tool", "sess_tool_preface")
+
+    assert terminal.status is TerminalStatus.COMPLETED
+    assert [event.event_type for event in events] == [
+        RuntimeEventType.TURN_STARTED,
+        RuntimeEventType.TOOL_STARTED,
+        RuntimeEventType.TOOL_RESULT,
+        RuntimeEventType.ASSISTANT_MESSAGE,
+        RuntimeEventType.TURN_COMPLETED,
+    ]
+    messages = session_store.load_session("sess_tool_preface").messages
+    assert [message.role for message in messages] == ["user", "tool", "assistant"]
+    assert messages[-1].content == "tool completed"
+
+
 def test_simple_harness_streaming_model_emits_deltas() -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])

@@ -171,9 +171,6 @@ class FeishuChannelAdapter:
         if event_type == "tool_result":
             tool_name = str(payload.get("tool_name", "unknown"))
             self._clear_tool_progress(session_id, tool_name)
-            content = payload.get("content")
-            if isinstance(content, list) and content:
-                return f"Tool {tool_name} completed: {content[0]}"
             return f"Tool {tool_name} completed."
         if event_type == "tool_failed":
             tool_name = str(payload.get("tool_name", "unknown"))

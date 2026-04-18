@@ -139,6 +139,27 @@ python -m openagent.cli.host
 - `OPENAGENT_DATA_ROOT`
 - `OPENAGENT_MODEL_IO_ROOT`
 
+## Optional: Use Firecrawl For Web Tools
+
+如果你想让 builtin `WebFetch / WebSearch` 走 Firecrawl backend：
+
+```bash
+export OPENAGENT_WEBFETCH_BACKEND=firecrawl
+export OPENAGENT_WEBSEARCH_BACKEND=firecrawl
+export OPENAGENT_FIRECRAWL_BASE_URL=http://127.0.0.1:3002
+```
+
+本地 Firecrawl 可以通过项目根目录下的 compose 拉起：
+
+```bash
+cp .env.firecrawl.example .env.firecrawl
+docker compose --env-file .env.firecrawl -f docker-compose.firecrawl.yml up -d
+```
+
+更多说明见：
+
+- `docs/developer-guide/firecrawl-local-testing.md`
+
 这层数据不是 observability stdout，也不是 session event log；它是默认保留的模型原始数据资产，
 适合后续做离线分析、微调和强化学习数据整理。
 

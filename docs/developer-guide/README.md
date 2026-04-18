@@ -31,6 +31,10 @@
   - 可执行的本地真实网络测试
   - `pytest -m feishu_e2e`
   - 私聊与指定群聊验证
+- [Firecrawl Local Testing](./firecrawl-local-testing.md)
+  - `WebFetch / WebSearch` 的 Firecrawl backend 本地联调
+  - Docker Compose 启动方式
+  - OpenAgent backend 切换环境变量
 - [Pre-Merge Checklist](./pre-merge-checklist.md)
   - 合入 `main` 前的最终验收顺序
   - Python / TUI / Feishu E2E / 文档同步检查

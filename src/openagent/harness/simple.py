@@ -628,11 +628,13 @@ class SimpleHarness:
         for result in tool_results:
             if self.context_governance is not None:
                 result = self.context_governance.externalize_tool_result(result)
-            storage_marker = result.persisted_ref or "inline"
+                message_content = self.context_governance.tool_result_message_content(result)
+            else:
+                message_content = f"{result.tool_name}: {result.content}"
             session.messages.append(
                 SessionMessage(
                     role="tool",
-                    content=f"{result.tool_name}: {result.content} [externalized:{storage_marker}]",
+                    content=message_content,
                     metadata=dict(result.metadata or {}),
                 )
             )

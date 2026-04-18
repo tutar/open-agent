@@ -116,6 +116,13 @@ executor 解决“怎么执行这些 tool”。
 - `AskUserQuestion`
 - optional `Agent / Skill` bridge
 
+其中 `WebFetch / WebSearch` 现在已经和具体实现解耦：
+
+- `WebFetch` 保持“按 URL 定向获取内容”的语义
+- `WebSearch` 保持“返回搜索结果列表”的语义
+- Firecrawl backend 通过独立 backend seam 接入
+- 不把 `WebSearch` 伪装成 `WebFetch`
+
 MCP 不再只是内存兼容层；现在已经拆到 `src/openagent/tools/mcp/`，并固定成四层：
 
 - `protocol.py`
@@ -186,4 +193,3 @@ executor 现在支持一个可选的 `ToolPolicyEngine`：
 当前这层还没补齐：
 
 - full orchestration-backed default implementation for `Agent` / review command execution
-- real host-integrated search backend for `WebSearch`

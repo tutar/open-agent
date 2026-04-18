@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import cast
-from urllib.parse import quote_plus
-from urllib.request import Request, urlopen
 
 from openagent.object_model import JsonObject, JsonValue, RequiresAction, ToolResult
 from openagent.object_model.base import to_json_value
@@ -18,6 +17,16 @@ from openagent.tools.commands import Command, CommandKind, CommandVisibility
 from openagent.tools.errors import RequiresActionError
 from openagent.tools.models import PermissionDecision, ToolExecutionContext, ToolSource
 from openagent.tools.skills import SkillInvocationBridge
+from openagent.tools.web import (
+    CallableWebSearchBackend,
+    DefaultWebFetchBackend,
+    DefaultWebSearchBackend,
+    FirecrawlConfig,
+    FirecrawlWebFetchBackend,
+    FirecrawlWebSearchBackend,
+    WebFetchBackend,
+    WebSearchBackend,
+)
 
 
 def _string_property(description: str, *, examples: list[str] | None = None) -> dict[str, object]:
@@ -357,7 +366,9 @@ class BashTool(_BuiltinTool):
 
 
 class WebFetchTool(_BuiltinTool):
-    def __init__(self) -> None:
+    backend: WebFetchBackend
+
+    def __init__(self, backend: WebFetchBackend | None = None) -> None:
         super().__init__(
             name="WebFetch",
             description_text="Fetch a concrete URL over HTTP(S).",
@@ -373,6 +384,7 @@ class WebFetchTool(_BuiltinTool):
             aliases=["web_fetch"],
             supports_result_persistence=True,
         )
+        self.backend = backend or DefaultWebFetchBackend()
 
     def is_read_only(self, arguments: dict[str, object]) -> bool:
         del arguments
@@ -384,16 +396,22 @@ class WebFetchTool(_BuiltinTool):
 
     def call(self, arguments: dict[str, object]) -> ToolResult:
         url = str(arguments["url"])
-        request = Request(url, headers={"User-Agent": "openagent/0.1"})
-        with urlopen(request, timeout=10) as response:
-            body = response.read().decode("utf-8", errors="replace")
-        return ToolResult(tool_name=self.name, success=True, content=cast(list[JsonValue], [body]))
+        document = self.backend.fetch(url)
+        return ToolResult(
+            tool_name=self.name,
+            success=True,
+            content=cast(list[JsonValue], [document.content]),
+            structured_content=cast(JsonObject, document.to_dict()),
+        )
 
 
 class WebSearchTool(_BuiltinTool):
-    backend: Callable[[str], list[dict[str, object]]] | None = None
+    backend: WebSearchBackend
 
-    def __init__(self, backend: Callable[[str], list[dict[str, object]]] | None = None) -> None:
+    def __init__(
+        self,
+        backend: WebSearchBackend | Callable[[str], list[dict[str, object]]] | None = None,
+    ) -> None:
         super().__init__(
             name="WebSearch",
             description_text="Search the web and return a result list.",
@@ -408,7 +426,12 @@ class WebSearchTool(_BuiltinTool):
             ),
             aliases=["web_search"],
         )
-        self.backend = backend
+        if backend is None:
+            self.backend = DefaultWebSearchBackend()
+        elif isinstance(backend, WebSearchBackend):
+            self.backend = backend
+        else:
+            self.backend = CallableWebSearchBackend(backend)
 
     def is_read_only(self, arguments: dict[str, object]) -> bool:
         del arguments
@@ -420,19 +443,7 @@ class WebSearchTool(_BuiltinTool):
 
     def call(self, arguments: dict[str, object]) -> ToolResult:
         query = str(arguments["query"])
-        if self.backend is not None:
-            results = self.backend(query)
-        else:
-            results = [
-                {
-                    "title": f"Search result for {query}",
-                    "url": f"https://duckduckgo.com/?q={quote_plus(query)}",
-                    "snippet": (
-                        "No host-integrated search backend configured; "
-                        "returning a search URL placeholder."
-                    ),
-                }
-            ]
+        results = self.backend.search(query)
         structured_results: list[JsonValue] = cast(
             list[JsonValue],
             [cast(JsonValue, to_json_value(result)) for result in results],
@@ -440,7 +451,10 @@ class WebSearchTool(_BuiltinTool):
         return ToolResult(
             tool_name=self.name,
             success=True,
-            content=cast(list[JsonValue], [json.dumps(results, ensure_ascii=False)]),
+            content=cast(
+                list[JsonValue],
+                [json.dumps([result.to_dict() for result in results], ensure_ascii=False)],
+            ),
             structured_content={"results": structured_results},
         )
 
@@ -570,10 +584,13 @@ class AskUserQuestionTool(_BuiltinTool):
 def create_builtin_toolset(
     *,
     root: str = ".",
-    web_search_backend: Callable[[str], list[dict[str, object]]] | None = None,
+    web_fetch_backend: WebFetchBackend | None = None,
+    web_search_backend: WebSearchBackend | Callable[[str], list[dict[str, object]]] | None = None,
     agent_handler: Callable[[dict[str, object]], dict[str, object]] | None = None,
     skill_bridge: SkillInvocationBridge | None = None,
 ) -> list[_BuiltinTool]:
+    resolved_fetch_backend = web_fetch_backend or _default_web_fetch_backend()
+    resolved_search_backend = _default_web_search_backend(web_search_backend)
     tools: list[_BuiltinTool] = [
         ReadTool(root),
         WriteTool(root),
@@ -581,8 +598,8 @@ def create_builtin_toolset(
         GlobTool(root),
         GrepTool(root),
         BashTool(root),
-        WebFetchTool(),
-        WebSearchTool(web_search_backend),
+        WebFetchTool(resolved_fetch_backend),
+        WebSearchTool(resolved_search_backend),
         AskUserQuestionTool(),
     ]
     if agent_handler is not None:
@@ -608,3 +625,40 @@ def create_builtin_commands() -> list[Command]:
 def _resolve_path(root: str, raw_path: str) -> Path:
     path = (Path(root) / raw_path).resolve()
     return path
+
+
+def _default_web_fetch_backend() -> WebFetchBackend:
+    backend_name = os.getenv("OPENAGENT_WEBFETCH_BACKEND", "default").strip().lower()
+    if backend_name in {"", "default"}:
+        return DefaultWebFetchBackend()
+    if backend_name == "firecrawl":
+        return FirecrawlWebFetchBackend(_firecrawl_config_from_env())
+    raise RuntimeError(f"Unsupported OPENAGENT_WEBFETCH_BACKEND: {backend_name}")
+
+
+def _default_web_search_backend(
+    backend: WebSearchBackend | Callable[[str], list[dict[str, object]]] | None,
+) -> WebSearchBackend:
+    if backend is not None:
+        if isinstance(backend, WebSearchBackend):
+            return backend
+        return CallableWebSearchBackend(backend)
+    backend_name = os.getenv("OPENAGENT_WEBSEARCH_BACKEND", "default").strip().lower()
+    if backend_name in {"", "default"}:
+        return DefaultWebSearchBackend()
+    if backend_name == "firecrawl":
+        return FirecrawlWebSearchBackend(_firecrawl_config_from_env())
+    raise RuntimeError(f"Unsupported OPENAGENT_WEBSEARCH_BACKEND: {backend_name}")
+
+
+def _firecrawl_config_from_env() -> FirecrawlConfig:
+    base_url = os.getenv("OPENAGENT_FIRECRAWL_BASE_URL", "").strip()
+    if not base_url:
+        raise RuntimeError(
+            "OPENAGENT_FIRECRAWL_BASE_URL is required when using the firecrawl web backend"
+        )
+    api_key = os.getenv("OPENAGENT_FIRECRAWL_API_KEY")
+    return FirecrawlConfig(
+        base_url=base_url,
+        api_key=api_key.strip() if isinstance(api_key, str) and api_key.strip() else None,
+    )

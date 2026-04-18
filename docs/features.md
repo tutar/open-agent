@@ -147,16 +147,22 @@
   - `WebFetch / WebSearch`
   - `AskUserQuestion`
   - optional `Agent / Skill` bridge
+- pluggable web backends for builtin web tools
+  - default stdlib URL fetch backend
+  - default placeholder search backend
+  - optional Firecrawl-backed scrape/search backend
+  - GitHub blob URL normalization for Firecrawl-backed `WebFetch`
 - review command baseline via `CommandKind.REVIEW`
 - tool provenance / visibility metadata
 - MCP tool / prompt / skill adaptation seam
 - runtime 默认注入 builtin tool baseline；host 默认 demo tools 只是额外叠加
 - builtin file / shell tools 默认作用于当前工作目录，或显式 `OPENAGENT_WORKSPACE_ROOT`
+- externalized tool results are exposed back to the model as internal references with previews,
+  not raw workspace file paths
 
 当前不支持：
 
 - 更细的 tool retry / recovery policy
-- real host-integrated search backend for `WebSearch`
 - full orchestration-backed default implementation for `Agent` / review commands
 
 ## Capability Surface

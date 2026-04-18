@@ -1,0 +1,72 @@
+services:
+  nuq-postgres:
+    build:
+      context: "https://github.com/firecrawl/firecrawl.git#main:apps/nuq-postgres"
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - firecrawl_nuq_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  playwright-service:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    restart: unless-stopped
+    shm_size: "1g"
+    environment:
+      PORT: 3000
+
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - rabbitmq
+      - playwright-service
+      - nuq-postgres
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: 3002
+      HOST: 0.0.0.0
+      ENV: local
+      USE_DB_AUTHENTICATION: "false"
+      BULL_AUTH_KEY: CHANGEME
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_HOST: nuq-postgres
+      POSTGRES_PORT: 5432
+      PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
+      NO_PROXY: localhost,127.0.0.1,redis,nuq-postgres,playwright-service,host.docker.internal
+      NUQ_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@nuq-postgres:5432/${POSTGRES_DB:-postgres}
+      NUQ_DATABASE_URL_LISTEN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@nuq-postgres:5432/${POSTGRES_DB:-postgres}
+      NUQ_RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      REDIS_RATE_LIMIT_URL: redis://redis:6379
+
+volumes:
+  firecrawl_nuq_pg_data:

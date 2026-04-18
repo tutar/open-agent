@@ -174,7 +174,7 @@ class RalphLoop:
             control=TurnControl(),
         )
         handled = self.harness.handle_model_output(response)
-        if handled.assistant_message is not None:
+        if handled.assistant_message is not None and not handled.tool_calls:
             session.messages.append(
                 self.harness._new_session_message(
                     role="assistant",
@@ -417,9 +417,7 @@ class RalphLoop:
 
             yield from streamed_events
 
-            if handled.assistant_message is not None and (
-                handled.assistant_message.strip() or not handled.tool_calls
-            ):
+            if handled.assistant_message is not None and not handled.tool_calls:
                 session.messages.append(
                     self.harness._new_session_message(
                         role="assistant",

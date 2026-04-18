@@ -362,8 +362,13 @@ function renderBridgeEvent(
 		return;
 	}
 	if (message.event_type === 'tool_result') {
-		const payload = message.payload as {content?: unknown};
-		pushLine(`tool> result ${JSON.stringify(payload.content ?? '')}`);
+		const payload = message.payload as {
+			tool_name?: string;
+			content?: unknown;
+			structured_content?: unknown;
+			truncated?: boolean | null;
+		};
+		pushLine(`tool> ${summarizeToolResult(payload)}`);
 		return;
 	}
 	if (message.event_type === 'requires_action') {
@@ -390,6 +395,34 @@ function renderBridgeEvent(
 		}));
 		pushLine(`system> turn failed ${JSON.stringify(message.payload)}`);
 	}
+}
+
+function summarizeToolResult(payload: {
+	tool_name?: string;
+	content?: unknown;
+	structured_content?: unknown;
+	truncated?: boolean | null;
+}): string {
+	const toolName = payload.tool_name ?? 'tool';
+	if (toolName === 'WebFetch') {
+		const structured = payload.structured_content as {url?: string; title?: string} | undefined;
+		const title = typeof structured?.title === 'string' && structured.title.trim() ? structured.title.trim() : null;
+		const url = typeof structured?.url === 'string' ? structured.url : null;
+		const parts = [title, url].filter(Boolean);
+		return parts.length > 0 ? `fetched ${parts.join(' | ')}` : 'fetched page content';
+	}
+	if (toolName === 'WebSearch') {
+		const structured = payload.structured_content as {results?: unknown[]} | undefined;
+		const resultCount = Array.isArray(structured?.results) ? structured.results.length : null;
+		return resultCount !== null ? `search returned ${String(resultCount)} results` : 'search completed';
+	}
+	const content = Array.isArray(payload.content) ? payload.content[0] : payload.content;
+	if (typeof content === 'string' && content.trim()) {
+		const trimmed = content.trim().replace(/\s+/g, ' ');
+		const preview = trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
+		return `result ${preview}`;
+	}
+	return payload.truncated ? 'result stored (truncated preview)' : 'result ready';
 }
 
 function uniqueSessions(current: string[], sessionName: string): string[] {

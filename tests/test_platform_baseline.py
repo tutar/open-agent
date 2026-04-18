@@ -244,6 +244,24 @@ def test_context_governance_externalizes_long_tool_result(tmp_path: Path) -> Non
     assert result.metadata["externalized"] is True
 
 
+def test_context_governance_formats_externalized_tool_result_without_path_leak(
+    tmp_path: Path,
+) -> None:
+    governance = ContextGovernance(
+        externalize_threshold_chars=10,
+        storage_dir=str(tmp_path),
+    )
+    result = governance.externalize_tool_result(
+        ToolResult(tool_name="WebFetch", success=True, content=["0123456789abcdef"])
+    )
+
+    message_content = governance.tool_result_message_content(result)
+
+    assert result.persisted_ref is not None
+    assert result.persisted_ref not in message_content
+    assert "not a workspace file path" in message_content
+
+
 def test_context_governance_builds_budget_plan_and_provider_cache_key() -> None:
     governance = ContextGovernance(
         max_tokens=40,

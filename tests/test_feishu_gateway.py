@@ -296,6 +296,31 @@ def test_feishu_adapter_projects_turn_failure_summary_with_retry_hint() -> None:
     }
 
 
+def test_feishu_adapter_projects_tool_result_without_echoing_full_content() -> None:
+    adapter = FeishuChannelAdapter()
+
+    projected = adapter.project_outbound(
+        EgressEnvelope(
+            channel="feishu",
+            conversation_id="feishu:chat:oc_chat_1",
+            event={
+                "event_type": "tool_result",
+                "payload": {
+                    "tool_name": "WebFetch",
+                    "content": ["very long fetched page body"],
+                },
+            },
+            session_id="sess_1",
+        )
+    )
+
+    assert projected == {
+        "chat_id": "oc_chat_1",
+        "thread_id": None,
+        "text": "Tool WebFetch completed.",
+    }
+
+
 def test_feishu_host_lazy_binds_and_replies(tmp_path: Path) -> None:
     client = FakeFeishuClient()
     config = FeishuAppConfig(
