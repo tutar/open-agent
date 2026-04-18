@@ -96,7 +96,7 @@ npm run type-check
 2. 先补 interface 或 object model
 3. 再补最小实现
 4. 立刻补测试
-5. 更新文档和 `todo.md`
+5. 更新文档、`docs/Features/` 和 `docs/Proposals/`
 
 不要先大面积改实现再回头补结构说明，这会让仓库状态漂移。
 
@@ -124,9 +124,9 @@ npm run type-check
 
 - `README.md`
 - `docs/get-started.md`
-- `docs/features.md`
+- `docs/Features/`
+- `docs/Proposals/`
 - `docs/developer-guide/README.md`
 - `docs/developer-guide/contributing.md`
 - `docs/developer-guide/architecture.md`
 - `docs/developer-guide/internals/`
-- `todo.md`

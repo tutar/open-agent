@@ -9,7 +9,7 @@ import os
 import traceback
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,6 +19,9 @@ from ..channels.feishu import FeishuBotClient, FeishuChannelAdapter
 from ..core import Gateway
 from ..models import ChannelIdentity, EgressEnvelope
 from .feishu_dedupe import FileFeishuInboundDedupeStore, InMemoryFeishuInboundDedupeStore
+
+FEISHU_REACTION_IN_PROGRESS = "OneSecond"
+FEISHU_REACTION_COMPLETED = "DONE"
 
 
 @dataclass(slots=True)
@@ -67,6 +70,11 @@ class FeishuLongConnectionHost:
     run_lock: FeishuHostRunLock | None = None
     management_handler: Callable[[str], list[JsonObject]] | None = None
     dedupe_store: InMemoryFeishuInboundDedupeStore | FileFeishuInboundDedupeStore | None = None
+    _in_progress_reactions: dict[str, str | None] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
 
     def run(self) -> None:
         """Start the underlying Feishu long-connection client."""
@@ -112,6 +120,7 @@ class FeishuLongConnectionHost:
         if inbound is None:
             print("feishu-host> ignored event after normalization", flush=True)
             return []
+        self._mark_message_in_progress(message_id)
 
         channel_identity = ChannelIdentity.from_dict(inbound.channel_identity)
         print(
@@ -120,35 +129,43 @@ class FeishuLongConnectionHost:
             flush=True,
         )
         if inbound.input_kind == "management":
-            command = str(inbound.payload.get("command", ""))
-            responses = (
-                self.management_handler(command)
-                if self.management_handler is not None
-                else [
-                    cast(
-                        JsonObject,
-                        {"type": "error", "message": "host management is unavailable"},
-                    )
-                ]
-            )
-            outbound = self._dispatch_management_responses(channel_identity, responses)
-            return outbound
+            try:
+                command = str(inbound.payload.get("command", ""))
+                responses = (
+                    self.management_handler(command)
+                    if self.management_handler is not None
+                    else [
+                        cast(
+                            JsonObject,
+                            {"type": "error", "message": "host management is unavailable"},
+                        )
+                    ]
+                )
+                return self._dispatch_management_responses(channel_identity, responses)
+            finally:
+                self._mark_message_completed(message_id)
         if inbound.input_kind == "control":
             try:
-                egress = self.gateway.process_control_message(channel_identity, inbound.payload)
-            except KeyError:
-                message = self._missing_session_message(channel_identity)
-                print(
-                    "feishu-host> no bound session for control input; sending hint",
-                    flush=True,
-                )
-                self.adapter.send(message)
-                return [message]
-            return self._dispatch_egress(egress)
+                try:
+                    egress = self.gateway.process_control_message(channel_identity, inbound.payload)
+                except KeyError:
+                    message = self._missing_session_message(channel_identity)
+                    print(
+                        "feishu-host> no bound session for control input; sending hint",
+                        flush=True,
+                    )
+                    self.adapter.send(message)
+                    return [message]
+                return self._dispatch_egress(egress)
+            finally:
+                self._mark_message_completed(message_id)
 
-        self._ensure_binding(channel_identity)
-        egress = self.gateway.process_input(inbound)
-        return self._dispatch_egress(egress)
+        try:
+            self._ensure_binding(channel_identity)
+            egress = self.gateway.process_input(inbound)
+            return self._dispatch_egress(egress)
+        finally:
+            self._mark_message_completed(message_id)
 
     def _ensure_binding(self, channel_identity: ChannelIdentity) -> None:
         conversation_id = channel_identity.conversation_id or "default"
@@ -228,6 +245,40 @@ class FeishuLongConnectionHost:
             outbound_messages.append(projected)
         return outbound_messages
 
+    def _mark_message_in_progress(self, message_id: str | None) -> None:
+        if message_id is None or message_id in self._in_progress_reactions:
+            return
+        try:
+            reaction_id = self.client.add_reaction(message_id, FEISHU_REACTION_IN_PROGRESS)
+        except Exception as exc:  # pragma: no cover
+            print(
+                f"feishu-host> failed to add in-progress reaction message_id={message_id}: {exc}",
+                flush=True,
+            )
+            reaction_id = None
+        self._in_progress_reactions[message_id] = reaction_id
+
+    def _mark_message_completed(self, message_id: str | None) -> None:
+        if message_id is None:
+            return
+        reaction_id = self._in_progress_reactions.pop(message_id, None)
+        if reaction_id is not None:
+            try:
+                self.client.remove_reaction(message_id, reaction_id)
+            except Exception as exc:  # pragma: no cover
+                print(
+                    "feishu-host> failed to remove in-progress reaction"
+                    f" message_id={message_id}: {exc}",
+                    flush=True,
+                )
+        try:
+            self.client.add_reaction(message_id, FEISHU_REACTION_COMPLETED)
+        except Exception as exc:  # pragma: no cover
+            print(
+                f"feishu-host> failed to add completed reaction message_id={message_id}: {exc}",
+                flush=True,
+            )
+
 
 class OfficialFeishuBotClient:
     """Runtime wrapper over the official Feishu Python SDK."""
@@ -244,6 +295,12 @@ class OfficialFeishuBotClient:
 
         self._create_message_request = getattr(im_v1, "CreateMessageRequest")
         self._create_message_request_body = getattr(im_v1, "CreateMessageRequestBody")
+        self._create_message_reaction_request = getattr(im_v1, "CreateMessageReactionRequest")
+        self._create_message_reaction_request_body = getattr(
+            im_v1, "CreateMessageReactionRequestBody"
+        )
+        self._emoji = getattr(im_v1, "Emoji")
+        self._delete_message_reaction_request = getattr(im_v1, "DeleteMessageReactionRequest")
         self._app_id = app_id
         self._app_secret = app_secret
         self._client = (
@@ -313,6 +370,54 @@ class OfficialFeishuBotClient:
         response = self._client.im.v1.message.create(request)
         if not response.success():
             raise RuntimeError(f"Feishu send_text failed: code={response.code} msg={response.msg}")
+
+    def add_reaction(self, message_id: str, reaction_type: str) -> str | None:
+        """Add a reaction to a Feishu message."""
+
+        print(
+            "feishu-host> agent add_reaction"
+            f" message_id={message_id} reaction={reaction_type}",
+            flush=True,
+        )
+        emoji = self._emoji.builder().emoji_type(reaction_type).build()
+        body = (
+            self._create_message_reaction_request_body.builder()
+            .reaction_type(emoji)
+            .build()
+        )
+        request = (
+            self._create_message_reaction_request.builder()
+            .message_id(message_id)
+            .request_body(body)
+            .build()
+        )
+        response = self._client.im.v1.message_reaction.create(request)
+        if not response.success():
+            raise RuntimeError(
+                f"Feishu add_reaction failed: code={response.code} msg={response.msg}"
+            )
+        data = getattr(response, "data", None)
+        return str(getattr(data, "reaction_id", "")).strip() or None
+
+    def remove_reaction(self, message_id: str, reaction_id: str) -> None:
+        """Remove a reaction from a Feishu message."""
+
+        print(
+            "feishu-host> agent remove_reaction"
+            f" message_id={message_id} reaction_id={reaction_id}",
+            flush=True,
+        )
+        request = (
+            self._delete_message_reaction_request.builder()
+            .message_id(message_id)
+            .reaction_id(reaction_id)
+            .build()
+        )
+        response = self._client.im.v1.message_reaction.delete(request)
+        if not response.success():
+            raise RuntimeError(
+                f"Feishu remove_reaction failed: code={response.code} msg={response.msg}"
+            )
 
     def _marshal_event(self, data: Any) -> JsonObject:
         raw = self._lark.JSON.marshal(data)

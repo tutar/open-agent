@@ -15,6 +15,8 @@ from .channels import (
 )
 from .core import Gateway
 from .hosts.feishu import (
+    FEISHU_REACTION_COMPLETED,
+    FEISHU_REACTION_IN_PROGRESS,
     FeishuHostRunLock,
     FeishuLongConnectionHost,
     OfficialFeishuBotClient,
@@ -40,6 +42,8 @@ __all__ = [
     "EgressEnvelope",
     "FileSessionBindingStore",
     "FileFeishuInboundDedupeStore",
+    "FEISHU_REACTION_COMPLETED",
+    "FEISHU_REACTION_IN_PROGRESS",
     "FeishuAppConfig",
     "FeishuBotClient",
     "FeishuChannelAdapter",

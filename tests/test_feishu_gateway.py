@@ -5,12 +5,15 @@ from pathlib import Path
 
 from openagent import create_feishu_runtime
 from openagent.gateway import (
+    FEISHU_REACTION_COMPLETED,
+    FEISHU_REACTION_IN_PROGRESS,
     EgressEnvelope,
     FeishuAppConfig,
     FeishuChannelAdapter,
     FeishuLongConnectionHost,
     FileFeishuInboundDedupeStore,
     InMemoryFeishuInboundDedupeStore,
+    OfficialFeishuBotClient,
     create_feishu_gateway,
 )
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
@@ -108,6 +111,8 @@ class StreamingTool(DemoTool):
 class FakeFeishuClient:
     def __init__(self) -> None:
         self.sent_messages: list[dict[str, object]] = []
+        self.added_reactions: list[dict[str, str]] = []
+        self.removed_reactions: list[dict[str, str]] = []
         self.started = False
         self.handler: Callable[[dict[str, object]], None] | None = None
 
@@ -126,6 +131,54 @@ class FakeFeishuClient:
                 "text": text,
             }
         )
+
+    def add_reaction(self, message_id: str, reaction_type: str) -> str | None:
+        reaction_id = f"reaction:{message_id}:{reaction_type}"
+        self.added_reactions.append(
+            {
+                "message_id": message_id,
+                "reaction_type": reaction_type,
+                "reaction_id": reaction_id,
+            }
+        )
+        return reaction_id
+
+    def remove_reaction(self, message_id: str, reaction_id: str) -> None:
+        self.removed_reactions.append(
+            {
+                "message_id": message_id,
+                "reaction_id": reaction_id,
+            }
+        )
+
+
+class _FakeReactionCreateResponse:
+    def __init__(self, reaction_id: str = "reaction_id") -> None:
+        self.code = 0
+        self.msg = "ok"
+        self.data = type("Data", (), {"reaction_id": reaction_id})()
+
+    def success(self) -> bool:
+        return True
+
+
+class _FakeMessageReactionAPI:
+    def __init__(self) -> None:
+        self.created_request = None
+
+    def create(self, request: object) -> _FakeReactionCreateResponse:
+        self.created_request = request
+        return _FakeReactionCreateResponse()
+
+
+class _FakeImV1:
+    def __init__(self) -> None:
+        self.message_reaction = _FakeMessageReactionAPI()
+
+
+class _FakeSdkClient:
+    def __init__(self) -> None:
+        self.im = type("Im", (), {"v1": _FakeImV1()})()
 
 
 def make_text_event(
@@ -321,6 +374,22 @@ def test_feishu_adapter_projects_tool_result_without_echoing_full_content() -> N
     }
 
 
+def test_official_feishu_client_wraps_reaction_type_as_emoji() -> None:
+    client = OfficialFeishuBotClient("app", "secret")
+    fake_sdk_client = _FakeSdkClient()
+    client._client = fake_sdk_client  # type: ignore[assignment]
+
+    reaction_id = client.add_reaction("om_message_1", FEISHU_REACTION_IN_PROGRESS)
+
+    assert reaction_id == "reaction_id"
+    request = fake_sdk_client.im.v1.message_reaction.created_request
+    assert request is not None
+    body = request.request_body
+    assert body is not None
+    assert body.reaction_type is not None
+    assert body.reaction_type.emoji_type == FEISHU_REACTION_IN_PROGRESS
+
+
 def test_feishu_host_lazy_binds_and_replies(tmp_path: Path) -> None:
     client = FakeFeishuClient()
     config = FeishuAppConfig(
@@ -345,6 +414,24 @@ def test_feishu_host_lazy_binds_and_replies(tmp_path: Path) -> None:
     assert outbound == [{"chat_id": "oc_chat_1", "thread_id": None, "text": "hello via feishu"}]
     binding = gateway.get_binding("feishu", "feishu:chat:oc_chat_1")
     assert binding.session_id == "feishu-session:feishu:chat:oc_chat_1"
+    assert client.added_reactions == [
+        {
+            "message_id": "om_message_1",
+            "reaction_type": FEISHU_REACTION_IN_PROGRESS,
+            "reaction_id": f"reaction:om_message_1:{FEISHU_REACTION_IN_PROGRESS}",
+        },
+        {
+            "message_id": "om_message_1",
+            "reaction_type": FEISHU_REACTION_COMPLETED,
+            "reaction_id": f"reaction:om_message_1:{FEISHU_REACTION_COMPLETED}",
+        },
+    ]
+    assert client.removed_reactions == [
+        {
+            "message_id": "om_message_1",
+            "reaction_id": f"reaction:om_message_1:{FEISHU_REACTION_IN_PROGRESS}",
+        }
+    ]
 
 
 def test_feishu_host_supports_command_approval(tmp_path: Path) -> None:
@@ -524,6 +611,44 @@ def test_feishu_host_dedupes_duplicate_user_message(tmp_path: Path) -> None:
 
     assert first == [{"chat_id": "oc_chat_1", "thread_id": None, "text": "hello once"}]
     assert second == []
+    assert [item["reaction_type"] for item in client.added_reactions] == [
+        FEISHU_REACTION_IN_PROGRESS,
+        FEISHU_REACTION_COMPLETED,
+    ]
+
+
+def test_feishu_host_marks_missing_session_control_as_completed(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(config=config, model=StaticModel(message="unused"))
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+    )
+
+    outbound = host.handle_event(make_text_event("/approve"))
+
+    assert outbound == [
+        {
+            "chat_id": "oc_chat_1",
+            "thread_id": None,
+            "text": "No active session is bound for this chat yet. Send a normal message first.",
+        }
+    ]
+    assert [item["reaction_type"] for item in client.added_reactions] == [
+        FEISHU_REACTION_IN_PROGRESS,
+        FEISHU_REACTION_COMPLETED,
+    ]
 
 
 def test_feishu_host_dedupes_duplicate_control_message(tmp_path: Path) -> None:

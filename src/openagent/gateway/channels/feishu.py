@@ -25,6 +25,12 @@ class FeishuBotClient(Protocol):
     def send_text(self, chat_id: str, text: str, thread_id: str | None = None) -> None:
         """Send a text reply to a Feishu chat or thread."""
 
+    def add_reaction(self, message_id: str, reaction_type: str) -> str | None:
+        """Add a reaction to a Feishu message and return its reaction id when available."""
+
+    def remove_reaction(self, message_id: str, reaction_id: str) -> None:
+        """Remove a previously created reaction from a Feishu message."""
+
 
 @dataclass(slots=True)
 class FeishuChannelAdapter:

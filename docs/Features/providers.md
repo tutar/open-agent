@@ -1,0 +1,23 @@
+# Providers
+
+当前已经有真实 LLM provider adapter。
+
+## 当前支持
+
+- `OpenAIChatCompletionsModelAdapter`
+- `AnthropicMessagesModelAdapter`
+- `load_model_from_env()`
+- stdlib-based `UrllibHttpTransport`
+- `OPENAGENT_PROVIDER=openai`
+- `OPENAGENT_PROVIDER=anthropic`
+- 自定义 `OPENAGENT_BASE_URL`
+- provider-level tool definition projection
+- provider response -> `ToolCall` 解析 baseline
+
+这些 provider adapter 当前归属 `harness/providers`，而不是 agent 根目录。当前 OpenAgent host 会在设置 `OPENAGENT_MODEL` 时自动尝试加载真实 provider。
+
+## 当前不支持
+
+- provider-native streaming SSE
+- provider-specific advanced options 全量映射
+

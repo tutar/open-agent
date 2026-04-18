@@ -76,13 +76,13 @@
 2. 先补 object model 或 interface
 3. 再做最小实现
 4. 立刻补测试
-5. 更新 `todo.md` 和相关文档
+5. 更新 `docs/Features/`、`docs/Proposals/` 和相关文档
 
 优先同步这些文档：
 
 - `README.md`
-- `docs/features.md`
+- `docs/Features/`
+- `docs/Proposals/`
 - `docs/developer-guide/contributing.md`
 - `docs/developer-guide/architecture.md`
 - `docs/developer-guide/internals/`
-- `todo.md`

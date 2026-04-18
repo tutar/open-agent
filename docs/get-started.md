@@ -226,7 +226,8 @@ openagent-feishu
 
 ## Next Docs
 
-- 运行时能力说明：[`features.md`](./features.md)
+- 按 feature 拆分的能力文档：[`Features/README.md`](./Features/README.md)
+- 计划中和待讨论 feature：[`Proposals/README.md`](./Proposals/README.md)
 - 开发者文档：[`developer-guide/README.md`](./developer-guide/README.md)
 - 飞书真实联调：[`developer-guide/feishu-e2e-debugging.md`](./developer-guide/feishu-e2e-debugging.md)
 - 飞书自动化 E2E：[`developer-guide/feishu-e2e-tests.md`](./developer-guide/feishu-e2e-tests.md)

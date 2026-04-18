@@ -113,7 +113,8 @@ feishu-host> agent send_text
 - `README.md` 是否需要更新
 - `docs/get-started.md` 是否需要更新
 - `docs/developer-guide/` 下相关文档是否同步
-- `todo.md` 是否新增或消除待办
+- `docs/Features/` 是否同步当前已实现能力边界
+- 如果涉及新 feature 方案，`docs/Proposals/` 是否已同步
 
 ## 7. Merge Decision
 
@@ -122,4 +123,4 @@ feishu-host> agent send_text
 - CI 门禁全部通过
 - 本次改动影响到的模块都有测试覆盖
 - 如果涉及 Feishu 链路，至少完成对应的私聊或群聊真实 E2E
-- 文档和 `todo.md` 已同步
+- 文档已同步；若涉及新 feature 设计，`docs/Proposals/` 已同步
