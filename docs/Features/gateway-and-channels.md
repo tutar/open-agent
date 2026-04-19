@@ -48,6 +48,8 @@ Feishu 是同一个 unified host 上的 chat channel。
   - completed
   - failed
   - interrupted
+- reply card 会消费 `assistant_delta`，在同一张卡片上增量追加回复内容
+- 为避免飞书远程更新过慢，Feishu 会按短时间窗口聚合多个 delta 再刷新卡片；终态会立即强制 flush
 - 审批卡片按钮：
   - approve
   - reject
@@ -76,6 +78,7 @@ terminal TUI 当前基于 `React + Ink + Yoga`。
 - 直连 openagent host 的 terminal 端口
 - 多 session 创建和切换
 - 消息发送
+- `assistant_delta` 的实时增量显示
 - tool demo
 - requires_action 审批
 - `/resume` 事件回放

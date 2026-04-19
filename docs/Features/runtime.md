@@ -20,14 +20,13 @@
 - 审批后的 `continue_turn(...)`
 - single-shot `generate(...)`
 - streaming `stream_generate(...)`
+- real provider-backed assistant token streaming when the model adapter implements `stream_generate(...)`
 - turn-level cancellation baseline
 - timeout baseline
 - retry baseline
 
 ## 当前不支持
 
-- model token streaming
 - tool-aware cancellation recovery
 - full retry policy customization
 - full timeout semantics for every streaming backend
-

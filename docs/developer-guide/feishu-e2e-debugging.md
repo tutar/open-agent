@@ -26,6 +26,7 @@
 - 普通文本消息
 - reply card 创建
 - CardKit 流式更新或同卡 patch 降级
+- `assistant_delta` 驱动的增量正文更新
 - approval/progress card 状态流
 
 当前不覆盖：
@@ -128,6 +129,7 @@ uv run openagent-host
 - 从飞书长连接接收消息与 card action 事件
 - 归一化消息并注入 gateway
 - 将 agent 的单 turn reply card 回写到飞书；优先走 CardKit 流式更新，必要时降级为对同一张消息卡片做 patch 更新
+- 消费 `assistant_delta`，在同一张 reply card 上持续追加回复正文
 
 ## Find The Target Contact
 
@@ -196,6 +198,8 @@ feishu-host> skipped duplicate inbound message_id=...
 - 已归一化为 gateway 可处理的输入
 - 已为原消息打上“处理中” reaction（`emoji_type=OneSecond`）
 - 已创建单 turn reply card，并优先切到 CardKit 流式更新
+- 如果 provider 启用了 streaming，会看到多次 `assistant_delta` 对应的卡片更新，而不是只在终态一次性写入整段正文
+- Feishu 会对极短时间内的多个 delta 做窗口聚合，所以卡片看起来会比模型原始 token 流稍慢，但不会拖到整段完成后才统一输出
 - 如果 CardKit 权限或平台能力不足，会降级到同一张消息卡片的 patch 更新，而不是重建新卡
 - 已将原消息从“处理中”切换到“完成” reaction（`emoji_type=DONE`）
 - 同一条飞书消息如果被平台重复投递，会按 `message_id` 被 host 去重
@@ -244,6 +248,7 @@ feishu-session:<conversation_id>
 
 - 发送 `run stream`
 - 期望 reply card 先进入 `running`
+- 若当前 provider 支持 streaming，期望在 `running` 状态下看到正文逐步追加
 - 最终进入 `completed`
 
 ## Troubleshooting

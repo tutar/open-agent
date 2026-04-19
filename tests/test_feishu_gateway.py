@@ -22,7 +22,7 @@ from openagent.gateway.channels.feishu.cards import (
     FeishuReplyCardRecord,
     FileFeishuCardDeliveryStore,
 )
-from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.harness import ModelStreamEvent, ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import ToolResult
 from openagent.tools import (
     PermissionDecision,
@@ -40,6 +40,19 @@ class StaticModel:
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
         del request
         return ModelTurnResponse(assistant_message=self.message)
+
+
+@dataclass(slots=True)
+class StreamingAssistantModel:
+    chunks: list[ModelStreamEvent]
+
+    def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        del request
+        raise AssertionError("Streaming path should use stream_generate")
+
+    def stream_generate(self, request: ModelTurnRequest) -> Iterator[ModelStreamEvent]:
+        del request
+        yield from self.chunks
 
 
 @dataclass(slots=True)
@@ -233,6 +246,14 @@ class FakeFeishuClient:
                 "reaction_id": reaction_id,
             }
         )
+
+
+@dataclass(slots=True)
+class FakeClock:
+    value: float = 0.0
+
+    def now(self) -> float:
+        return self.value
 
 
 class _FakeReactionCreateResponse:
@@ -958,6 +979,91 @@ def test_feishu_host_falls_back_to_message_patch_when_cardkit_scope_is_missing(
     assert client.updated_cards
     assert client.updated_cards[-1]["message_id"] == persisted.reply_message_id
     assert client.updated_cards[-1]["patched"] is True
+
+
+def test_feishu_host_updates_reply_card_for_assistant_deltas(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(
+        config=config,
+        model=StreamingAssistantModel(
+            chunks=[
+                ModelStreamEvent(assistant_delta="hello "),
+                ModelStreamEvent(assistant_delta="world"),
+            ]
+        ),
+    )
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    store = FileFeishuCardDeliveryStore(str(tmp_path / "delivery.json"))
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+        card_delivery_store=store,
+    )
+
+    host.handle_event(make_text_event("stream hello", message_id="om_stream_delta"))
+
+    assert client.sent_cards != []
+    assert len(client.updated_cards) >= 2
+    final_record = store.get_by_request_message_id("om_stream_delta")
+    assert final_record is not None
+    assert final_record.assistant_message == "hello world"
+    assert "hello world" in json.dumps(final_record.latest_card, ensure_ascii=False)
+
+
+def test_feishu_host_batches_assistant_deltas_before_flushing_card(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    client.resolve_card_error = RuntimeError(
+        "Feishu resolve_card_id failed: code=99991672 msg=Access denied. "
+        "One of the following scopes is required: [cardkit:card:read]."
+    )
+    clock = FakeClock(value=100.0)
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(
+        config=config,
+        model=StreamingAssistantModel(
+            chunks=[
+                ModelStreamEvent(assistant_delta="hello "),
+                ModelStreamEvent(assistant_delta="world"),
+            ]
+        ),
+    )
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    store = FileFeishuCardDeliveryStore(str(tmp_path / "delivery.json"))
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+        card_delivery_store=store,
+        current_time=clock.now,
+        stream_flush_interval_seconds=0.15,
+    )
+
+    host.handle_event(make_text_event("stream hello", message_id="om_stream_batched"))
+
+    patched_cards = [item for item in client.updated_cards if item.get("patched") is True]
+    assert len(patched_cards) == 4
+    assert patched_cards[-1]["card"]["header"]["title"]["content"] == "OpenAgent · Completed"
+    final_record = store.get_by_request_message_id("om_stream_batched")
+    assert final_record is not None
+    assert final_record.assistant_message == "hello world"
 
 
 def test_feishu_host_handles_long_connection_card_action_event(tmp_path: Path) -> None:

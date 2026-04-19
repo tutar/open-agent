@@ -1,10 +1,12 @@
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from openagent.harness import (
     FileModelIoCapture,
     ModelProviderExchange,
+    ModelStreamEvent,
     ModelTurnRequest,
     ModelTurnResponse,
     SimpleHarness,
@@ -45,6 +47,47 @@ class FakeTransport:
         self.seen_payload = payload
         self.seen_headers = headers
         return HttpResponse(status_code=200, body=self.response_body)
+
+    def post_json_stream(
+        self,
+        url: str,
+        payload: JsonObject,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> Iterator[str]:
+        del url, payload, headers, timeout_seconds
+        raise AssertionError("Streaming path should not use FakeTransport.post_json_stream")
+
+
+@dataclass(slots=True)
+class FakeStreamingTransport:
+    stream_lines: list[str]
+    seen_url: str | None = None
+    seen_payload: JsonObject | None = None
+    seen_headers: dict[str, str] = field(default_factory=dict)
+
+    def post_json(
+        self,
+        url: str,
+        payload: JsonObject,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> HttpResponse:
+        del url, payload, headers, timeout_seconds
+        raise AssertionError("Streaming path should not use FakeStreamingTransport.post_json")
+
+    def post_json_stream(
+        self,
+        url: str,
+        payload: JsonObject,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> Iterator[str]:
+        del timeout_seconds
+        self.seen_url = url
+        self.seen_payload = payload
+        self.seen_headers = headers
+        yield from self.stream_lines
 
 
 @dataclass(slots=True)
@@ -149,6 +192,46 @@ def test_openai_chat_adapter_builds_tool_payload_and_parses_tool_calls() -> None
     assert response.tool_calls == [
         ToolCall(tool_name="echo", arguments={"text": "payload"}, call_id="call_1")
     ]
+
+
+def test_openai_chat_adapter_streams_deltas_and_sets_stream_true() -> None:
+    transport = FakeStreamingTransport(
+        stream_lines=[
+            'data: {"choices":[{"delta":{"content":"hello "}}]}\n',
+            "\n",
+            (
+                'data: {"choices":[{"delta":{"content":"world"}}],'
+                '"usage":{"prompt_tokens":3,"completion_tokens":2}}\n'
+            ),
+            "\n",
+            "data: [DONE]\n",
+            "\n",
+        ]
+    )
+    adapter = OpenAIChatCompletionsModelAdapter(
+        model="gpt-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+
+    events = list(
+        adapter.stream_generate(
+            ModelTurnRequest(
+                session_id="sess_stream",
+                messages=[{"role": "user", "content": "stream"}],
+            )
+        )
+    )
+
+    assert transport.seen_url == "http://127.0.0.1:8001/v1/chat/completions"
+    assert transport.seen_payload is not None
+    assert transport.seen_payload["stream"] is True
+    assert [event.assistant_delta for event in events[:-1]] == ["hello ", "world"]
+    assert events[-1] == ModelStreamEvent(
+        assistant_message="hello world",
+        tool_calls=[],
+        usage={"prompt_tokens": 3, "completion_tokens": 2},
+    )
 
 
 def test_anthropic_adapter_builds_tool_payload_and_parses_tool_use() -> None:

@@ -581,6 +581,7 @@ class SimpleHarness:
         stream_started_at = perf_counter()
         ttft_ms: float | None = None
         stream_deltas: list[str] = []
+        final_usage: JsonObject | None = None
         for stream_event in stream:
             if self._check_cancelled(control):
                 raise CancelledTurn()
@@ -603,12 +604,15 @@ class SimpleHarness:
                 final_message = stream_event.assistant_message
             if stream_event.tool_calls:
                 final_tool_calls = stream_event.tool_calls
+            if stream_event.usage is not None:
+                final_usage = dict(stream_event.usage)
         assistant_message = (
             final_message if final_message is not None else aggregated_message or None
         )
         response = ModelTurnResponse(
             assistant_message=assistant_message,
             tool_calls=final_tool_calls,
+            usage=final_usage,
         )
         return (
             response,

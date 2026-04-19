@@ -68,4 +68,4 @@
 - 群聊被 `@openagent` 命中后，也会先对原消息加“处理中” reaction（`emoji_type=OneSecond`）
 - 当本次消息处理完成后，会移除开始态 reaction，并补一个“完成” reaction（`emoji_type=DONE`）
 - 这套 reaction 状态不进入 transcript，不进入 session memory，也不写入 model context
-
+- 当模型 provider 启用 streaming 时，reply card 也会消费 `assistant_delta` 并增量更新正文

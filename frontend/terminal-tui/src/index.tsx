@@ -68,6 +68,7 @@ function App() {
 	});
 	const socketRef = useRef<Socket | null>(null);
 	const bufferRef = useRef('');
+	const streamingAssistantRef = useRef(false);
 
 	const pushLine = (line: string) => {
 		setLines(prev => [...prev.slice(-(lineLimit - 1)), line]);
@@ -75,6 +76,27 @@ function App() {
 
 	const resetLines = () => {
 		setLines([helpText]);
+		streamingAssistantRef.current = false;
+	};
+
+	const updateAssistantLine = (content: string) => {
+		const line = `assistant> ${content}`;
+		setLines(prev => {
+			if (
+				streamingAssistantRef.current &&
+				prev.length > 0 &&
+				prev[prev.length - 1]?.startsWith('assistant> ')
+			) {
+				return [...prev.slice(0, -1), line];
+			}
+			return [...prev.slice(-(lineLimit - 1)), line];
+		});
+		streamingAssistantRef.current = true;
+	};
+
+	const finalizeAssistantLine = (content: string) => {
+		updateAssistantLine(content);
+		streamingAssistantRef.current = false;
 	};
 
 	useEffect(() => {
@@ -128,7 +150,13 @@ function App() {
 					pushLine(`host> ${message.message}`);
 					continue;
 				}
-				renderBridgeEvent(message, pushLine, setSessionState);
+				renderBridgeEvent(
+					message,
+					pushLine,
+					setSessionState,
+					updateAssistantLine,
+					finalizeAssistantLine,
+				);
 			}
 		});
 
@@ -336,6 +364,8 @@ function renderBridgeEvent(
 	message: BridgeEvent,
 	pushLine: (line: string) => void,
 	setSessionState: React.Dispatch<React.SetStateAction<SessionState>>,
+	updateAssistantLine: (content: string) => void,
+	finalizeAssistantLine: (content: string) => void,
 ) {
 	setSessionState(current => ({
 		...current,
@@ -347,13 +377,18 @@ function renderBridgeEvent(
 		pushLine('system> turn started');
 		return;
 	}
+	if (message.event_type === 'assistant_delta') {
+		const payload = message.payload as {delta?: string};
+		updateAssistantLine(payload.delta ?? '');
+		return;
+	}
 	if (message.event_type === 'assistant_message') {
 		setSessionState(current => ({
 			...current,
 			pendingApproval: false,
 		}));
 		const payload = message.payload as {message?: string};
-		pushLine(`assistant> ${payload.message ?? ''}`);
+		finalizeAssistantLine(payload.message ?? '');
 		return;
 	}
 	if (message.event_type === 'tool_started') {

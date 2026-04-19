@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
 from urllib import request
@@ -27,6 +28,15 @@ class HttpTransport(Protocol):
         timeout_seconds: float,
     ) -> HttpResponse:
         """Send a JSON POST request and return the decoded JSON response."""
+
+    def post_json_stream(
+        self,
+        url: str,
+        payload: JsonObject,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> Iterator[str]:
+        """Send a JSON POST request and yield the text stream response line by line."""
 
 
 class ProviderError(RuntimeError):
@@ -74,3 +84,39 @@ class UrllibHttpTransport:
             raise ProviderError(f"HTTP {exc.code}: {detail}") from exc
         except URLError as exc:
             raise ProviderError(f"Network error: {exc.reason}") from exc
+
+    def post_json_stream(
+        self,
+        url: str,
+        payload: JsonObject,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> Iterator[str]:
+        encoded = json.dumps(payload).encode("utf-8")
+        request_headers = {
+            "Accept": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Content-Type": "application/json",
+            **headers,
+        }
+        http_request = request.Request(
+            url=url,
+            data=encoded,
+            headers=request_headers,
+            method="POST",
+        )
+
+        try:
+            response = request.urlopen(http_request, timeout=timeout_seconds)
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise ProviderError(f"HTTP {exc.code}: {detail}") from exc
+        except URLError as exc:
+            raise ProviderError(f"Network error: {exc.reason}") from exc
+
+        def _iter_lines() -> Iterator[str]:
+            with response:
+                for raw_line in response:
+                    yield raw_line.decode("utf-8", errors="replace")
+
+        return _iter_lines()

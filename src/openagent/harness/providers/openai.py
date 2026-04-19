@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
 from openagent.harness.models import (
     ModelProviderExchange,
+    ModelStreamEvent,
     ModelTurnRequest,
     ModelTurnResponse,
 )
@@ -54,6 +56,44 @@ class OpenAIChatCompletionsModelAdapter:
             transport_metadata={"status_code": response.status_code},
         )
 
+    def stream_generate(self, request: ModelTurnRequest) -> Iterator[ModelStreamEvent]:
+        payload = self._payload(request, stream=True)
+        tool_call_parts: dict[int, JsonObject] = {}
+        aggregated_message = ""
+        usage: JsonObject | None = None
+        for event in self._iter_sse_events(
+            self.transport.post_json_stream(
+                self._endpoint_url(),
+                payload,
+                self._headers(),
+                self.timeout_seconds,
+            )
+        ):
+            choices = event.get("choices")
+            if isinstance(choices, list):
+                for raw_choice in choices:
+                    if not isinstance(raw_choice, dict):
+                        continue
+                    delta = raw_choice.get("delta")
+                    if not isinstance(delta, dict):
+                        continue
+                    content = delta.get("content")
+                    if isinstance(content, str) and content:
+                        aggregated_message += content
+                        yield ModelStreamEvent(assistant_delta=content)
+                    raw_tool_calls = delta.get("tool_calls")
+                    if isinstance(raw_tool_calls, list):
+                        self._accumulate_tool_call_deltas(tool_call_parts, raw_tool_calls)
+            raw_usage = event.get("usage")
+            if isinstance(raw_usage, dict):
+                usage = dict(raw_usage)
+
+        yield ModelStreamEvent(
+            assistant_message=aggregated_message or None,
+            tool_calls=self._finalize_stream_tool_calls(tool_call_parts),
+            usage=usage,
+        )
+
     def _endpoint_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/v1/chat/completions"
 
@@ -63,12 +103,14 @@ class OpenAIChatCompletionsModelAdapter:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def _payload(self, request: ModelTurnRequest) -> JsonObject:
+    def _payload(self, request: ModelTurnRequest, *, stream: bool = False) -> JsonObject:
         messages_payload = self._messages_payload(request)
         payload: JsonObject = {
             "model": self.model,
             "messages": cast(JsonValue, messages_payload),
         }
+        if stream:
+            payload["stream"] = True
         if self.temperature is not None:
             payload["temperature"] = self.temperature
         if self.max_tokens is not None:
@@ -88,6 +130,82 @@ class OpenAIChatCompletionsModelAdapter:
             payload["tools"] = cast(JsonValue, tools_payload)
             payload["tool_choice"] = "auto"
         return payload
+
+    def _iter_sse_events(self, lines: Iterator[str]) -> Iterator[JsonObject]:
+        event_lines: list[str] = []
+        for raw_line in lines:
+            line = raw_line.rstrip("\r\n")
+            if not line:
+                if event_lines:
+                    payload = "\n".join(event_lines)
+                    event_lines = []
+                    if payload == "[DONE]":
+                        break
+                    yield self._parse_sse_json(payload)
+                continue
+            if not line.startswith("data:"):
+                continue
+            event_lines.append(line.removeprefix("data:").strip())
+        if event_lines:
+            payload = "\n".join(event_lines)
+            if payload != "[DONE]":
+                yield self._parse_sse_json(payload)
+
+    def _parse_sse_json(self, payload: str) -> JsonObject:
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise ProviderError("Invalid OpenAI streaming JSON payload") from exc
+        if not isinstance(parsed, dict):
+            raise ProviderError("OpenAI streaming payload must be a JSON object")
+        return parsed
+
+    def _accumulate_tool_call_deltas(
+        self,
+        tool_call_parts: dict[int, JsonObject],
+        raw_tool_calls: Sequence[JsonValue],
+    ) -> None:
+        for raw_item in raw_tool_calls:
+            if not isinstance(raw_item, dict):
+                continue
+            index = raw_item.get("index")
+            if not isinstance(index, int):
+                continue
+            entry = tool_call_parts.setdefault(
+                index,
+                {"id": None, "name": "", "arguments_text": ""},
+            )
+            if raw_item.get("id") is not None:
+                entry["id"] = str(raw_item["id"])
+            function = raw_item.get("function")
+            if isinstance(function, dict):
+                if function.get("name") is not None:
+                    entry["name"] = str(function["name"])
+                arguments = function.get("arguments")
+                if isinstance(arguments, str):
+                    entry["arguments_text"] = str(entry.get("arguments_text", "")) + arguments
+
+    def _finalize_stream_tool_calls(self, tool_call_parts: dict[int, JsonObject]) -> list[ToolCall]:
+        tool_calls: list[ToolCall] = []
+        for index in sorted(tool_call_parts):
+            entry = tool_call_parts[index]
+            arguments_text = str(entry.get("arguments_text", "")).strip()
+            parsed_arguments: JsonObject = {}
+            if arguments_text:
+                try:
+                    loaded = json.loads(arguments_text)
+                except json.JSONDecodeError as exc:
+                    raise ProviderError("Invalid OpenAI streaming tool arguments JSON") from exc
+                if isinstance(loaded, dict):
+                    parsed_arguments = loaded
+            tool_calls.append(
+                ToolCall(
+                    tool_name=str(entry.get("name", "")),
+                    arguments=parsed_arguments,
+                    call_id=str(entry["id"]) if entry.get("id") is not None else None,
+                )
+            )
+        return tool_calls
 
     def _messages_payload(self, request: ModelTurnRequest) -> list[JsonObject]:
         messages = [self._message_payload(message) for message in request.messages]

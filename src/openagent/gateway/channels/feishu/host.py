@@ -10,6 +10,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import time
 from typing import Any, cast
 
 from openagent.object_model import JsonObject
@@ -79,6 +80,8 @@ class FeishuLongConnectionHost:
     dedupe_store: InMemoryFeishuInboundDedupeStore | FileFeishuInboundDedupeStore | None = None
     card_delivery_store: FileFeishuCardDeliveryStore | None = None
     retry_interval_seconds: float = 5.0
+    stream_flush_interval_seconds: float = 0.15
+    current_time: Callable[[], float] = time
     _in_progress_reactions: dict[str, str | None] = field(default_factory=dict, init=False)
     _card_lock: threading.Lock = field(default_factory=threading.Lock, init=False)
     _retry_stop: threading.Event = field(default_factory=threading.Event, init=False)
@@ -273,7 +276,9 @@ class FeishuLongConnectionHost:
             if card_record is not None and self._should_use_reply_card(event_type):
                 with self._card_lock:
                     apply_runtime_event_to_card(card_record, event_type, normalized_payload)
-                    delivered = self._sync_card_delivery(card_record)
+                    delivered = False
+                    if self._should_flush_card(card_record, event_type):
+                        delivered = self._sync_card_delivery(card_record)
                     if self.card_delivery_store is not None:
                         self.card_delivery_store.upsert(card_record)
                 outbound_messages.append(
@@ -416,6 +421,7 @@ class FeishuLongConnectionHost:
     def _should_use_reply_card(self, event_type: str) -> bool:
         return event_type in {
             "turn_started",
+            "assistant_delta",
             "assistant_message",
             "requires_action",
             "tool_started",
@@ -555,6 +561,8 @@ class FeishuLongConnectionHost:
                     self.client.update_card(record.reply_message_id, record.latest_card)
 
             record.mark_delivery_success()
+            record.dirty = False
+            record.last_flush_at = self.current_time()
             return True
         except Exception as exc:  # pragma: no cover
             print(
@@ -567,6 +575,15 @@ class FeishuLongConnectionHost:
                 retry_delay_seconds=self.retry_interval_seconds,
             )
             return False
+
+    def _should_flush_card(self, record: FeishuReplyCardRecord, event_type: str) -> bool:
+        if record.reply_message_id is None or record.delivery_pending:
+            return True
+        if event_type != "assistant_delta":
+            return True
+        if not record.dirty:
+            return False
+        return (self.current_time() - record.last_flush_at) >= self.stream_flush_interval_seconds
 
     def _is_cardkit_permission_error(self, exc: Exception) -> bool:
         message = str(exc)

@@ -40,6 +40,8 @@ class FeishuReplyCardRecord:
     retry_count: int = 0
     next_retry_at: float = 0.0
     last_error: str | None = None
+    dirty: bool = True
+    last_flush_at: float = 0.0
     updated_at: float = field(default_factory=time)
 
     def to_dict(self) -> JsonObject:
@@ -90,6 +92,8 @@ class FeishuReplyCardRecord:
             retry_count=_int_value(data.get("retry_count"), default=0),
             next_retry_at=_float_value(data.get("next_retry_at"), default=0.0),
             last_error=str(data["last_error"]) if data.get("last_error") is not None else None,
+            dirty=bool(data.get("dirty", True)),
+            last_flush_at=_float_value(data.get("last_flush_at"), default=0.0),
             updated_at=_float_value(data.get("updated_at"), default=time()),
         )
 
@@ -240,6 +244,7 @@ def make_initial_card_record(
     )
     record.ensure_stream_uuid()
     record.latest_card = render_reply_card(record)
+    record.dirty = True
     return record
 
 
@@ -250,7 +255,12 @@ def apply_runtime_event_to_card(
 ) -> None:
     """Fold a runtime event into the persisted card state."""
 
-    if event_type == "assistant_message":
+    if event_type == "assistant_delta":
+        delta = str(payload.get("delta", ""))
+        if delta:
+            record.assistant_message = (record.assistant_message or "") + delta
+            record.status = "running"
+    elif event_type == "assistant_message":
         message = str(payload.get("message", "")).strip()
         if message:
             record.assistant_message = message
@@ -294,6 +304,7 @@ def apply_runtime_event_to_card(
         if record.status_message in {None, "Processing your request..."}:
             record.status_message = "Completed."
     record.latest_card = render_reply_card(record)
+    record.dirty = True
     record.updated_at = time()
 
 
@@ -304,6 +315,7 @@ def mark_card_action_running(record: FeishuReplyCardRecord, action_name: str) ->
     record.approval_tool_name = None
     record.status_message = "Applying your decision..."
     record.latest_card = render_reply_card(record)
+    record.dirty = True
     record.updated_at = time()
 
 
