@@ -3,13 +3,13 @@
 `openagent` 现在按统一 host 模型运行：
 
 - Python host 负责拉起唯一的 `Gateway + runtime + session/memory`
-- `terminal` 和 `feishu` 都只是这个 host 上的 channel
+- `terminal`、`feishu` 和 `wechat` 都只是这个 host 上的 channel
 - `--channel ...` 只表示启动时预加载哪些 channel
 - 未预加载的 channel 可以在运行中通过 `/channel <name>` 加载
 
 最重要的结论只有一句：
 
-先启动 `openagent host`，再让 TUI 或 Feishu 接入它。
+先启动 `openagent host`，再让 TUI、Feishu 或 WeChat 接入它。
 
 下面所有命令都以项目根目录为当前工作目录执行。源码 checkout 下推荐统一使用 `uv run openagent-host`。
 
@@ -218,6 +218,42 @@ openagent-host --channel feishu
 ```
 
 这些运行中输入的值只在当前 host 进程内有效，不会写回环境变量，也不会落盘。
+
+## Quickstart 5: Load WeChat Private Chat On The Same Host
+
+微信私聊通道使用 Python `wechatbot-sdk` 直连，不需要额外 sidecar 进程。
+
+先安装可选依赖：
+
+```bash
+uv sync --extra wechat
+```
+
+推荐至少配置允许的私聊发送人：
+
+```bash
+export OPENAGENT_WECHAT_ALLOWED_SENDERS=wx_user_1,wx_user_2
+export OPENAGENT_WORKSPACE_ROOT=$PWD
+uv run openagent-host --channel wechat
+```
+
+也可以运行中加载：
+
+```text
+/channel-config wechat allowed_senders wx_user_1,wx_user_2
+/channel wechat
+```
+
+可选配置：
+
+```text
+/channel-config wechat base_url https://ilinkai.weixin.qq.com
+/channel-config wechat cred_path .openagent/wechat/credentials.json
+```
+
+首次启动时 SDK 会触发二维码登录流程。更详细的私聊链路、代码地图和测试方式见：
+
+- `docs/developer-guide/wechat-private-chat.md`
 
 Feishu 当前审批交互不再依赖聊天里的 `/approve`、`/reject`，而是通过 reply card 上的 `Approve` / `Reject` 按钮完成。`interrupt`、`resume` 继续属于主动控制指令，不承载在审批卡片按钮中。
 

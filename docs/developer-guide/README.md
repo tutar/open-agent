@@ -31,6 +31,10 @@
   - 可执行的本地真实网络测试
   - `pytest -m feishu_e2e`
   - 私聊与指定群聊验证
+- [WeChat Private Chat Channel](./wechat-private-chat.md)
+  - `wechatbot-sdk` 私聊通道接入方式
+  - `/channel wechat` 运行时加载
+  - allowlist、session binding 和代码地图
 - [Firecrawl Local Testing](./firecrawl-local-testing.md)
   - `WebFetch / WebSearch` 的 Firecrawl backend 本地联调
   - Docker Compose 启动方式
