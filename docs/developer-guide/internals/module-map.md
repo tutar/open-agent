@@ -139,6 +139,9 @@
 - `gateway/channels/feishu/assembly.py`
   - Feishu-specific runtime / gateway / host assembly 已经归到 channel 子包旁边
   - `gateway/assemblies/feishu.py` 只保留兼容导出
+- `gateway/channels/wechat/assembly.py`
+  - WeChat-specific runtime / gateway / host assembly 归到 channel 子包旁边
+  - `gateway/assemblies/wechat.py` 只保留兼容导出
 
 ## Refactor Rules
 
@@ -242,6 +245,16 @@
 - `gateway/channels/tui/transport.py`
 
 这里的 `tui` 是目录名，不是新的 channel 名；canonical channel 仍然是 `terminal`。
+
+`wechat` channel 当前收口为：
+
+- `gateway/channels/wechat/adapter.py`
+- `gateway/channels/wechat/client.py`
+- `gateway/channels/wechat/host.py`
+- `gateway/channels/wechat/dedupe.py`
+- `gateway/channels/wechat/assembly.py`
+
+这里的实现只负责微信私聊到 Gateway 的投影和 host glue，二维码登录、长轮询与 `context_token` 管理由 `wechatbot-sdk` 负责。
 
 ## Recommended Reading Order
 

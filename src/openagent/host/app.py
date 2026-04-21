@@ -12,7 +12,10 @@ from openagent.gateway import (
     FeishuAppConfig,
     FeishuChannelAdapter,
     TerminalChannelAdapter,
+    WechatAppConfig,
+    WechatChannelAdapter,
     create_feishu_host,
+    create_wechat_host,
 )
 from openagent.gateway.channels.tui import _TerminalConnectionHandler, _ThreadingTCPServer
 from openagent.harness import ModelProviderAdapter
@@ -50,7 +53,7 @@ class OpenAgentHost:
             binding_root=self.config.binding_root,
         )
         self._loaded_channels: set[str] = set()
-        self._available_channels: tuple[str, ...] = ("terminal", "feishu")
+        self._available_channels: tuple[str, ...] = ("terminal", "feishu", "wechat")
         self._channel_runtime_config: dict[str, dict[str, str]] = {}
         self._lock = threading.Lock()
         self._terminal_server: _ThreadingTCPServer | None = None
@@ -84,6 +87,10 @@ class OpenAgentHost:
                 self._load_feishu_channel()
                 self._loaded_channels.add(channel)
                 return
+            if channel == "wechat":
+                self._load_wechat_channel()
+                self._loaded_channels.add(channel)
+                return
             raise ValueError(f"Unsupported channel: {channel}")
 
     def describe_channels(self) -> JsonObject:
@@ -92,6 +99,9 @@ class OpenAgentHost:
             "/channel <name>",
             "/channel-config feishu app_id <value>",
             "/channel-config feishu app_secret <value>",
+            "/channel-config wechat base_url <value>",
+            "/channel-config wechat cred_path <value>",
+            "/channel-config wechat allowed_senders <comma-separated>",
         ]
         return {
             "loaded": cast(list[JsonValue], sorted(self._loaded_channels)),
@@ -106,10 +116,14 @@ class OpenAgentHost:
 
     def set_channel_config(self, channel_name: str, key: str, value: str) -> JsonObject:
         channel = channel_name.strip().lower()
-        if channel != "feishu":
+        if channel == "feishu":
+            if key not in {"app_id", "app_secret"}:
+                return {"type": "error", "message": f"unsupported feishu config key: {key}"}
+        elif channel == "wechat":
+            if key not in {"base_url", "cred_path", "allowed_senders"}:
+                return {"type": "error", "message": f"unsupported wechat config key: {key}"}
+        else:
             return {"type": "error", "message": f"unsupported channel config target: {channel}"}
-        if key not in {"app_id", "app_secret"}:
-            return {"type": "error", "message": f"unsupported feishu config key: {key}"}
         self._channel_runtime_config.setdefault(channel, {})[key] = value
         return {
             "type": "status",
@@ -138,7 +152,10 @@ class OpenAgentHost:
                     self._management_response(
                         "error",
                         "usage: /channel-config feishu app_id <value> | "
-                        "/channel-config feishu app_secret <value>",
+                        "/channel-config feishu app_secret <value> | "
+                        "/channel-config wechat base_url <value> | "
+                        "/channel-config wechat cred_path <value> | "
+                        "/channel-config wechat allowed_senders <comma-separated>",
                     )
                 ]
             _, channel_name, key, value = parts
@@ -207,6 +224,25 @@ class OpenAgentHost:
         thread.start()
         self._channel_threads.append(thread)
 
+    def _load_wechat_channel(self) -> None:
+        config = self._resolve_wechat_config()
+        try:
+            self.gateway.get_channel_adapter("wechat")
+        except KeyError:
+            self.gateway.register_channel(WechatChannelAdapter())
+        host = create_wechat_host(
+            self.gateway,
+            config,
+            management_handler=self.handle_management_command,
+        )
+        thread = threading.Thread(
+            target=host.run,
+            name="openagent-wechat-host",
+            daemon=True,
+        )
+        thread.start()
+        self._channel_threads.append(thread)
+
     def _default_tools(self) -> list[ToolDefinition]:
         tools = cast(
             list[ToolDefinition],
@@ -237,6 +273,11 @@ class OpenAgentHost:
                 )
             self.ensure_channel_loaded("feishu")
             return self._management_response("status", "feishu channel loaded")
+        if channel == "wechat":
+            if "wechat" in self._loaded_channels:
+                return self._management_response("status", "wechat channel is already loaded")
+            self.ensure_channel_loaded("wechat")
+            return self._management_response("status", "wechat channel loaded")
         return self._management_response("error", f"unsupported channel: {channel}")
 
     def _missing_feishu_config_fields(self) -> list[str]:
@@ -282,6 +323,47 @@ class OpenAgentHost:
             lock_root=lock_root,
             mention_required_in_group=mention_required,
             card_state_root=card_state_root,
+        )
+
+    def _resolve_wechat_config(self) -> WechatAppConfig:
+        runtime_config = self._channel_runtime_config.get("wechat", {})
+        session_root = os.getenv(
+            "OPENAGENT_SESSION_ROOT",
+            str(Path(".openagent") / "wechat" / "sessions"),
+        )
+        binding_root = os.getenv(
+            "OPENAGENT_BINDING_ROOT",
+            str(Path(session_root) / "bindings"),
+        )
+        allowed_senders_value = cast(
+            str,
+            runtime_config.get("allowed_senders")
+            or os.getenv("OPENAGENT_WECHAT_ALLOWED_SENDERS", ""),
+        )
+        base_url = cast(
+            str,
+            runtime_config.get("base_url")
+            or os.getenv("OPENAGENT_WECHAT_BASE_URL", "https://ilinkai.weixin.qq.com"),
+        )
+        cred_path = cast(
+            str,
+            runtime_config.get("cred_path")
+            or os.getenv(
+                "OPENAGENT_WECHAT_CRED_PATH",
+                str(Path(".openagent") / "wechat" / "credentials.json"),
+            ),
+        )
+        return WechatAppConfig(
+            base_url=base_url,
+            cred_path=cred_path,
+            session_root=session_root,
+            binding_root=binding_root,
+            allowed_senders=tuple(
+                sender.strip()
+                for sender in allowed_senders_value.split(",")
+                if sender.strip()
+            ),
+            workspace_root=self.config.workspace_root,
         )
 
     def _management_response(

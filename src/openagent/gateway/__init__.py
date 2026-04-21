@@ -1,7 +1,7 @@
 """Gateway package exports."""
 
 from .binding_store import FileSessionBindingStore
-from .channels import FeishuChannelAdapter, TerminalChannelAdapter
+from .channels import FeishuChannelAdapter, TerminalChannelAdapter, WechatChannelAdapter
 from .channels.feishu import (
     FEISHU_REACTION_COMPLETED,
     FEISHU_REACTION_IN_PROGRESS,
@@ -17,6 +17,18 @@ from .channels.feishu import (
     create_feishu_host,
     create_feishu_host_from_env,
     create_feishu_runtime,
+)
+from .channels.wechat import (
+    FileWechatInboundDedupeStore,
+    InMemoryWechatInboundDedupeStore,
+    WechatAppConfig,
+    WechatBotClient,
+    WechatPrivateChatHost,
+    WechatSdkClient,
+    create_wechat_gateway,
+    create_wechat_host,
+    create_wechat_host_from_env,
+    create_wechat_runtime,
 )
 from .core import Gateway
 from .interfaces import ChannelAdapter, SessionAdapter, SessionBindingStore
@@ -44,9 +56,11 @@ __all__ = [
     "FileFeishuCardDeliveryStore",
     "FeishuHostRunLock",
     "FeishuLongConnectionHost",
+    "FileWechatInboundDedupeStore",
     "Gateway",
     "InboundEnvelope",
     "InMemoryFeishuInboundDedupeStore",
+    "InMemoryWechatInboundDedupeStore",
     "InProcessSessionAdapter",
     "LocalSessionHandle",
     "NormalizedInboundMessage",
@@ -55,8 +69,17 @@ __all__ = [
     "SessionBinding",
     "SessionBindingStore",
     "TerminalChannelAdapter",
+    "WechatAppConfig",
+    "WechatBotClient",
+    "WechatChannelAdapter",
+    "WechatPrivateChatHost",
+    "WechatSdkClient",
     "create_feishu_gateway",
     "create_feishu_host",
     "create_feishu_host_from_env",
     "create_feishu_runtime",
+    "create_wechat_gateway",
+    "create_wechat_host",
+    "create_wechat_host_from_env",
+    "create_wechat_runtime",
 ]
