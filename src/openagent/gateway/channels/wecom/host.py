@@ -14,6 +14,8 @@ from .adapter import WeComChannelAdapter, WeComRawEvent
 from .client import WeComBotClient
 from .dedupe import FileWeComInboundDedupeStore, InMemoryWeComInboundDedupeStore
 
+_PROCESSING_MESSAGE = "处理中，请稍候..."
+
 
 @dataclass(slots=True)
 class WeComPrivateChatHost:
@@ -62,6 +64,7 @@ class WeComPrivateChatHost:
                 cast(list[JsonObject], responses),
             )
         self._ensure_binding(channel_identity)
+        self._send_processing_notice(raw_event, channel_identity)
         return self._dispatch_egress(raw_event, self.gateway.process_input(inbound))
 
     def _ensure_binding(self, channel_identity: ChannelIdentity) -> str:
@@ -88,9 +91,23 @@ class WeComPrivateChatHost:
                     raw_event,
                     conversation_id=str(projected["conversation_id"]),
                     text=str(projected["text"]),
+                    finish=True,
                 )
                 outbound_messages.append(projected)
         return outbound_messages
+
+    def _send_processing_notice(
+        self,
+        raw_event: WeComRawEvent,
+        channel_identity: ChannelIdentity,
+    ) -> None:
+        conversation_id = channel_identity.conversation_id or "default"
+        self.client.respond(
+            raw_event,
+            conversation_id=self.adapter.parse_conversation_id(conversation_id),
+            text=_PROCESSING_MESSAGE,
+            finish=False,
+        )
 
     def _dispatch_management_responses(
         self,
@@ -109,6 +126,7 @@ class WeComPrivateChatHost:
                 raw_event,
                 conversation_id=str(projected["conversation_id"]),
                 text=str(projected["text"]),
+                finish=True,
             )
             outbound.append(projected)
         return outbound

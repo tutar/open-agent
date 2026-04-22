@@ -25,7 +25,14 @@ class WeComBotClient(Protocol):
     def close(self) -> None:
         """Stop the client."""
 
-    def respond(self, raw_event: WeComRawEvent, conversation_id: str, text: str) -> None:
+    def respond(
+        self,
+        raw_event: WeComRawEvent,
+        conversation_id: str,
+        text: str,
+        *,
+        finish: bool = True,
+    ) -> None:
         """Respond to a WeCom private-chat message."""
 
 
@@ -47,6 +54,11 @@ class WeComAiBotClient:
         repr=False,
     )
     _websocket: Any | None = field(default=None, init=False, repr=False)
+    _websocket_loop: asyncio.AbstractEventLoop | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     def start(self, event_handler: Callable[[WeComRawEvent], list[JsonObject]]) -> None:
         self._ensure_dependencies()
@@ -71,6 +83,10 @@ class WeComAiBotClient:
 
     def set_websocket(self, websocket: object) -> None:
         self._websocket = websocket
+        try:
+            self._websocket_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._websocket_loop = None
 
     async def subscribe(self, websocket: object) -> None:
         await cast(Any, websocket).send_json(
@@ -102,17 +118,24 @@ class WeComAiBotClient:
             return
         event = self.event_from_frame(frame)
         if event is not None:
-            handler(event)
+            self._dispatch_event_handler(handler, event)
 
-    def respond(self, raw_event: WeComRawEvent, conversation_id: str, text: str) -> None:
+    def respond(
+        self,
+        raw_event: WeComRawEvent,
+        conversation_id: str,
+        text: str,
+        *,
+        finish: bool = True,
+    ) -> None:
         websocket = self._websocket
         if websocket is None:
             return
+        del conversation_id
         reply_context = raw_event.get("reply_context")
         context = dict(reply_context) if isinstance(reply_context, dict) else {}
         stream_id = str(
-            context.get("stream_id")
-            or f"stream_{context.get('msgid') or self._new_req_id()}"
+            context.get("stream_id") or f"stream_{context.get('msgid') or self._new_req_id()}"
         )
         payload: JsonObject = {
             "cmd": "aibot_respond_msg",
@@ -121,7 +144,7 @@ class WeComAiBotClient:
                 "msgtype": "stream",
                 "stream": {
                     "id": stream_id,
-                    "finish": True,
+                    "finish": finish,
                     "content": text,
                 },
             },
@@ -141,10 +164,7 @@ class WeComAiBotClient:
             }
             return self._event_from_callback_frame(nested_frame)
         message_type = str(
-            frame.get("message_type")
-            or frame.get("msgtype")
-            or frame.get("msg_type")
-            or ""
+            frame.get("message_type") or frame.get("msgtype") or frame.get("msg_type") or ""
         )
         if not message_type:
             message_type = self._nested_str(frame, "message", "message_type") or "text"
@@ -227,6 +247,7 @@ class WeComAiBotClient:
                 async with aiohttp.ClientSession() as session:
                     async with session.ws_connect(self.ws_url) as websocket:
                         self._websocket = websocket
+                        self._websocket_loop = asyncio.get_running_loop()
                         print(f"wecom-host> websocket connected url={self.ws_url}", flush=True)
                         await self.subscribe(websocket)
                         delay = self.reconnect_base_seconds
@@ -255,6 +276,7 @@ class WeComAiBotClient:
         finally:
             ping_task.cancel()
             self._websocket = None
+            self._websocket_loop = None
 
     async def _ping_loop(self, websocket: object) -> None:
         while not self._stop.is_set():
@@ -262,12 +284,67 @@ class WeComAiBotClient:
             await self.send_ping(websocket)
 
     def _run_async(self, awaitable: Any) -> None:
+        target_loop = self._websocket_loop
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            asyncio.run(awaitable)
+            if target_loop is not None and target_loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(awaitable, target_loop)
+                future.add_done_callback(self._log_threadsafe_send_error)
+                return
+            try:
+                asyncio.run(awaitable)
+            except Exception as exc:
+                print(f"wecom-host> send failed: {exc}", flush=True)
+                raise
             return
-        loop.create_task(awaitable)
+        task = loop.create_task(awaitable)
+        task.add_done_callback(self._log_async_send_error)
+
+    def _dispatch_event_handler(
+        self,
+        handler: Callable[[WeComRawEvent], list[JsonObject]],
+        event: WeComRawEvent,
+    ) -> None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            handler(event)
+            return
+        thread = threading.Thread(
+            target=self._run_event_handler,
+            args=(handler, event),
+            name="openagent-wecom-handler",
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_event_handler(
+        self,
+        handler: Callable[[WeComRawEvent], list[JsonObject]],
+        event: WeComRawEvent,
+    ) -> None:
+        try:
+            handler(event)
+        except Exception as exc:
+            print(f"wecom-host> handler failed: {exc}", flush=True)
+
+    def _log_async_send_error(self, task: asyncio.Task[Any]) -> None:
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            print(f"wecom-host> send failed: {exc}", flush=True)
+
+    def _log_threadsafe_send_error(self, future: Any) -> None:
+        try:
+            exc = future.exception()
+        except Exception as callback_exc:
+            print(f"wecom-host> send failed: {callback_exc}", flush=True)
+            return
+        if exc is not None:
+            print(f"wecom-host> send failed: {exc}", flush=True)
 
     def _extract_text(self, content: object) -> str:
         if isinstance(content, dict):
@@ -297,14 +374,12 @@ class WeComAiBotClient:
         print(f"wecom-host> received frame cmd={cmd}", flush=True)
         if cmd == "<unknown>":
             print(
-                "wecom-host> unknown frame summary "
-                + self._frame_summary(frame),
+                "wecom-host> unknown frame summary " + self._frame_summary(frame),
                 flush=True,
             )
         if os.getenv("OPENAGENT_WECOM_DEBUG", "").lower() in {"1", "true", "yes"}:
             print(
-                "wecom-host> frame "
-                + json.dumps(frame, ensure_ascii=False, default=str),
+                "wecom-host> frame " + json.dumps(frame, ensure_ascii=False, default=str),
                 flush=True,
             )
 

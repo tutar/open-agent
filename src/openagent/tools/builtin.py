@@ -18,12 +18,16 @@ from openagent.tools.errors import RequiresActionError
 from openagent.tools.models import PermissionDecision, ToolExecutionContext, ToolSource
 from openagent.tools.skills import SkillInvocationBridge
 from openagent.tools.web import (
+    BraveConfig,
+    BraveWebSearchBackend,
     CallableWebSearchBackend,
     DefaultWebFetchBackend,
     DefaultWebSearchBackend,
     FirecrawlConfig,
     FirecrawlWebFetchBackend,
     FirecrawlWebSearchBackend,
+    TavilyConfig,
+    TavilyWebSearchBackend,
     WebFetchBackend,
     WebSearchBackend,
 )
@@ -156,7 +160,7 @@ class WriteTool(_BuiltinTool):
                     ),
                     "content": _string_property(
                         "Full file contents to write.",
-                        examples=["hello world\n", "{\"ok\": true}\n"],
+                        examples=["hello world\n", '{"ok": true}\n'],
                     ),
                 },
                 required=["path", "content"],
@@ -625,7 +629,7 @@ def _resolve_path(root: str, raw_path: str) -> Path:
 
 
 def _default_web_fetch_backend() -> WebFetchBackend:
-    backend_name = os.getenv("OPENAGENT_WEBFETCH_BACKEND", "default").strip().lower()
+    backend_name = _env_value("OPENAGENT_WEBFETCH_BACKEND", "default").strip().lower()
     if backend_name in {"", "default"}:
         return DefaultWebFetchBackend()
     if backend_name == "firecrawl":
@@ -640,22 +644,95 @@ def _default_web_search_backend(
         if isinstance(backend, WebSearchBackend):
             return backend
         return CallableWebSearchBackend(backend)
-    backend_name = os.getenv("OPENAGENT_WEBSEARCH_BACKEND", "default").strip().lower()
+    backend_name = _env_value("OPENAGENT_WEBSEARCH_BACKEND", "default").strip().lower()
     if backend_name in {"", "default"}:
         return DefaultWebSearchBackend()
     if backend_name == "firecrawl":
         return FirecrawlWebSearchBackend(_firecrawl_config_from_env())
+    if backend_name == "tavily":
+        return TavilyWebSearchBackend(_tavily_config_from_env())
+    if backend_name == "brave":
+        return BraveWebSearchBackend(_brave_config_from_env())
     raise RuntimeError(f"Unsupported OPENAGENT_WEBSEARCH_BACKEND: {backend_name}")
 
 
 def _firecrawl_config_from_env() -> FirecrawlConfig:
-    base_url = os.getenv("OPENAGENT_FIRECRAWL_BASE_URL", "").strip()
+    base_url = _env_value("OPENAGENT_FIRECRAWL_BASE_URL", "").strip()
     if not base_url:
         raise RuntimeError(
             "OPENAGENT_FIRECRAWL_BASE_URL is required when using the firecrawl web backend"
         )
-    api_key = os.getenv("OPENAGENT_FIRECRAWL_API_KEY")
+    api_key = _env_value("OPENAGENT_FIRECRAWL_API_KEY")
     return FirecrawlConfig(
         base_url=base_url,
         api_key=api_key.strip() if isinstance(api_key, str) and api_key.strip() else None,
     )
+
+
+def _tavily_config_from_env() -> TavilyConfig:
+    api_key = _env_value("OPENAGENT_TAVILY_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "OPENAGENT_TAVILY_API_KEY is required when using the tavily web search backend"
+        )
+    return TavilyConfig(
+        api_key=api_key,
+        base_url=_env_value("OPENAGENT_TAVILY_BASE_URL", "https://api.tavily.com").strip(),
+        limit=_web_search_limit_from_env(),
+    )
+
+
+def _brave_config_from_env() -> BraveConfig:
+    api_key = _env_value("OPENAGENT_BRAVE_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "OPENAGENT_BRAVE_API_KEY is required when using the brave web search backend"
+        )
+    return BraveConfig(
+        api_key=api_key,
+        base_url=_env_value(
+            "OPENAGENT_BRAVE_BASE_URL",
+            "https://api.search.brave.com",
+        ).strip(),
+        limit=_web_search_limit_from_env(),
+    )
+
+
+def _web_search_limit_from_env() -> int:
+    raw_limit = _env_value("OPENAGENT_WEBSEARCH_LIMIT", "5").strip()
+    try:
+        limit = int(raw_limit)
+    except ValueError as exc:
+        raise RuntimeError("OPENAGENT_WEBSEARCH_LIMIT must be a positive integer") from exc
+    if limit < 1:
+        raise RuntimeError("OPENAGENT_WEBSEARCH_LIMIT must be a positive integer")
+    return limit
+
+
+def _env_value(name: str, default: str = "") -> str:
+    value = os.getenv(name)
+    if value is not None:
+        return value
+    return _load_dotenv_values().get(name, default)
+
+
+def _load_dotenv_values() -> dict[str, str]:
+    dotenv_path = Path(".env")
+    if not dotenv_path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        if key:
+            values[key] = _strip_dotenv_value(raw_value.strip())
+    return values
+
+
+def _strip_dotenv_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value

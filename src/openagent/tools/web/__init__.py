@@ -8,6 +8,7 @@ from openagent.tools.web.backends import (
     WebSearchBackendError,
     WebSearchResult,
 )
+from openagent.tools.web.brave import BraveConfig, BraveWebSearchBackend
 from openagent.tools.web.default_backends import (
     CallableWebSearchBackend,
     DefaultWebFetchBackend,
@@ -18,6 +19,7 @@ from openagent.tools.web.firecrawl import (
     FirecrawlWebFetchBackend,
     FirecrawlWebSearchBackend,
 )
+from openagent.tools.web.tavily import TavilyConfig, TavilyWebSearchBackend
 from openagent.tools.web.transport import (
     UrllibWebBackendHttpTransport,
     WebBackendHttpResponse,
@@ -26,12 +28,16 @@ from openagent.tools.web.transport import (
 )
 
 __all__ = [
+    "BraveConfig",
+    "BraveWebSearchBackend",
     "CallableWebSearchBackend",
     "DefaultWebFetchBackend",
     "DefaultWebSearchBackend",
     "FirecrawlConfig",
     "FirecrawlWebFetchBackend",
     "FirecrawlWebSearchBackend",
+    "TavilyConfig",
+    "TavilyWebSearchBackend",
     "UrllibWebBackendHttpTransport",
     "WebBackendHttpResponse",
     "WebBackendHttpTransport",

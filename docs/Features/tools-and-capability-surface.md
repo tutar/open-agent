@@ -34,6 +34,10 @@
   - default stdlib URL fetch backend
   - default placeholder search backend
   - optional Firecrawl-backed scrape/search backend
+  - optional Tavily-backed `WebSearch`
+  - optional Brave Search-backed `WebSearch`
+  - builtin web backend environment variables can be read from the process
+    environment or a project-root `.env` file
   - GitHub blob URL normalization for Firecrawl-backed `WebFetch`
 - review command baseline via `CommandKind.REVIEW`
 - tool provenance / visibility metadata

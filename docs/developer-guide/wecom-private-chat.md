@@ -4,7 +4,7 @@ OpenAgent 的企业微信通道面向 AI Bot 私聊文本消息，使用 `aiohtt
 
 第一版不引入第三方 WeCom SDK，也不引入 sidecar。OpenAgent 自己实现很窄的一层协议 client：连接 WebSocket、发送 `aibot_subscribe`、发送 ping、接收消息 frame、回复文本 frame。这样可以把供应链风险控制在成熟基础库上。
 
-企业微信 AI Bot 的私聊文本被动回复需要走 `aibot_respond_msg` 下的 `msgtype=stream`。即使 OpenAgent 当前只发送最终结果、不做中间增量，也要使用 `stream.finish=true` 的格式回包；如果误用普通 `msgtype=text`，服务端会返回 `errcode=40008 invalid message type`。
+企业微信 AI Bot 的私聊文本被动回复需要走 `aibot_respond_msg` 下的 `msgtype=stream`。OpenAgent 收到普通用户消息后会先发送一条 `stream.finish=false` 的“处理中，请稍候...”占位回复，让企业微信尽快接收到当前回调的响应；agent 完成推理或搜索后，再用同一个 stream id 发送 `stream.finish=true` 的最终结果。如果误用普通 `msgtype=text`，服务端会返回 `errcode=40008 invalid message type`。
 
 ## Install
 
@@ -124,6 +124,10 @@ WebSocket 认证已经成功，但企业微信没有把消息推给这个 AI Bot
 
 当前发送的回复帧消息体不符合企业微信 AI Bot 协议。私聊文本回复应走 `aibot_respond_msg`，但 body 内要使用 `msgtype=stream`，并携带 `stream.id`、`stream.content` 和 `stream.finish=true`。如果按普通文本 `msgtype=text` 回包，企业微信会直接拒绝。
 
+搜索工具已经查到结果，但企业微信里没响应
+
+带 Tavily、Brave 等联网工具的请求可能超过企业微信单次回调的等待窗口。OpenAgent 会在进入模型前先发 `stream.finish=false` 的占位消息，随后在最终答案生成后发 `stream.finish=true` 关闭同一个 stream。若仍无响应，检查 host 日志中是否出现 `wecom-host> send failed: ...`，这通常表示 WebSocket 发送帧被企业微信拒绝或连接已经断开。
+
 需要查看真实企业微信 frame 时，可以打开调试：
 
 ```bash
@@ -139,10 +143,12 @@ WeCom private chat
 -> aiohttp WebSocket
 -> WeComAiBotClient.handle_frame()
 -> WeComChannelAdapter.normalize_inbound()
--> Gateway.process_input()
--> OpenAgent runtime
+-> background handler thread
+-> WeComAiBotClient.respond(finish=false) on websocket loop
+-> Gateway.process_input() in handler thread
+-> OpenAgent runtime in handler thread
 -> WeComChannelAdapter.project_outbound()
--> WeComAiBotClient.respond()
+-> WeComAiBotClient.respond(finish=true) on websocket loop
 ```
 
 目前支持：
@@ -153,6 +159,7 @@ WeCom private chat
 - 基于企业微信 user id 的 lazy session binding
 - 入站 message id 去重
 - `allowed_users` 私聊发送人限制
+- 普通用户消息的两段式 stream 回复，占位消息先打开流，最终答案关闭流
 
 暂不覆盖：
 

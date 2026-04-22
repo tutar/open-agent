@@ -170,6 +170,30 @@ docker compose --env-file .env.firecrawl -f docker-compose.firecrawl.yml up -d
 
 - `docs/developer-guide/firecrawl-local-testing.md`
 
+## Optional: Use Tavily Or Brave For WebSearch
+
+如果只想替换 builtin `WebSearch` 的真实搜索 provider，可以使用 Tavily：
+
+```bash
+export OPENAGENT_WEBSEARCH_BACKEND=tavily
+export OPENAGENT_TAVILY_API_KEY=...
+export OPENAGENT_WEBSEARCH_LIMIT=5
+```
+
+或使用 Brave Search：
+
+```bash
+export OPENAGENT_WEBSEARCH_BACKEND=brave
+export OPENAGENT_BRAVE_API_KEY=...
+export OPENAGENT_WEBSEARCH_LIMIT=5
+```
+
+这些变量也可以写在项目根目录的 `.env` 里。真实环境变量优先级高于 `.env`。
+
+更多说明见：
+
+- `docs/developer-guide/web-search-backends.md`
+
 这层数据不是 observability stdout，也不是 session event log；它是默认保留的模型原始数据资产，
 适合后续做离线分析、微调和强化学习数据整理。
 

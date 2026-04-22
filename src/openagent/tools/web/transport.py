@@ -28,6 +28,14 @@ class WebBackendHttpTransport(Protocol):
     ) -> WebBackendHttpResponse:
         """Send a JSON POST request and return the decoded JSON response."""
 
+    def get_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> WebBackendHttpResponse:
+        """Send a JSON GET request and return the decoded JSON response."""
+
 
 class WebBackendTransportError(RuntimeError):
     """Raised when a web backend transport fails."""
@@ -57,9 +65,36 @@ class UrllibWebBackendHttpTransport:
                 body = json.loads(raw_body)
                 if not isinstance(body, dict):
                     raise WebBackendTransportError("Web backend response must be a JSON object")
-                response_headers = {
-                    key.lower(): value for key, value in response.headers.items()
-                }
+                response_headers = {key.lower(): value for key, value in response.headers.items()}
+                return WebBackendHttpResponse(
+                    status_code=response.status,
+                    body=body,
+                    headers=response_headers,
+                )
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise WebBackendTransportError(f"HTTP {exc.code}: {detail}") from exc
+        except URLError as exc:
+            raise WebBackendTransportError(f"Network error: {exc.reason}") from exc
+
+    def get_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> WebBackendHttpResponse:
+        http_request = request.Request(
+            url=url,
+            headers=headers,
+            method="GET",
+        )
+        try:
+            with request.urlopen(http_request, timeout=timeout_seconds) as response:
+                raw_body = response.read().decode("utf-8")
+                body = json.loads(raw_body)
+                if not isinstance(body, dict):
+                    raise WebBackendTransportError("Web backend response must be a JSON object")
+                response_headers = {key.lower(): value for key, value in response.headers.items()}
                 return WebBackendHttpResponse(
                     status_code=response.status,
                     body=body,
