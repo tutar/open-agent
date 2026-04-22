@@ -334,7 +334,7 @@ class BashTool(_BuiltinTool):
                 {
                     "command": _string_property(
                         "Full shell command to execute in the current workspace root.",
-                        examples=["ls -la", "pwd", "pytest -q tests/test_tools_alignment.py"],
+                        examples=["ls -la", "pwd", "pytest -q tests/tools/test_tools_alignment.py"],
                     )
                 },
                 required=["command"],

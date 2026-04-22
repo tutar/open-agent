@@ -102,13 +102,15 @@ npm run type-check
 
 ## Testing Guidance
 
+`tests/` 按模块域分子目录维护：`object_model/`、`harness/`、`gateway/`、`tools/`、`conformance/`、`e2e/`。新增测试默认放到与实现职责最接近的子目录，不再继续往 `tests/` 根目录堆文件。
+
 按改动位置补测：
 
-- `object_model`：`tests/test_object_model.py`
+- `object_model`：`tests/object_model/test_object_model.py`
 - `harness / session / tools`：baseline + conformance tests
-- `gateway`：`tests/test_gateway_baseline.py`
-- `terminal host client`：`tests/test_terminal_client.py`
-- `capability surface / local task lifecycle / local assembly`：`tests/test_platform_baseline.py`
+- `gateway`：`tests/gateway/test_gateway_baseline.py`
+- `terminal host client`：`tests/gateway/test_terminal_client.py`
+- `capability surface / local task lifecycle / local assembly`：`tests/harness/test_platform_baseline.py`
 
 ## Documentation Maintenance
 

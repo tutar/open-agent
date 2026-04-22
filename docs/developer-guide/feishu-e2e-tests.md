@@ -103,7 +103,7 @@ pytest -m feishu_e2e -q
 env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
   OPENAGENT_RUN_FEISHU_E2E=1 \
   OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
-  ./.venv/bin/python -m pytest -q tests/test_feishu_e2e.py -k 'not feishu_group_e2e'
+  ./.venv/bin/python -m pytest -q tests/e2e/test_feishu_e2e.py -k 'not feishu_group_e2e'
 ```
 
 只执行群聊 E2E：
@@ -120,7 +120,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
   OPENAGENT_RUN_FEISHU_GROUP_E2E=1 \
   OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
   OPENAGENT_FEISHU_E2E_GROUP_ID=oc_3b0779b193e78de1052091fae2c272d8 \
-  ./.venv/bin/python -m pytest -q tests/test_feishu_e2e.py -k 'feishu_group_e2e'
+  ./.venv/bin/python -m pytest -q tests/e2e/test_feishu_e2e.py -k 'feishu_group_e2e'
 ```
 
 如果你要把 terminal client 和真实 Feishu E2E 一起纳入一次完整回归，直接执行：
@@ -141,7 +141,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 测试会启动：
 
 ```bash
-python -m tests.support.feishu_e2e_host
+python -m tests.e2e.support.feishu_e2e_host
 ```
 
 这个 host 使用固定测试模型和固定工具集，确保断言稳定。

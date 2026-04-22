@@ -257,7 +257,7 @@ feishu-session:<conversation_id>
 
 1. `lark-cli auth status` 是否显示当前账号已登录
 2. Python host 是否已经打印 `feishu-host> starting long connection`
-3. 同一台机器上是否已经有另一个 `openagent-host --channel feishu` / `python -m tests.support.feishu_e2e_host` 在运行
+3. 同一台机器上是否已经有另一个 `openagent-host --channel feishu` / `python -m tests.e2e.support.feishu_e2e_host` 在运行
 4. 环境变量 `OPENAGENT_FEISHU_APP_ID` 和 `OPENAGENT_FEISHU_APP_SECRET` 是否正确
 5. provider 是否可用，特别是 `OPENAGENT_BASE_URL` 和 `OPENAGENT_MODEL`
 6. host 是否打印了 `received raw event`

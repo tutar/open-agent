@@ -83,7 +83,7 @@ uv run openagent-host
 ```bash
 export OPENAGENT_RUN_FIRECRAWL_SMOKE=1
 export OPENAGENT_FIRECRAWL_BASE_URL=http://127.0.0.1:3002
-pytest -q tests/test_web_backends.py
+pytest -q tests/tools/test_web_backends.py
 ```
 
 默认不会跑 live Firecrawl smoke。

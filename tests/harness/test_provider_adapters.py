@@ -413,7 +413,7 @@ def test_openai_chat_adapter_emits_complete_builtin_tool_schema() -> None:
     assert bash_parameters["properties"]["command"]["examples"] == [
         "ls -la",
         "pwd",
-        "pytest -q tests/test_tools_alignment.py",
+        "pytest -q tests/tools/test_tools_alignment.py",
     ]
     assert search_parameters["properties"]["query"]["description"]
     assert search_parameters["properties"]["query"]["examples"] == [

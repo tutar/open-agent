@@ -15,7 +15,7 @@ def _allocate_port() -> int:
 
 def _start_host(tmp_path: Path) -> tuple[Popen[str], int]:
     terminal_port = _allocate_port()
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
     for name in (
         "OPENAGENT_MODEL",

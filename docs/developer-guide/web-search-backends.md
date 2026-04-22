@@ -71,13 +71,13 @@ export OPENAGENT_WEBSEARCH_LIMIT=5
 ```bash
 export OPENAGENT_RUN_TAVILY_SMOKE=1
 export OPENAGENT_TAVILY_API_KEY=...
-uv run pytest tests/test_web_backends.py -q
+uv run pytest tests/tools/test_web_backends.py -q
 ```
 
 ```bash
 export OPENAGENT_RUN_BRAVE_SMOKE=1
 export OPENAGENT_BRAVE_API_KEY=...
-uv run pytest tests/test_web_backends.py -q
+uv run pytest tests/tools/test_web_backends.py -q
 ```
 
 smoke tests 只验证 provider 能返回标准 `WebSearchResult`，不依赖具体搜索排名。

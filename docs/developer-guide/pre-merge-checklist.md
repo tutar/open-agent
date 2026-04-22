@@ -72,7 +72,7 @@ export OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_xxx
 执行：
 
 ```bash
-pytest -q tests/test_feishu_e2e.py -m feishu_e2e
+pytest -q tests/e2e/test_feishu_e2e.py -m feishu_e2e
 ```
 
 如果你当前 shell 里配置了代理，建议直接用：
@@ -83,7 +83,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
   OPENAGENT_FEISHU_APP_ID=cli_xxx \
   OPENAGENT_FEISHU_APP_SECRET=xxx \
   OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_xxx \
-  ./.venv/bin/python -m pytest -q tests/test_feishu_e2e.py -k 'not feishu_group_e2e'
+  ./.venv/bin/python -m pytest -q tests/e2e/test_feishu_e2e.py -k 'not feishu_group_e2e'
 ```
 
 预期：
@@ -111,7 +111,7 @@ export OPENAGENT_FEISHU_E2E_BOT_NAME=openagent
 执行：
 
 ```bash
-pytest -q tests/test_feishu_e2e.py -m feishu_group_e2e
+pytest -q tests/e2e/test_feishu_e2e.py -m feishu_group_e2e
 ```
 
 当前项目里实际常用命令可以直接写成：
@@ -122,7 +122,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
   OPENAGENT_RUN_FEISHU_GROUP_E2E=1 \
   OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
   OPENAGENT_FEISHU_E2E_GROUP_ID=oc_3b0779b193e78de1052091fae2c272d8 \
-  ./.venv/bin/python -m pytest -q tests/test_feishu_e2e.py -k 'feishu_group_e2e'
+  ./.venv/bin/python -m pytest -q tests/e2e/test_feishu_e2e.py -k 'feishu_group_e2e'
 ```
 
 预期：

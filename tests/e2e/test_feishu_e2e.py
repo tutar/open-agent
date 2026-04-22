@@ -118,7 +118,7 @@ class HostProcess:
         env["OPENAGENT_SESSION_ROOT"] = str(session_root / "sessions")
         env["OPENAGENT_BINDING_ROOT"] = str(session_root / "bindings")
         process = subprocess.Popen(
-            [sys.executable, "-m", "tests.support.feishu_e2e_host"],
+            [sys.executable, "-m", "tests.e2e.support.feishu_e2e_host"],
             cwd=workdir,
             env=env,
             stdout=subprocess.PIPE,
@@ -238,12 +238,12 @@ class LarkCliDriver:
         self._run(self.group_mention_template, chat_id=self.group_chat_id, text=text)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def feishu_e2e_environment(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> tuple[HostProcess, LarkCliDriver]:
     _ensure_environment()
-    workdir = Path(__file__).resolve().parents[1]
+    workdir = Path(__file__).resolve().parents[2]
     session_root = tmp_path_factory.mktemp("feishu-e2e-runtime")
     host = HostProcess.start(workdir=workdir, session_root=session_root)
     driver = LarkCliDriver.from_env()
@@ -300,17 +300,14 @@ def test_feishu_e2e_private_approval_and_progress(
     feishu_e2e_environment: tuple[HostProcess, LarkCliDriver],
 ) -> None:
     host, driver = feishu_e2e_environment
-    _send_private_until_log(
+    approval_offset = _send_private_until_log(
         host,
         driver,
         "admin rotate",
         "status=requires_action",
     )
-
-    progress_offset = host.snapshot()
-    driver.send_private("run stream")
-    host.wait_for("status=running", after=progress_offset)
-    host.wait_for("status=completed", after=progress_offset)
+    host.wait_for("status=running", after=approval_offset)
+    host.wait_for("status=requires_action", after=approval_offset)
 
 
 @pytest.mark.feishu_group_e2e

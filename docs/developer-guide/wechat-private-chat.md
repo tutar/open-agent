@@ -97,11 +97,11 @@ WeChat private chat
 聚焦测试：
 
 ```bash
-uv run pytest tests/test_wechat_gateway.py tests/test_host_management.py -q
+uv run pytest tests/gateway/test_wechat_gateway.py tests/gateway/test_host_management.py -q
 ```
 
 如果本机 `.python-version` 指向未安装的 patch 版本，可以显式指定兼容的 Python 3.11：
 
 ```bash
-uv run --python 3.11.14 pytest tests/test_wechat_gateway.py tests/test_host_management.py -q
+uv run --python 3.11.14 pytest tests/gateway/test_wechat_gateway.py tests/gateway/test_host_management.py -q
 ```
