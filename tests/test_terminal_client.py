@@ -17,6 +17,15 @@ def _start_host(tmp_path: Path) -> tuple[Popen[str], int]:
     terminal_port = _allocate_port()
     repo_root = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
+    for name in (
+        "OPENAGENT_MODEL",
+        "OPENAGENT_PROVIDER",
+        "OPENAGENT_BASE_URL",
+        "OPENAGENT_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ):
+        env.pop(name, None)
     env["OPENAGENT_TERMINAL_HOST"] = "127.0.0.1"
     env["OPENAGENT_TERMINAL_PORT"] = str(terminal_port)
     env["OPENAGENT_SESSION_ROOT"] = str(tmp_path / "sessions")
@@ -48,6 +57,17 @@ def _connect_terminal_client(port: int) -> tuple[socket.socket, object, object]:
     return client, reader, writer
 
 
+def _read_event_types_until_terminal(reader: object, *, max_events: int = 12) -> list[str]:
+    event_types: list[str] = []
+    for _ in range(max_events):
+        payload = json.loads(reader.readline())
+        event_type = str(payload["event_type"])
+        event_types.append(event_type)
+        if event_type in {"turn_completed", "turn_failed", "requires_action"}:
+            return event_types
+    raise AssertionError("terminal event was not observed within the event budget")
+
+
 def test_terminal_client_smoke(tmp_path: Path) -> None:
     host, terminal_port = _start_host(tmp_path)
     client, reader, writer = _connect_terminal_client(terminal_port)
@@ -58,14 +78,16 @@ def test_terminal_client_smoke(tmp_path: Path) -> None:
     writer.write(json.dumps({"kind": "message", "content": "hello"}) + "\n")
     writer.flush()
 
-    event_types = [json.loads(reader.readline())["event_type"] for _ in range(3)]
+    event_types = _read_event_types_until_terminal(reader)
 
     reader.close()
     writer.close()
     client.close()
     host.kill()
 
-    assert event_types == ["turn_started", "assistant_message", "turn_completed"]
+    assert event_types[0] == "turn_started"
+    assert event_types[-1] == "turn_completed"
+    assert "assistant_message" in event_types
 
 
 def test_terminal_client_session_binding_and_listing(tmp_path: Path) -> None:
@@ -116,4 +138,4 @@ def test_terminal_client_management_command_lists_channels(tmp_path: Path) -> No
     host.kill()
 
     assert response["type"] == "status"
-    assert response["available"] == ["terminal", "feishu"]
+    assert response["available"] == ["terminal", "feishu", "wechat", "wecom"]

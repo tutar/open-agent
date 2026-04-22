@@ -7,7 +7,7 @@ from openagent.capability_surface import (
     CapabilitySurface,
 )
 from openagent.context_governance import ContextGovernance
-from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse
 from openagent.harness.task import (
     BackgroundTaskContext,
     FileTaskManager,

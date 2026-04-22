@@ -44,10 +44,6 @@
   - frontend / channel integration boundary
   - bindings
   - projection
-- `observability/`
-  - tracing
-  - metrics
-  - progress / signal projection
 - `host/`
   - host app
   - startup surface
@@ -58,13 +54,28 @@
 `harness/` 是 OpenAgent 的核心运行时目录，目标上应按这些子主题组织：
 
 - `runtime/`
-  - turn loop
-  - terminal / failure state
-  - retry / timeout control
+  - `core/`
+    - agent runtime facade
+    - turn loop
+    - terminal / failure state
+    - retry / timeout control
+    - runtime event pipeline
+  - `io.py`
+    - model turn request / response
+    - provider exchange
+    - model I/O capture records
+  - `projection/`
+    - runtime-to-observability projection
+    - runtime-visible state projection
+  - `post_turn/`
+    - turn terminal 后处理
+    - memory / continuity maintenance
+  - `hooks/`
+    - runtime lifecycle hook plane
 - `providers/`
   - provider adapters
   - streaming integration
-  - provider exchange capture
+  - provider transport
 - `context/`
   - bootstrap prompts
   - context governance
@@ -84,8 +95,8 @@
 这里的关键边界是：
 
 - task 和 sub-agent 编排都属于 `harness`
-- `orchestration` 不是目标顶层模块
 - 后续与 task 有关的代码应优先向 `harness/task/` 收敛
+- `runtime/` 是 harness 的主子域，但 provider、context、task 仍保持平级目录
 
 ## Stable Top-Level Boundaries
 
@@ -100,8 +111,8 @@
 
 ### `observability/`
 
-- 负责 tracing、progress、metrics、session/task signal
-- 当前同时被 harness、tools、gateway、task 路径复用
+- 负责 tracing、progress、metrics
+- 当前同时被 `harness/runtime/projection/`、tools、gateway、task 路径复用
 - 作为 shared seam 保留顶层更合理
 
 ### `host/`
@@ -139,19 +150,21 @@
 - `observability/`
 - `host/`
 
-最近已经完成的一项目录收口是：
-
-- local task 代码已从顶层 `src/openagent/orchestration/` 迁入 `src/openagent/harness/task/`
-  - `TaskManager`
-  - task manager persistence baselines
-  - background task handles and context
-  - `LocalBackgroundAgentOrchestrator`
-
 当前后续仍可继续细化的是：
 
 - `harness/subagents/`
   - 目录职责已经确定
   - 但更完整的 sub-agent coordination 代码还会继续向这里收敛
+
+当前 `harness/runtime/` 已经收口为主运行时目录：
+
+- `core/`
+- `io.py`
+- `projection/`
+- `post_turn/`
+- `hooks/`
+
+旧的顶层 runtime 文件不再作为正式结构保留。
 
 `terminal` channel 当前也已经统一收口为：
 
@@ -207,6 +220,9 @@
 - 优先避免打破 `openagent.__init__` 和已公开导出
 - 真正变的是内部归属和实现路径
 
+如果某个子域已经被正式收进 `harness/runtime/`，则不要再新增顶层 `harness/*.py`
+形式的同类入口。
+
 ## Recent Follow-Through
 
 这些调整已经按上面的结构原则落地：
@@ -225,6 +241,13 @@
 
 - 已归位到 `harness/context/`
 - 顶层 `context_governance.py` 只保留兼容 re-export
+
+### `harness/runtime`
+
+- `SimpleHarness`、`RalphLoop`、runtime state、runtime I/O capture 已收进
+  `harness/runtime/`
+- runtime 相关符号不再从根包 `openagent` 或 `openagent.harness` 直接导出
+- 正式路径应走 `openagent.harness.runtime`
 
 ## Recommended Reading Order
 

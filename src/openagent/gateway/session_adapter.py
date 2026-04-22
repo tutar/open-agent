@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from openagent.harness import SimpleHarness
+from openagent.harness.runtime.core.agent_runtime import SimpleHarness
 from openagent.object_model import HarnessInstance, RuntimeEvent
 from openagent.session import SessionCheckpoint
 

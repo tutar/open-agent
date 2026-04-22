@@ -1,11 +1,7 @@
 from openagent import (
     SPEC_VERSION,
     AgentObservability,
-    AgentRuntime,
     CapabilityView,
-    ModelProviderAdapter,
-    ModelProviderStreamingAdapter,
-    RalphLoop,
     RequiresAction,
     RuntimeEvent,
     RuntimeEventType,
@@ -17,6 +13,12 @@ from openagent import (
     __version__,
 )
 from openagent.harness import Harness
+from openagent.harness.runtime import (
+    AgentRuntime,
+    ModelProviderAdapter,
+    ModelProviderStreamingAdapter,
+    RalphLoop,
+)
 from openagent.harness.task import TaskManager
 from openagent.local import create_in_memory_runtime
 from openagent.sandbox import Sandbox
@@ -28,8 +30,8 @@ def test_public_exports_are_importable() -> None:
     assert __version__ == "0.1.0"
     assert SPEC_VERSION == "0.1"
     assert Harness is not None
-    assert AgentRuntime is not None
     assert AgentObservability is not None
+    assert AgentRuntime is not None
     assert ModelProviderAdapter is not None
     assert ModelProviderStreamingAdapter is not None
     assert RalphLoop is not None

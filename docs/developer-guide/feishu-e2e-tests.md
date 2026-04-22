@@ -97,10 +97,41 @@ export OPENAGENT_FEISHU_E2E_GROUP_MENTION_TEMPLATE="{binary} im +messages-send -
 pytest -m feishu_e2e -q
 ```
 
+当前项目里私聊 E2E 的可直接复制命令：
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  OPENAGENT_RUN_FEISHU_E2E=1 \
+  OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
+  ./.venv/bin/python -m pytest -q tests/test_feishu_e2e.py -k 'not feishu_group_e2e'
+```
+
 只执行群聊 E2E：
 
 ```bash
 pytest -m feishu_group_e2e -q
+```
+
+当前项目里群聊 E2E 的可直接复制命令：
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  OPENAGENT_RUN_FEISHU_E2E=1 \
+  OPENAGENT_RUN_FEISHU_GROUP_E2E=1 \
+  OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
+  OPENAGENT_FEISHU_E2E_GROUP_ID=oc_3b0779b193e78de1052091fae2c272d8 \
+  ./.venv/bin/python -m pytest -q tests/test_feishu_e2e.py -k 'feishu_group_e2e'
+```
+
+如果你要把 terminal client 和真实 Feishu E2E 一起纳入一次完整回归，直接执行：
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  OPENAGENT_RUN_FEISHU_E2E=1 \
+  OPENAGENT_RUN_FEISHU_GROUP_E2E=1 \
+  OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
+  OPENAGENT_FEISHU_E2E_GROUP_ID=oc_3b0779b193e78de1052091fae2c272d8 \
+  ./.venv/bin/python -m pytest -q tests -rs
 ```
 
 默认 `pytest` 不会包含这两组真实网络测试。

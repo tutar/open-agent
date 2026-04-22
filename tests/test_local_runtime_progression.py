@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse
 from openagent.local import create_in_memory_runtime
 from openagent.object_model import RuntimeEventType, ToolResult
 from openagent.session import (

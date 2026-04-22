@@ -2,7 +2,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-from openagent.harness import (
+from openagent.harness.runtime import (
     ModelStreamEvent,
     ModelTurnRequest,
     ModelTurnResponse,

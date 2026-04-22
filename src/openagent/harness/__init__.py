@@ -20,30 +20,6 @@ from openagent.harness.context import (
     PromptCacheStrategyName,
 )
 from openagent.harness.interfaces import Harness
-from openagent.harness.model_io import (
-    FileModelIoCapture,
-    ModelIoCapture,
-    ModelIoRecord,
-    NoOpModelIoCapture,
-)
-from openagent.harness.models import (
-    AgentRuntime,
-    CancelledTurn,
-    ModelAdapter,
-    ModelProviderAdapter,
-    ModelProviderExchange,
-    ModelProviderExchangeAdapter,
-    ModelProviderStreamingAdapter,
-    ModelStreamEvent,
-    ModelTurnRequest,
-    ModelTurnResponse,
-    RetryExhaustedTurn,
-    StreamingModelAdapter,
-    TimedOutTurn,
-    TurnControl,
-    TurnState,
-    TurnStreamResult,
-)
 from openagent.harness.providers import (
     AnthropicMessagesModelAdapter,
     HttpResponse,
@@ -54,8 +30,6 @@ from openagent.harness.providers import (
     UrllibHttpTransport,
     load_model_from_env,
 )
-from openagent.harness.runtime import RalphLoop
-from openagent.harness.simple import SimpleHarness
 from openagent.harness.task import (
     BackgroundTaskContext,
     BackgroundTaskHandle,
@@ -67,33 +41,20 @@ from openagent.harness.task import (
 )
 
 __all__ = [
-    "AgentRuntime",
     "BackgroundTaskContext",
     "BackgroundTaskHandle",
     "AnthropicMessagesModelAdapter",
     "BootstrapPromptAssembler",
-    "CancelledTurn",
     "CompactResult",
     "ContextGovernance",
     "ContextReport",
     "ContinuationBudgetPlan",
     "ExternalizedToolResult",
     "FileTaskManager",
-    "FileModelIoCapture",
     "Harness",
     "InitialUserBootstrap",
     "HttpResponse",
     "HttpTransport",
-    "ModelAdapter",
-    "ModelIoCapture",
-    "ModelIoRecord",
-    "ModelProviderAdapter",
-    "ModelProviderExchange",
-    "ModelProviderExchangeAdapter",
-    "ModelProviderStreamingAdapter",
-    "ModelStreamEvent",
-    "ModelTurnRequest",
-    "ModelTurnResponse",
     "OpenAIChatCompletionsModelAdapter",
     "OverflowRecoveryResult",
     "PromptBlocks",
@@ -104,20 +65,11 @@ __all__ = [
     "PromptSection",
     "ProviderConfigurationError",
     "ProviderError",
-    "RalphLoop",
     "ResolvedPromptSections",
-    "RetryExhaustedTurn",
-    "SimpleHarness",
     "InMemoryTaskManager",
     "LocalBackgroundAgentOrchestrator",
     "LocalTaskKind",
-    "StreamingModelAdapter",
     "TaskManager",
-    "TimedOutTurn",
-    "TurnControl",
-    "TurnState",
-    "TurnStreamResult",
     "UrllibHttpTransport",
     "load_model_from_env",
-    "NoOpModelIoCapture",
 ]

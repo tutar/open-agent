@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from openagent.context_governance import ContextGovernance
-from openagent.harness import ModelTurnRequest, ModelTurnResponse, SimpleHarness
+from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse, SimpleHarness
 from openagent.object_model import RuntimeEvent, RuntimeEventType, TerminalStatus, ToolResult
 from openagent.session import (
     FileMemoryStore,

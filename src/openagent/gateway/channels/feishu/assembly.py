@@ -11,9 +11,10 @@ from typing import cast
 from openagent.gateway.binding_store import FileSessionBindingStore
 from openagent.gateway.core import Gateway
 from openagent.gateway.session_adapter import InProcessSessionAdapter
-from openagent.harness import ModelProviderAdapter, SimpleHarness
 from openagent.harness.assemblies import create_file_runtime_assembly
 from openagent.harness.providers import load_model_from_env
+from openagent.harness.runtime.core.agent_runtime import SimpleHarness
+from openagent.harness.runtime.io import ModelProviderAdapter
 from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
 from openagent.tools import ToolDefinition

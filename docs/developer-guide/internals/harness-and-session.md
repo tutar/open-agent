@@ -9,14 +9,14 @@
 
 ## Harness Role
 
-当前核心实现拆成两层：
+当前 runtime 主体位于 `harness/runtime/`，核心实现拆成两层：
 
 - `SimpleHarness`
-  - 对外 facade
+  - runtime facade
   - 保留易用的 direct-call API
 - `RalphLoop`
   - 明确的 turn 状态机
-  - 对齐 spec 中的 `AgentRuntime`
+  - runtime loop
 
 两者合起来的职责是：
 
@@ -59,6 +59,13 @@
 
 `SimpleHarness.run_turn(...)` 只是对 `run_turn_stream(...)` 的包装，不再维护第二套
 loop 语义。
+
+当前 runtime 还拆出了两个辅助子面：
+
+- `harness/runtime/projection/`
+  - 把 runtime 内部状态投影到顶层 `observability/`
+- `harness/runtime/post_turn/`
+  - 在 turn 到达稳定边界后执行 memory / continuity 后处理
 
 ## Context Governance Integration
 
@@ -155,8 +162,8 @@ durable memory 不保存在 `SessionRecord` 里。
 
 当前安全点流程是：
 
-1. `RalphLoop` 或 `SimpleHarness` 到达 turn 终态或 requires_action
-2. harness 调度 `ShortTermMemoryStore.update(...)`
+1. `RalphLoop` 到达 turn 终态或 requires_action
+2. runtime post-turn processor 调度 `ShortTermMemoryStore.update(...)`
 3. 在持久化前等待一个短超时窗口拿到稳定版本
 4. 稳定结果写进 `SessionRecord.short_term_memory`
 5. `ResumeSnapshot` 会带上这份 continuity summary

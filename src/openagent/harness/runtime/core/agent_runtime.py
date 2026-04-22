@@ -1,4 +1,4 @@
-"""Minimal harness baseline for local testing and spec prototyping."""
+"""Concrete local harness runtime facade."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from typing import cast
@@ -17,34 +16,51 @@ from openagent.harness.bootstrap import (
     default_workspace_root_from_metadata,
 )
 from openagent.harness.context import ContextGovernance, ContextReport
-from openagent.harness.model_io import ModelIoCapture, NoOpModelIoCapture
-from openagent.harness.models import (
+from openagent.harness.interfaces import Harness
+from openagent.harness.runtime.core.pipeline import (
+    append_event,
+    new_event,
+    requires_action_payload,
+    tool_call_payload,
+    tool_result_payload,
+)
+from openagent.harness.runtime.core.terminal import (
     AgentRuntime,
     CancelledTurn,
+    RetryExhaustedTurn,
+    TimedOutTurn,
+    TurnControl,
+)
+from openagent.harness.runtime.hooks.runtime import HookRuntime
+from openagent.harness.runtime.io import (
+    FileModelIoCapture,
+    ModelIoCapture,
     ModelProviderAdapter,
     ModelProviderExchange,
     ModelProviderExchangeAdapter,
     ModelProviderStreamingAdapter,
     ModelTurnRequest,
     ModelTurnResponse,
-    RetryExhaustedTurn,
-    TimedOutTurn,
-    TurnControl,
+    NoOpModelIoCapture,
 )
-from openagent.harness.runtime import RalphLoop
+from openagent.harness.runtime.post_turn.processing import (
+    MemoryMaintenanceProcessor,
+    PostTurnContext,
+    PostTurnRegistry,
+)
+from openagent.harness.runtime.projection.observability import RuntimeObservabilityProjection
+from openagent.harness.runtime.projection.state_projection import terminal_state_from_event
 from openagent.object_model import (
     JsonObject,
     RuntimeEvent,
     RuntimeEventType,
     TerminalState,
-    TerminalStatus,
     ToolResult,
 )
 from openagent.observability import (
     AgentObservability,
     ProgressUpdate,
     RuntimeMetric,
-    SessionStateSignal,
     SpanHandle,
 )
 from openagent.session import (
@@ -67,13 +83,8 @@ from openagent.tools import (
 
 
 @dataclass(slots=True)
-class SimpleHarness:
-    """Run a local turn against an injected model adapter.
-
-    The harness remains local-first and synchronous by default, while exposing a
-    stream-oriented turn path so frontends can consume deltas and intermediate
-    runtime events in order.
-    """
+class SimpleHarness(Harness):
+    """Run a local turn against an injected model adapter."""
 
     model: ModelProviderAdapter
     sessions: SessionStore
@@ -89,14 +100,19 @@ class SimpleHarness:
     model_io_capture: ModelIoCapture = field(default_factory=NoOpModelIoCapture)
     bootstrap_prompts: BootstrapPromptAssembler = field(default_factory=BootstrapPromptAssembler)
     runtime_loop: AgentRuntime = field(init=False, repr=False)
+    hook_runtime: HookRuntime = field(default_factory=HookRuntime)
+    post_turn_registry: PostTurnRegistry = field(default_factory=PostTurnRegistry)
+    projection: RuntimeObservabilityProjection = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        # Keep the loop explicit and spec-aligned while preserving the existing
-        # facade API that tests and frontends already use.
         if self.observability is None:
             self.observability = AgentObservability()
         if hasattr(self.executor, "set_observability"):
             self.executor.set_observability(self.observability)
+        from openagent.harness.runtime.core.ralph_loop import RalphLoop
+
+        self.projection = RuntimeObservabilityProjection(self.observability)
+        self.post_turn_registry.register(MemoryMaintenanceProcessor())
         self.runtime_loop = RalphLoop(self)
 
     def run_turn_stream(
@@ -114,7 +130,7 @@ class SimpleHarness:
         control: TurnControl | None = None,
     ) -> tuple[list[RuntimeEvent], TerminalState]:
         events = list(self.run_turn_stream(input, session_handle, control=control))
-        return events, self._terminal_state_from_event(events[-1])
+        return events, terminal_state_from_event(events[-1])
 
     def continue_turn(
         self,
@@ -138,6 +154,11 @@ class SimpleHarness:
             compact_result = self.context_governance.compact(session_slice.messages)
             messages = self._normalize_message_payloads(compact_result.messages)
             compacted = compact_result.compacted_count > 0
+            self.hook_runtime.execute_hooks(
+                scope="runtime",
+                event="post_compact",
+                payload={"session_id": session_slice.session_id},
+            )
             if self.context_governance.analyze(session_slice.messages, available_tools).over_budget:
                 recovery_result = self.context_governance.recover_overflow(session_slice.messages)
                 if recovery_result.recovered:
@@ -156,6 +177,11 @@ class SimpleHarness:
                 session_slice.messages,
                 available_tools,
             ):
+                self.hook_runtime.execute_hooks(
+                    scope="runtime",
+                    event="pre_compact",
+                    payload={"session_id": session_slice.session_id},
+                )
                 overflow_result = self.context_governance.recover_overflow(session_slice.messages)
                 if overflow_result.recovered:
                     messages = overflow_result.messages
@@ -269,6 +295,15 @@ class SimpleHarness:
         if memory is not None:
             session.short_term_memory = memory.to_dict()
 
+    def _run_post_turn_processors(self, session_handle: str, session: SessionRecord) -> None:
+        self.post_turn_registry.execute_all(
+            PostTurnContext(
+                session_handle=session_handle,
+                session=session,
+                runtime=self,
+            )
+        )
+
     def _load_short_term_memory(
         self,
         session: SessionRecord,
@@ -350,10 +385,7 @@ class SimpleHarness:
             if not target_path.is_absolute():
                 target_path = workdir / target_path
             target_path = target_path.resolve()
-            if target_path.is_dir():
-                target_dir = target_path
-            else:
-                target_dir = target_path.parent
+            target_dir = target_path if target_path.is_dir() else target_path.parent
             try:
                 relative_parts = target_dir.relative_to(workdir).parts
             except ValueError:
@@ -398,8 +430,14 @@ class SimpleHarness:
     ]:
         emitted_events: list[RuntimeEvent] = []
         results: list[ToolResult] = []
+        self.hook_runtime.execute_hooks(
+            scope="runtime",
+            event="pre_tool",
+            payload={"session_id": session_handle, "tool_count": len(tool_calls)},
+        )
         for event in self.executor.run_tool_stream(tool_calls, context):
-            emitted_events.append(self._append_event(session, event))
+            emitted = self._append_event(session, event)
+            emitted_events.append(emitted)
             if event.event_type in {
                 RuntimeEventType.TOOL_PROGRESS,
                 RuntimeEventType.TOOL_RESULT,
@@ -416,6 +454,11 @@ class SimpleHarness:
                 results.append(result)
                 continue
             if event.event_type is RuntimeEventType.TOOL_FAILED:
+                self.hook_runtime.execute_hooks(
+                    scope="runtime",
+                    event="post_tool_failure",
+                    payload={"session_id": session_handle, **event.payload},
+                )
                 return emitted_events, results, ToolExecutionFailedError(
                     tool_name=str(event.payload.get("tool_name", "unknown")),
                     reason=str(event.payload.get("reason", "tool_failed")),
@@ -641,8 +684,7 @@ class SimpleHarness:
             )
 
     def _append_event(self, session: SessionRecord, event: RuntimeEvent) -> RuntimeEvent:
-        session.events.append(event)
-        return event
+        return append_event(session, event)
 
     def _persist_session(self, session_handle: str, session: SessionRecord) -> None:
         self.sessions.save_session(session_handle, session)
@@ -653,27 +695,13 @@ class SimpleHarness:
                 tool_call.call_id = f"toolu_{index}"
 
     def _tool_call_payload(self, tool_call: ToolCall) -> JsonObject:
-        payload = tool_call.to_dict()
-        tool_use_id = payload.pop("call_id", None)
-        if tool_use_id is not None:
-            payload["tool_use_id"] = tool_use_id
-        return payload
+        return tool_call_payload(tool_call)
 
     def _tool_result_payload(self, result: ToolResult) -> JsonObject:
-        payload = result.to_dict()
-        metadata = payload.get("metadata")
-        if isinstance(metadata, dict) and "tool_use_id" in metadata:
-            payload["tool_use_id"] = metadata["tool_use_id"]
-        return payload
+        return tool_result_payload(result)
 
     def _requires_action_payload(self, requires_action: object) -> JsonObject:
-        if not hasattr(requires_action, "to_dict"):
-            raise TypeError("requires_action payload must support to_dict()")
-        payload = cast(JsonObject, requires_action.to_dict())
-        request_id = payload.get("request_id")
-        if request_id is not None:
-            payload["tool_use_id"] = request_id
-        return payload
+        return requires_action_payload(requires_action)
 
     def _new_event(
         self,
@@ -681,14 +709,12 @@ class SimpleHarness:
         event_type: RuntimeEventType,
         payload: JsonObject,
     ) -> RuntimeEvent:
-        timestamp = datetime.now(UTC).isoformat()
-        event_id = f"{event_type.value}:{len(self.sessions.load_session(session_id).events) + 1}"
-        return RuntimeEvent(
-            event_type=event_type,
-            event_id=event_id,
-            timestamp=timestamp,
+        event_index = len(self.sessions.load_session(session_id).events) + 1
+        return new_event(
             session_id=session_id,
+            event_type=event_type,
             payload=payload,
+            event_index=event_index,
         )
 
     def _emit_terminal(
@@ -707,8 +733,7 @@ class SimpleHarness:
             ),
         )
         session.status = SessionStatus.IDLE
-        self.schedule_memory_maintenance(session)
-        self.stabilize_short_term_memory(session)
+        self._run_post_turn_processors(session_handle, session)
         self._persist_session(session_handle, session)
         return event
 
@@ -716,14 +741,10 @@ class SimpleHarness:
         return control.cancellation_check is not None and control.cancellation_check()
 
     def _emit_metric(self, metric: RuntimeMetric) -> None:
-        observability = self.observability
-        assert observability is not None
-        observability.emit_runtime_metric(metric)
+        self.projection.emit_metric(metric)
 
     def _emit_progress(self, progress: ProgressUpdate) -> None:
-        observability = self.observability
-        assert observability is not None
-        observability.emit_progress(progress)
+        self.projection.emit_progress(progress)
 
     def _emit_session_state(
         self,
@@ -732,30 +753,12 @@ class SimpleHarness:
         reason: str | None = None,
         attributes: JsonObject | None = None,
     ) -> None:
-        observability = self.observability
-        assert observability is not None
-        observability.emit_session_state(
-            SessionStateSignal(
-                session_id=session_id,
-                state=state,
-                reason=reason,
-                attributes=dict(attributes or {}),
-            )
+        self.projection.emit_session_state(
+            session_id=session_id,
+            state=state,
+            reason=reason,
+            attributes=attributes,
         )
-
-    def _terminal_state_from_event(self, event: RuntimeEvent) -> TerminalState:
-        if event.event_type is RuntimeEventType.TURN_COMPLETED:
-            return TerminalState.from_dict(event.payload)
-        if event.event_type is RuntimeEventType.TURN_FAILED:
-            return TerminalState.from_dict(event.payload)
-        if event.event_type is RuntimeEventType.REQUIRES_ACTION:
-            summary = str(event.payload.get("description", "requires action"))
-            return TerminalState(
-                status=TerminalStatus.BLOCKED,
-                reason="requires_action",
-                summary=summary,
-            )
-        raise ValueError("Event stream did not terminate with a terminal event")
 
     def _usage_value(self, usage: JsonObject | None, *keys: str) -> int | None:
         if usage is None:
@@ -824,3 +827,11 @@ class SimpleHarness:
     def _provider_family(self) -> str | None:
         family = getattr(self.model, "provider_family", None)
         return str(family) if family is not None else None
+
+
+__all__ = [
+    "FileModelIoCapture",
+    "ModelIoCapture",
+    "NoOpModelIoCapture",
+    "SimpleHarness",
+]

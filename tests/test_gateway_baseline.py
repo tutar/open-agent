@@ -11,7 +11,7 @@ from openagent.gateway import (
     InProcessSessionAdapter,
     TerminalChannelAdapter,
 )
-from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse
 from openagent.local import (
     create_gateway_for_runtime,
     create_in_memory_runtime,

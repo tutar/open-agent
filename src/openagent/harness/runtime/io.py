@@ -1,18 +1,87 @@
-"""Persistent model input/output capture for training and offline analysis."""
+"""Runtime-local request, response, streaming, and model I/O types."""
 
 from __future__ import annotations
 
 import json
 import threading
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from openagent.harness.models import ModelProviderExchange, ModelTurnRequest
-from openagent.object_model import JsonObject, JsonValue, SerializableModel
+from openagent.object_model import (
+    JsonObject,
+    JsonValue,
+    SerializableModel,
+)
 from openagent.object_model.base import to_json_value
+from openagent.tools import ToolCall
+
+
+@dataclass(slots=True)
+class ModelTurnRequest(SerializableModel):
+    session_id: str
+    messages: list[JsonObject]
+    system_prompt: str | None = None
+    prompt_sections: list[JsonObject] = field(default_factory=list)
+    prompt_blocks: JsonObject | None = None
+    initial_user_bootstrap: JsonObject | None = None
+    available_tools: list[str] = field(default_factory=list)
+    tool_definitions: list[JsonObject] = field(default_factory=list)
+    short_term_memory: JsonObject | None = None
+    memory_context: list[JsonObject] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ModelTurnResponse(SerializableModel):
+    assistant_message: str | None = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: JsonObject | None = None
+
+
+@dataclass(slots=True)
+class ModelProviderExchange(SerializableModel):
+    response: ModelTurnResponse
+    provider_payload: JsonObject | None = None
+    raw_response: JsonObject | None = None
+    reasoning: JsonValue | None = None
+    transport_metadata: JsonObject = field(default_factory=dict)
+    stream_deltas: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ModelStreamEvent(SerializableModel):
+    assistant_delta: str | None = None
+    assistant_message: str | None = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: JsonObject | None = None
+
+
+class ModelProviderAdapter(Protocol):
+    def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        """Produce the next model response for the current turn."""
+
+
+class ModelProviderExchangeAdapter(ModelProviderAdapter, Protocol):
+    def generate_with_exchange(self, request: ModelTurnRequest) -> ModelProviderExchange:
+        """Produce the next model response with provider exchange details."""
+
+
+class ModelProviderStreamingAdapter(ModelProviderAdapter, Protocol):
+    def stream_generate(self, request: ModelTurnRequest) -> Iterator[ModelStreamEvent]:
+        """Produce streamed model events for the current turn."""
+
+
+ModelAdapter = ModelProviderAdapter
+StreamingModelAdapter = ModelProviderStreamingAdapter
+
+
+@dataclass(slots=True)
+class TurnStreamResult(SerializableModel):
+    events: list[JsonObject]
+    terminal_state: JsonObject
 
 
 @dataclass(slots=True)
@@ -235,54 +304,41 @@ class FileModelIoCapture:
             model=model,
             streaming=streaming,
             retry_index=retry_index,
-            status="error",
+            status="failed",
             assembled_request=request.to_dict(),
-            error=str(error),
+            error=f"{type(error).__name__}: {error}",
         )
         self._write_record(record)
 
     def _write_record(self, record: ModelIoRecord) -> None:
-        session_dir = self._records_dir / self._safe_path_component(record.session_id)
-        session_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = record.timestamp.replace(":", "-")
-        record_path = session_dir / f"{timestamp}-{record.capture_id}.json"
+        record_dir = self._records_dir / record.session_id
+        record_dir.mkdir(parents=True, exist_ok=True)
+        record_path = record_dir / f"{record.capture_id}.json"
         record.record_path = str(record_path)
-        serialized = self._trim_json_value(to_json_value(record))
-        assert isinstance(serialized, dict)
+        payload = json.dumps(record.to_dict(), indent=2, ensure_ascii=False, sort_keys=True)
         with self._lock:
-            record_path.write_text(
-                json.dumps(serialized, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            with self._index_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(serialized, ensure_ascii=False) + "\n")
-
-    def _safe_path_component(self, value: str) -> str:
-        return value.replace("/", "_").replace(":", "_")
+            record_path.write_text(payload, encoding="utf-8")
+            with self._index_path.open("a", encoding="utf-8") as index_file:
+                index_file.write(json.dumps(record.to_dict(), ensure_ascii=False))
+                index_file.write("\n")
 
     def _summarize_response(self, raw_response: JsonObject | None) -> JsonObject | None:
         if raw_response is None:
             return None
-        summary: JsonObject = {}
-        for key in ("id", "object", "model", "type", "stop_reason", "usage"):
-            value = raw_response.get(key)
-            if value is not None:
-                summary[key] = to_json_value(value)
-        content = raw_response.get("content")
-        if isinstance(content, list):
-            summary["content_blocks"] = len(content)
-        choices = raw_response.get("choices")
-        if isinstance(choices, list):
-            summary["choices"] = len(choices)
-        return summary or {"present": True}
+        summary = _truncate_json(raw_response, self.max_string_chars)
+        return summary if isinstance(summary, dict) else None
 
-    def _trim_json_value(self, value: JsonValue) -> JsonValue:
-        if isinstance(value, str):
-            if len(value) <= self.max_string_chars:
-                return value
-            return value[: self.max_string_chars] + "...[truncated]"
-        if isinstance(value, list):
-            return [self._trim_json_value(item) for item in value]
-        if isinstance(value, dict):
-            return {key: self._trim_json_value(item) for key, item in value.items()}
-        return value
+
+def _truncate_json(value: JsonValue, max_chars: int) -> JsonValue:
+    if isinstance(value, str):
+        if len(value) <= max_chars:
+            return value
+        return f"{value[:max_chars]}...<truncated>"
+    if isinstance(value, list):
+        return [_truncate_json(item, max_chars) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _truncate_json(to_json_value(item), max_chars)
+            for key, item in value.items()
+        }
+    return value

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from openagent.harness import ModelProviderExchange, ModelTurnRequest, ModelTurnResponse
+from openagent.harness.runtime.io import (
+    ModelProviderExchange,
+    ModelTurnRequest,
+    ModelTurnResponse,
+)
 from openagent.object_model import ToolResult
 from openagent.tools import PermissionDecision, ToolCall
 

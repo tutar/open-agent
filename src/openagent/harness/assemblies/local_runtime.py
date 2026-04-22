@@ -10,9 +10,9 @@ from openagent.gateway.core import Gateway
 from openagent.gateway.interfaces import ChannelAdapter
 from openagent.gateway.session_adapter import InProcessSessionAdapter
 from openagent.harness.context import ContextGovernance
-from openagent.harness.model_io import FileModelIoCapture, NoOpModelIoCapture
-from openagent.harness.models import ModelProviderAdapter
-from openagent.harness.simple import SimpleHarness
+from openagent.harness.runtime import FileModelIoCapture, NoOpModelIoCapture
+from openagent.harness.runtime.core.agent_runtime import SimpleHarness
+from openagent.harness.runtime.io import ModelProviderAdapter
 from openagent.observability import AgentObservability
 from openagent.session import FileSessionStore, InMemorySessionStore
 from openagent.tools import (

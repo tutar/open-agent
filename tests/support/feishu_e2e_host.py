@@ -10,7 +10,7 @@ from openagent.gateway import (
     create_feishu_gateway,
     create_feishu_host,
 )
-from openagent.harness import ModelTurnRequest, ModelTurnResponse
+from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import ToolResult
 from openagent.tools import (
     PermissionDecision,

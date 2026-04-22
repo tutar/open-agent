@@ -22,7 +22,7 @@ from openagent.gateway.channels.feishu.cards import (
     FeishuReplyCardRecord,
     FileFeishuCardDeliveryStore,
 )
-from openagent.harness import ModelStreamEvent, ModelTurnRequest, ModelTurnResponse
+from openagent.harness.runtime import ModelStreamEvent, ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import ToolResult
 from openagent.tools import (
     PermissionDecision,

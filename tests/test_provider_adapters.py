@@ -3,7 +3,12 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from openagent.harness import (
+from openagent.harness.providers import (
+    AnthropicMessagesModelAdapter,
+    OpenAIChatCompletionsModelAdapter,
+)
+from openagent.harness.providers.base import HttpResponse
+from openagent.harness.runtime import (
     FileModelIoCapture,
     ModelProviderExchange,
     ModelStreamEvent,
@@ -11,11 +16,6 @@ from openagent.harness import (
     ModelTurnResponse,
     SimpleHarness,
 )
-from openagent.harness.providers import (
-    AnthropicMessagesModelAdapter,
-    OpenAIChatCompletionsModelAdapter,
-)
-from openagent.harness.providers.base import HttpResponse
 from openagent.object_model import JsonObject, ToolResult
 from openagent.session import InMemorySessionStore, InMemoryShortTermMemoryStore
 from openagent.tools import (

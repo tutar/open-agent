@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 
-from openagent.harness.models import ModelProviderAdapter
 from openagent.harness.providers.anthropic import AnthropicMessagesModelAdapter
 from openagent.harness.providers.base import (
     HttpResponse,
@@ -14,6 +13,7 @@ from openagent.harness.providers.base import (
     UrllibHttpTransport,
 )
 from openagent.harness.providers.openai import OpenAIChatCompletionsModelAdapter
+from openagent.harness.runtime.io import ModelProviderAdapter
 
 
 def load_model_from_env() -> ModelProviderAdapter:

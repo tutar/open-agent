@@ -327,7 +327,9 @@ def test_feishu_e2e_group_mention_and_plain_message(
         f"conversation=feishu:chat:{driver.group_chat_id}",
         after=mention_offset,
     )
-    host.wait_for("e2e group reply: group hello", after=mention_offset)
+    host.wait_for("sending reply card", after=mention_offset)
+    host.wait_for("status=running", after=mention_offset)
+    host.wait_for("status=completed", after=mention_offset)
     host.assert_absent("@_user_", after=mention_offset)
 
     plain_offset = host.snapshot()

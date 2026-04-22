@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from openagent.gateway import ChannelIdentity, Gateway, InboundEnvelope, InProcessSessionAdapter
-from openagent.harness import ModelTurnRequest, ModelTurnResponse, SimpleHarness
+from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse, SimpleHarness
 from openagent.harness.task import (
     BackgroundTaskContext,
     InMemoryTaskManager,

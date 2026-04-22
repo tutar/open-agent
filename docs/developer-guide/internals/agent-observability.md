@@ -44,13 +44,15 @@
 
 当前主要接线位置：
 
-- `SimpleHarness`
+- `harness/runtime/core/agent_runtime.py`
   - context governance report
   - llm request metric/span
-- `RalphLoop`
+- `harness/runtime/core/ralph_loop.py`
   - interaction span
   - session lifecycle signal
   - turn duration metric
+- `harness/runtime/projection/`
+  - runtime 到顶层 observability 的桥接
 - `SimpleToolExecutor`
   - tool span
   - tool progress projection
@@ -89,3 +91,17 @@
 而 `.openagent/data/model-io` 回答的是另一件事：
 
 - 这次到底给模型发了什么，模型原始返回了什么
+
+## Runtime Projection Boundary
+
+runtime 不直接拥有 observability 的实现层。
+
+当前分层是：
+
+- `harness/runtime/projection/`
+  - 负责 runtime 侧调用点和状态投影 helper
+- 顶层 `observability/`
+  - 负责 sink、span、metric、progress、session signal 的共享定义和实现
+
+这样 `runtime` 可以保持自己的结构清晰，同时不把 observability 从 shared seam 挪进
+`harness/`。

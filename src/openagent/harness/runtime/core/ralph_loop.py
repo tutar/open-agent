@@ -1,4 +1,4 @@
-"""Explicit harness runtime loop implementations."""
+"""Explicit turn-local runtime loop implementations."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from dataclasses import dataclass, field
 from time import perf_counter
 from typing import TYPE_CHECKING
 
-from openagent.harness.models import (
+from openagent.harness.runtime.core.state import TurnState
+from openagent.harness.runtime.core.terminal import (
     CancelledTurn,
     RetryExhaustedTurn,
     TimedOutTurn,
     TurnControl,
-    TurnState,
 )
 from openagent.object_model import RuntimeEvent, RuntimeEventType, TerminalState, TerminalStatus
 from openagent.observability import ProgressUpdate, RuntimeMetric
@@ -26,16 +26,12 @@ from openagent.tools import (
 )
 
 if TYPE_CHECKING:
-    from openagent.harness.simple import SimpleHarness
+    from openagent.harness.runtime.core.agent_runtime import SimpleHarness
 
 
 @dataclass(slots=True)
 class RalphLoop:
-    """Concrete local `AgentRuntime` used by `SimpleHarness`.
-
-    This keeps the turn state machine explicit and spec-aligned, while the
-    harness remains a thin convenience facade.
-    """
+    """Concrete local runtime loop used by `SimpleHarness`."""
 
     harness: SimpleHarness
     state: TurnState = field(default_factory=TurnState)
@@ -75,8 +71,7 @@ class RalphLoop:
         if not approved:
             session.pending_tool_calls = []
             session.status = SessionStatus.IDLE
-            self.harness.schedule_memory_maintenance(session)
-            self.harness.stabilize_short_term_memory(session)
+            self.harness._run_post_turn_processors(session_handle, session)
             self.harness._persist_session(session_handle, session)
             terminal = TerminalState(status=TerminalStatus.STOPPED, reason="approval_rejected")
             event = self.harness._append_event(
@@ -137,8 +132,7 @@ class RalphLoop:
             )
             session.pending_tool_calls = []
             session.status = SessionStatus.IDLE
-            self.harness.schedule_memory_maintenance(session)
-            self.harness.stabilize_short_term_memory(session)
+            self.harness._run_post_turn_processors(session_handle, session)
             self.harness._persist_session(session_handle, session)
             return emitted_events, terminal
         if isinstance(tool_error, ToolCancelledError):
@@ -159,8 +153,7 @@ class RalphLoop:
             )
             session.pending_tool_calls = []
             session.status = SessionStatus.IDLE
-            self.harness.schedule_memory_maintenance(session)
-            self.harness.stabilize_short_term_memory(session)
+            self.harness._run_post_turn_processors(session_handle, session)
             self.harness._persist_session(session_handle, session)
             return emitted_events, terminal
         session.pending_tool_calls = []
@@ -204,8 +197,7 @@ class RalphLoop:
             )
         )
         session.status = SessionStatus.IDLE
-        self.harness.schedule_memory_maintenance(session)
-        self.harness.stabilize_short_term_memory(session)
+        self.harness._run_post_turn_processors(session_handle, session)
         self.harness._persist_session(session_handle, session)
         duration_ms = (perf_counter() - interaction_started_at) * 1000
         self.harness._emit_metric(
@@ -491,6 +483,11 @@ class RalphLoop:
             except RequiresActionError as exc:
                 self.state.transition = "requires_action"
                 self.state.requires_action = True
+                self.harness.hook_runtime.execute_hooks(
+                    scope="runtime",
+                    event="requires_action",
+                    payload={"session_id": session_handle},
+                )
                 event = self.harness._append_event(
                     session,
                     self.harness._new_event(
@@ -502,8 +499,7 @@ class RalphLoop:
                 yield event
                 session.status = SessionStatus.REQUIRES_ACTION
                 session.pending_tool_calls = handled.tool_calls
-                self.harness.schedule_memory_maintenance(session)
-                self.harness.stabilize_short_term_memory(session)
+                self.harness._run_post_turn_processors(session_handle, session)
                 self.harness._persist_session(session_handle, session)
                 duration_ms = (perf_counter() - interaction_started_at) * 1000
                 self.harness._emit_metric(

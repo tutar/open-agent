@@ -7,16 +7,16 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
-from openagent.harness.models import (
-    ModelProviderExchange,
-    ModelStreamEvent,
-    ModelTurnRequest,
-    ModelTurnResponse,
-)
 from openagent.harness.providers.base import (
     HttpTransport,
     ProviderError,
     UrllibHttpTransport,
+)
+from openagent.harness.runtime.io import (
+    ModelProviderExchange,
+    ModelStreamEvent,
+    ModelTurnRequest,
+    ModelTurnResponse,
 )
 from openagent.object_model import JsonObject, JsonValue
 from openagent.tools import ToolCall

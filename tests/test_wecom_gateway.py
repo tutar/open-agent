@@ -21,8 +21,8 @@ from openagent.gateway.channels.wecom import (
     create_wecom_gateway,
 )
 from openagent.gateway.session_adapter import InProcessSessionAdapter
-from openagent.harness import ModelTurnRequest, ModelTurnResponse
 from openagent.harness.assemblies import create_file_runtime_assembly
+from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse
 from openagent.object_model import JsonObject
 
 
