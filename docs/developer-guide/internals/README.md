@@ -4,7 +4,7 @@
 
 入口按模块拆分：
 
-- [Module Map](./module-map.md)
+- [Module Structure](./module-structure.md)
 - [Object Model](./object-model.md)
 - [Harness And Session](./harness-and-session.md)
 - [Model Provider And Providers](./model-provider-and-providers.md)
@@ -16,7 +16,7 @@
 
 阅读顺序建议：
 
-1. `module-map`
+1. `module-structure`
 2. `object-model`
 3. `harness-and-session`
 4. `model-provider-and-providers`

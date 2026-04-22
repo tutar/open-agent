@@ -1,14 +1,13 @@
 # OpenAgent Development Rules
 
-`open-agent` is a Python agent project that implements `agent-spec`.
+`open-agent` is a Python agent project.
 
 All work in this repository should follow these rules by default.
 
 ## Project Identity
 
 - Treat `open-agent` as an agent project, not as an SDK skeleton.
-- Align architecture and behavior with `agent-spec`.
-- Use `docs/developer-guide/internals/module-map.md` as the source of truth for module placement and directory responsibility.
+- Use `docs/developer-guide/internals/module-structure.md` as the source of truth for module placement and directory responsibility.
 
 ## Code Quality
 
@@ -31,14 +30,15 @@ Do not treat documentation updates as optional follow-up work.
 ## Module Placement
 
 - Place code according to module responsibility, not file length.
-- Follow the `agent-spec`-aligned module split described in `docs/developer-guide/internals/module-map.md`.
+- Follow the module split described in `docs/developer-guide/internals/module-structure.md`.
 - Prefer keeping top-level modules as facades or shared seams.
 - Put domain implementation in the correct module area such as:
   - `harness`
   - `session`
   - `tools`
   - `sandbox`
-  - `orchestration`
+  - `gateway`
+  - `host`
 
 ## Refactors And Additions
 
@@ -51,4 +51,3 @@ Do not treat documentation updates as optional follow-up work.
 - Keep `README.md` focused on project overview and highlights.
 - Keep detailed behavior and implementation guidance in `docs/`.
 - When adding or changing a feature, update the corresponding feature or developer guide document.
-

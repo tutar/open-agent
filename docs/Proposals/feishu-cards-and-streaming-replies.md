@@ -1,6 +1,6 @@
 # Feishu Cards And Streaming Replies
 
-Status: completed
+Status: partially completed
 
 ## Summary
 
@@ -17,8 +17,38 @@ Status: completed
 
 - Feishu 控制流此前依赖 slash 文本命令
 - 当前 `/channel` 与 `/channel-config` 仍保留为暂存的 management 路径
-- reply card 与 card action 现已落地
-- reaction 已支持轻量状态提示
+- reply card、card action、reaction、retry 隔离与流式更新链路都已落地
+- OpenAI-compatible provider 已接入真实 `stream=true` 与 `assistant_delta`
+- Feishu reply card 已能消费 `assistant_delta`，并按短时间窗口聚合后刷新同一张卡
+
+## Implementation Status
+
+### 已完成
+
+- 普通 Feishu turn 默认创建单 turn reply card
+- reply card 优先走 CardKit streaming updates；租户权限或平台能力不足时，会自动降级为对同一张消息卡片做 patch 更新
+- `approve/reject` 已从文本 slash 命令切到卡片按钮
+- 审批卡片按钮只保留 `Approve / Reject`
+- `interrupt` 与 `resume` 继续保留为主动控制语义，不承载在审批卡片按钮中
+- card action 默认通过飞书长连接事件进入 host
+- 卡片发送/更新失败会进入 file-backed retry queue
+- pending card 重试已按当前 `conversation_id` 隔离，不会再被其他 chat 触发
+- 原消息 reaction 已支持：
+  - 处理中 `OneSecond`
+  - 完成 `DONE`
+- OpenAI-compatible provider 已支持真实 streaming，请求会发送 `stream=true`
+- terminal TUI 与 Feishu reply card 都已消费 `assistant_delta`
+- Feishu reply card 为避免远程卡片更新过慢，已改为短时间窗口聚合 delta，再刷新同一张卡；终态会强制尾包 flush
+
+### 当前遗留
+
+- Feishu 卡片中的 markdown 显示仍不稳定，尤其是：
+  - `###` 这类标题语法
+  - 粗体标题
+  - pipe table 表格
+- 当前已经把 reply 正文拆成独立 markdown 区块，避免和 `Request / Status / Reply` 标签混在同一个大 markdown 串里；但真实飞书客户端中的最终渲染仍未达到预期
+- 这说明剩余问题更接近飞书消息卡 markdown 组件本身的支持边界、或当前卡片 schema/组件选型仍不足，而不是“没有使用 markdown tag”
+- `/channel` 与 `/channel-config` 仍未迁到独立的 host management page
 
 ## Proposed Design
 
@@ -65,6 +95,19 @@ Status: completed
 - pending card 重试按当前 `conversation_id` 隔离
 - 在补发成功前，原消息保持 `OneSecond` reaction；成功后切 `DONE`
 - reply card 的 CardKit 跟踪标识以 `card_id + uuid + sequence` 维护，不再依赖 `im.v1.message.update`
+- OpenAI-compatible provider 已接入真实 `stream=true`
+- Feishu reply card 已消费 `assistant_delta`，并按窗口聚合后更新同一张卡
+
+## Known Gaps
+
+- Feishu markdown 组件的最终渲染效果仍未满足预期，尤其是标题、粗体和表格
+- 当前 reply card 虽然已经把模型回复作为独立 markdown 区块渲染，但在真实飞书客户端中仍会出现：
+  - markdown 特殊字符原样显示
+  - 标题未按标题样式显示
+  - 表格样式异常
+- 这个问题保留在本 proposal 中继续跟踪，后续需要进一步验证：
+  - 飞书 markdown 组件的真实支持子集
+  - 是否需要改成更细粒度的卡片组件组合，而不是继续依赖单个 markdown 区块承载复杂排版
 
 ## 参考
 - 卡片按钮：https://open.feishu.cn/document/feishu-cards/card-json-v2-components/interactive-components/button

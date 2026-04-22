@@ -4,9 +4,9 @@
 
 如果你在看 `src/openagent` 的目录调整，先配合阅读：
 
-- [`internals/module-map.md`](./internals/module-map.md)
+- [`internals/module-structure.md`](./internals/module-structure.md)
 
-那份文档把 `agent-spec` 的模块拆分逻辑翻译成了当前 `openagent` 的实现参考，用来指导后续目录重构。
+那份文档定义了 OpenAgent 自己的目录结构和模块职责，用来指导后续目录重构。
 
 ## Design Constraints
 
@@ -27,9 +27,9 @@
 
 ## Module Layout
 
-更细的 `agent-spec -> openagent` 对照见：
+更细的目录职责说明见：
 
-- [`internals/module-map.md`](./internals/module-map.md)
+- [`internals/module-structure.md`](./internals/module-structure.md)
 
 核心模块：
 
@@ -57,9 +57,6 @@
   - commands / skills / MCP baseline
 - `sandbox`
   - local execution boundary and capability negotiation baseline
-- `orchestration`
-  - local task manager
-  - background / verifier task baseline
 - `gateway`
   - harness-owned frontend integration boundary
   - channel bindings and harness-instance management
@@ -67,6 +64,16 @@
   - session signal
   - progress projection
   - span-based tracing
+- `host`
+  - host app
+  - startup surface
+  - local transport and channel loading
+
+其中 task 与 sub-agent 编排属于 `harness` 域：
+
+- task lifecycle
+- background / verifier task baseline
+- delegated or detached local sub-agent execution
 
 ## Main Runtime Flow
 
@@ -195,14 +202,13 @@ turn 级控制当前通过 `TurnControl` 暴露：
 这还是本地 baseline，不是完整分布式控制协议。
 
 `SimpleHarness.run_turn(...)` 只是 convenience wrapper。
-真正的 turn 状态机在 `RalphLoop.run_turn_stream(...)` 中推进，和 spec 中的
-`AgentRuntime` 语义保持一致。
+真正的 turn 状态机在 `RalphLoop.run_turn_stream(...)` 中推进。
 
 ## Context Governance
 
 当前 `ContextGovernance` 已经不是单纯的 compact helper。
 
-它的实现现在位于 `harness/context/`，按 `agent-spec` 的 `context-assembly` 语义组织；
+它的实现现在位于 `harness/context/`；
 顶层 `context_governance.py` 只保留兼容导出。
 
 它在架构上负责：
@@ -285,9 +291,9 @@ capability surface 当前统一投影三类能力：
 
 这使 frontend 或 host 侧可以做更稳定的能力展示和筛选。
 
-## Orchestration
+## Tasks And Sub-Agent Coordination
 
-当前 orchestration 只覆盖本地 baseline：
+当前与 task 和 sub-agent 相关的实现只覆盖本地 baseline：
 
 - generic task
 - background task
@@ -296,7 +302,7 @@ capability surface 当前统一投影三类能力：
 - checkpoint / complete / fail
 - file-backed task persistence and recovery
 
-它现在不是 durable distributed orchestration，而是本地任务生命周期抽象。
+它现在不是分布式编排系统，而是本地 task lifecycle 与 sub-agent coordination 抽象。
 
 ## Local Assembly
 
@@ -312,10 +318,8 @@ capability surface 当前统一投影三类能力：
 
 当前架构里有意没有做这些内容：
 
-- cloud orchestration
 - remote binding
 - daemon / IPC transport
-- model token streaming
 - full cancellation / retry / timeout semantics
 
 这些都在未来待办里，但不是当前架构的前提。

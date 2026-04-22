@@ -51,7 +51,7 @@
   - 合入 `main` 前的最终验收顺序
   - Python / TUI / Feishu E2E / 文档同步检查
 - [Internals](./internals/README.md)
-  - 逐模块解释 object model、harness、session、tools、gateway、sandbox 和 orchestration
+  - 逐模块解释 object model、harness、session、tools、gateway、sandbox、host 和共享层
   - 包括 model integration / providers 边界
 
 ## Repository Layout
@@ -63,7 +63,8 @@
 - `src/openagent/session`
 - `src/openagent/tools`
 - `src/openagent/sandbox`
-- `src/openagent/orchestration`
+- `src/openagent/gateway`
+- `src/openagent/host`
 - `src/openagent/shared`
 - `src/openagent/local.py`
 - `frontend/terminal-tui`
