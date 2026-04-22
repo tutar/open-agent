@@ -1,4 +1,4 @@
-"""Orchestration interface definitions."""
+"""Task lifecycle interfaces for the local harness baseline."""
 
 from __future__ import annotations
 

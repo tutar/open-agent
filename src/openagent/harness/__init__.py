@@ -56,9 +56,20 @@ from openagent.harness.providers import (
 )
 from openagent.harness.runtime import RalphLoop
 from openagent.harness.simple import SimpleHarness
+from openagent.harness.task import (
+    BackgroundTaskContext,
+    BackgroundTaskHandle,
+    FileTaskManager,
+    InMemoryTaskManager,
+    LocalBackgroundAgentOrchestrator,
+    LocalTaskKind,
+    TaskManager,
+)
 
 __all__ = [
     "AgentRuntime",
+    "BackgroundTaskContext",
+    "BackgroundTaskHandle",
     "AnthropicMessagesModelAdapter",
     "BootstrapPromptAssembler",
     "CancelledTurn",
@@ -67,6 +78,7 @@ __all__ = [
     "ContextReport",
     "ContinuationBudgetPlan",
     "ExternalizedToolResult",
+    "FileTaskManager",
     "FileModelIoCapture",
     "Harness",
     "InitialUserBootstrap",
@@ -96,7 +108,11 @@ __all__ = [
     "ResolvedPromptSections",
     "RetryExhaustedTurn",
     "SimpleHarness",
+    "InMemoryTaskManager",
+    "LocalBackgroundAgentOrchestrator",
+    "LocalTaskKind",
     "StreamingModelAdapter",
+    "TaskManager",
     "TimedOutTurn",
     "TurnControl",
     "TurnState",

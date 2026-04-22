@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from openagent.harness import ModelStreamEvent, ModelTurnRequest, ModelTurnResponse, SimpleHarness
+from openagent.harness.task import InMemoryTaskManager, LocalBackgroundAgentOrchestrator
 from openagent.object_model import ToolResult
 from openagent.observability import (
     AgentObservability,
@@ -10,7 +11,6 @@ from openagent.observability import (
     ProgressUpdate,
     StdoutObservabilitySink,
 )
-from openagent.orchestration import InMemoryTaskManager, LocalBackgroundAgentOrchestrator
 from openagent.session import InMemorySessionStore
 from openagent.tools import (
     PermissionDecision,

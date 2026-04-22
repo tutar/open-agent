@@ -10,5 +10,4 @@
 - [Gateway And Channels](./gateway-and-channels.md): gateway、terminal、feishu、host management
 - [Observability And Model I/O](./observability-and-model-io.md): observability、model I/O capture
 - [Ecosystem Compatibility](./ecosystem-compatibility.md): commands、skills、MCP
-- [Orchestration And Sandbox](./orchestration-and-sandbox.md): orchestration、sandbox
-
+- [Tasks And Sandbox](./tasks-and-sandbox.md): local task lifecycle、sandbox

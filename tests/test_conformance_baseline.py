@@ -4,12 +4,12 @@ from typing import Any
 
 from openagent.gateway import ChannelIdentity, Gateway, InboundEnvelope, InProcessSessionAdapter
 from openagent.harness import ModelTurnRequest, ModelTurnResponse, SimpleHarness
-from openagent.object_model import JsonObject, RuntimeEventType, TerminalStatus, ToolResult
-from openagent.orchestration import (
+from openagent.harness.task import (
     BackgroundTaskContext,
     InMemoryTaskManager,
     LocalBackgroundAgentOrchestrator,
 )
+from openagent.object_model import JsonObject, RuntimeEventType, TerminalStatus, ToolResult
 from openagent.sandbox import LocalSandbox, SandboxExecutionRequest
 from openagent.session import (
     FileMemoryStore,

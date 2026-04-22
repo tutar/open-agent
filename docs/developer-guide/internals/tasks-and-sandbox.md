@@ -1,12 +1,12 @@
-# Orchestration And Sandbox
+# Tasks And Sandbox
 
 这两个模块当前都属于“本地 baseline”，但它们分别承担不同角色。
 
-## Orchestration
+## Tasks
 
-`orchestration` 当前不负责分布式任务调度。
+本地 task 生命周期已经收进 `harness/task/`。
 
-它只负责本地任务生命周期抽象：
+它负责：
 
 - generic task
 - background task
@@ -18,7 +18,7 @@
 
 ## Why Local Task Handles Exist
 
-即使当前不做 cloud orchestration，runtime 仍然需要表达：
+即使当前不做托管控制面，runtime 仍然需要表达：
 
 - 某个任务在后台跑
 - 某个 verifier 在检查结果

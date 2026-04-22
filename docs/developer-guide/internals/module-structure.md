@@ -73,7 +73,7 @@
 - `assemblies/`
   - local runtime assembly
   - runtime wiring helpers
-- `tasks/`
+- `task/`
   - task manager
   - background task lifecycle
   - task persistence / handles / events
@@ -85,7 +85,7 @@
 
 - task 和 sub-agent 编排都属于 `harness`
 - `orchestration` 不是目标顶层模块
-- 后续与 task 有关的代码应优先向 `harness/tasks/` 收敛
+- 后续与 task 有关的代码应优先向 `harness/task/` 收敛
 
 ## Stable Top-Level Boundaries
 
@@ -139,13 +139,19 @@
 - `observability/`
 - `host/`
 
-当前仍需要在后续迁移中继续收口的是：
+最近已经完成的一项目录收口是：
 
-- `src/openagent/orchestration/`
-  - 代码目前仍存在
-  - 但目标结构里不再作为顶层目录保留
-  - task manager / background task / task handle / task events 未来应迁到 `harness/tasks/`
-  - 与 sub-agent 编排相关的逻辑未来应迁到 `harness/subagents/`
+- local task 代码已从顶层 `src/openagent/orchestration/` 迁入 `src/openagent/harness/task/`
+  - `TaskManager`
+  - task manager persistence baselines
+  - background task handles and context
+  - `LocalBackgroundAgentOrchestrator`
+
+当前后续仍可继续细化的是：
+
+- `harness/subagents/`
+  - 目录职责已经确定
+  - 但更完整的 sub-agent coordination 代码还会继续向这里收敛
 
 `terminal` channel 当前也已经统一收口为：
 

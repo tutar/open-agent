@@ -4,8 +4,8 @@ from .binding_store import FileSessionBindingStore
 from .channels import (
     FeishuChannelAdapter,
     TerminalChannelAdapter,
-    WeComChannelAdapter,
     WechatChannelAdapter,
+    WeComChannelAdapter,
 )
 from .channels.feishu import (
     FEISHU_REACTION_COMPLETED,

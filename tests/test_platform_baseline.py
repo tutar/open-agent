@@ -8,15 +8,15 @@ from openagent.capability_surface import (
 )
 from openagent.context_governance import ContextGovernance
 from openagent.harness import ModelTurnRequest, ModelTurnResponse
-from openagent.local import create_file_runtime, create_in_memory_runtime
-from openagent.object_model import JsonObject, TerminalStatus, ToolResult
-from openagent.orchestration import (
+from openagent.harness.task import (
     BackgroundTaskContext,
     FileTaskManager,
     InMemoryTaskManager,
     LocalBackgroundAgentOrchestrator,
     LocalTaskKind,
 )
+from openagent.local import create_file_runtime, create_in_memory_runtime
+from openagent.object_model import JsonObject, TerminalStatus, ToolResult
 from openagent.sandbox import LocalSandbox, SandboxExecutionRequest
 from openagent.session import SessionMessage
 from openagent.tools import (

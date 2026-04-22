@@ -2,8 +2,8 @@
 
 from .feishu import FeishuChannelAdapter
 from .tui import TerminalChannelAdapter
-from .wecom import WeComChannelAdapter
 from .wechat import WechatChannelAdapter
+from .wecom import WeComChannelAdapter
 
 __all__ = [
     "FeishuChannelAdapter",

@@ -17,8 +17,8 @@ from openagent import (
     __version__,
 )
 from openagent.harness import Harness
+from openagent.harness.task import TaskManager
 from openagent.local import create_in_memory_runtime
-from openagent.orchestration import TaskManager
 from openagent.sandbox import Sandbox
 from openagent.session import SessionStore
 from openagent.tools import ToolDefinition, ToolExecutor, ToolRegistry

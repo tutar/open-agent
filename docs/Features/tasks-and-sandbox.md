@@ -1,8 +1,8 @@
-# Orchestration And Sandbox
+# Tasks And Sandbox
 
-## Orchestration
+## Tasks
 
-当前 orchestration 支持本地 baseline：
+当前 local task baseline 支持：
 
 - generic task
 - background task handle

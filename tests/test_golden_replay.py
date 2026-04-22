@@ -16,7 +16,17 @@ from openagent.session import (
 )
 from openagent.tools import PermissionDecision, SimpleToolExecutor, StaticToolRegistry, ToolCall
 
-GOLDEN_DIR = Path(__file__).resolve().parents[2] / "agent-spec" / "conformance" / "golden"
+
+def _resolve_golden_dir() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        candidate = parent / "agent-spec" / "conformance" / "golden"
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError("Could not locate agent-spec/conformance/golden from test path")
+
+
+GOLDEN_DIR = _resolve_golden_dir()
 
 
 def _load_golden(name: str) -> dict[str, Any]:
@@ -295,11 +305,11 @@ def test_memory_recall_and_consolidation_matches_golden(tmp_path: Path) -> None:
     )
 
 
-def test_agents_memory_loading_precedence_matches_golden(
+def test_instruction_markdown_loading_precedence_matches_golden(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    golden = _load_golden("agents-memory-loading-precedence.json")
+    golden = _load_golden("instruction-markdown-loading-precedence.json")
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     (home / ".openagent").mkdir(parents=True)
