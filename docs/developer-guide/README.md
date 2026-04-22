@@ -43,6 +43,10 @@
   - `WebFetch / WebSearch` 的 Firecrawl backend 本地联调
   - Docker Compose 启动方式
   - OpenAgent backend 切换环境变量
+- [Web Search Backends](./web-search-backends.md)
+  - `WebSearch` 的 default、Firecrawl、Tavily 和 Brave backend 配置
+  - `.env` 兜底加载方式
+  - Tavily / Brave opt-in smoke tests
 - [Pre-Merge Checklist](./pre-merge-checklist.md)
   - 合入 `main` 前的最终验收顺序
   - Python / TUI / Feishu E2E / 文档同步检查

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,7 +37,7 @@ class StaticModel:
 
 @dataclass(slots=True)
 class FakeWeComClient:
-    responses: list[dict[str, str]] = field(default_factory=list)
+    responses: list[dict[str, object]] = field(default_factory=list)
     event_handler: Callable[[dict[str, object]], list[JsonObject]] | None = None
 
     def start(self, event_handler: Callable[[dict[str, object]], list[JsonObject]]) -> None:
@@ -44,9 +46,16 @@ class FakeWeComClient:
     def close(self) -> None:
         self.event_handler = None
 
-    def respond(self, raw_event: dict[str, object], conversation_id: str, text: str) -> None:
+    def respond(
+        self,
+        raw_event: dict[str, object],
+        conversation_id: str,
+        text: str,
+        *,
+        finish: bool = True,
+    ) -> None:
         del raw_event
-        self.responses.append({"conversation_id": conversation_id, "text": text})
+        self.responses.append({"conversation_id": conversation_id, "text": text, "finish": finish})
 
 
 @dataclass(slots=True)
@@ -240,6 +249,93 @@ def test_wecom_client_respond_sends_official_response_frame() -> None:
     ]
 
 
+def test_wecom_client_respond_can_keep_stream_open() -> None:
+    websocket = FakeWebSocket()
+    client = WeComAiBotClient(bot_id="bot_1", secret="secret_1")
+    client.set_websocket(websocket)
+
+    client.respond(
+        {
+            "reply_context": {
+                "req_id": "req_1",
+                "msgid": "wecom_msg_1",
+                "chatid": "chat_1",
+                "stream_id": "stream_1",
+            }
+        },
+        "chat_1",
+        "working",
+        finish=False,
+    )
+
+    assert websocket.sent == [
+        {
+            "cmd": "aibot_respond_msg",
+            "headers": {"req_id": "req_1"},
+            "body": {
+                "msgtype": "stream",
+                "stream": {
+                    "id": "stream_1",
+                    "finish": False,
+                    "content": "working",
+                },
+            },
+        }
+    ]
+
+
+def test_wecom_client_dispatches_handler_off_websocket_loop() -> None:
+    websocket = FakeWebSocket()
+    client = WeComAiBotClient(bot_id="bot_1", secret="secret_1")
+    started = threading.Event()
+    release = threading.Event()
+
+    def handle_event(event: dict[str, object]) -> list[JsonObject]:
+        started.set()
+        client.respond(event, "chat_1", "处理中，请稍候...", finish=False)
+        release.wait(timeout=1)
+        return []
+
+    client.set_event_handler(handle_event)
+
+    async def exercise() -> None:
+        client.set_websocket(websocket)
+        start = time.monotonic()
+        client.handle_frame(
+            {
+                "cmd": "aibot_msg_callback",
+                "headers": {"req_id": "req_1"},
+                "body": {
+                    "msgid": "wecom_msg_1",
+                    "chatid": "chat_1",
+                    "chattype": "single",
+                    "from": {"userid": "userid_1"},
+                    "msgtype": "text",
+                    "text": {"content": "hello"},
+                },
+            }
+        )
+
+        assert time.monotonic() - start < 0.2
+        assert started.wait(timeout=0.5)
+        for _ in range(20):
+            if websocket.sent:
+                break
+            await asyncio.sleep(0.01)
+        release.set()
+
+    asyncio.run(exercise())
+
+    response_body = websocket.sent[0]["body"]
+    assert isinstance(response_body, dict)
+    response_stream = response_body["stream"]
+    assert response_stream == {
+        "id": "stream_wecom_msg_1",
+        "finish": False,
+        "content": "处理中，请稍候...",
+    }
+
+
 def test_wecom_client_start_reports_missing_aiohttp(monkeypatch: pytest.MonkeyPatch) -> None:
     client = WeComAiBotClient(bot_id="bot_1", secret="secret_1")
     real_find_spec = importlib.util.find_spec
@@ -314,7 +410,10 @@ def test_wecom_private_host_lazy_binds_and_replies(tmp_path: Path) -> None:
     outbound = host.handle_event(private_text_event(content="hello"))
 
     assert outbound == [{"conversation_id": "userid_1", "text": "hello via wecom"}]
-    assert client.responses == [{"conversation_id": "userid_1", "text": "hello via wecom"}]
+    assert client.responses == [
+        {"conversation_id": "userid_1", "text": "处理中，请稍候...", "finish": False},
+        {"conversation_id": "userid_1", "text": "hello via wecom", "finish": True},
+    ]
     binding = gateway.get_binding("wecom", "wecom:private:userid_1")
     assert binding.session_id == "wecom-session:wecom:private:userid_1"
 
@@ -354,7 +453,10 @@ def test_wecom_private_host_dedupes_message_id(tmp_path: Path) -> None:
 
     assert first == [{"conversation_id": "userid_1", "text": "hello once"}]
     assert second == []
-    assert client.responses == [{"conversation_id": "userid_1", "text": "hello once"}]
+    assert client.responses == [
+        {"conversation_id": "userid_1", "text": "处理中，请稍候...", "finish": False},
+        {"conversation_id": "userid_1", "text": "hello once", "finish": True},
+    ]
 
 
 def test_wecom_gateway_registers_adapter(tmp_path: Path) -> None:
