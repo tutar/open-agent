@@ -42,6 +42,7 @@
   - `harness/runtime/` 主运行时子域
   - `SimpleHarness` facade
   - `RalphLoop` turn runtime
+  - `context_engineering/` for bootstrap prompts, startup context, assembly, governance, and instruction markdown
   - `projection / post_turn / hooks`
   - provider adapters under `harness/providers`
 - `session`
@@ -213,26 +214,33 @@ turn 级控制当前通过 `TurnControl` 暴露：
 真正的 turn 状态机在 `harness/runtime/core/ralph_loop.py` 的
 `RalphLoop.run_turn_stream(...)` 中推进。
 
-## Context Governance
+## Context Engineering
 
-当前 `ContextGovernance` 已经不是单纯的 compact helper。
+当前上下文子域已经收口为 `harness/context_engineering/`，包含四个稳定子面：
 
-它的实现现在位于 `harness/context/`；
-顶层 `context_governance.py` 只保留兼容导出。
+- `entry/`
+  - bootstrap prompts
+  - startup / resume / turn-zero context
+- `assembly/`
+  - context planes
+  - attachment / evidence assembly
+  - capability exposure
+- `governance/`
+  - token/budget 分析
+  - continuation budget planning
+  - warning threshold
+  - proactive compact
+  - overflow recovery
+  - tool result externalization
+  - prompt-cache strategy
+- `instruction_markdown/`
+  - `AGENTS.md` / `RULES.md` loading
+  - include expansion
+  - conditional rules
 
-它在架构上负责：
-
-- token/budget 分析
-- continuation budget planning
-- warning threshold
-- proactive compact
-- overflow recovery
-- tool result externalization
-- prompt-cache-aware message shaping baseline
-- prompt-cache break detection baseline
-
-harness 在 `build_model_input(...)` 阶段会调用它，并把最近一次治理结果保存在
-`last_context_report`，供测试和 host 层观察。
+harness 在 `build_model_input(...)` 阶段先读取 transcript、short-term memory、durable-memory recall 和 instruction markdown，
+再通过 `ContextAssemblyPipeline` 生成结构化的 model request。治理结果继续通过
+`last_context_report` 暴露给测试和 host 层。
 
 ## Agent Observability
 

@@ -1,4 +1,4 @@
-"""Context governance models."""
+"""Context engineering governance models."""
 
 from __future__ import annotations
 
@@ -89,3 +89,16 @@ class ExternalizedToolResult(SerializableModel):
     preview: str
     persisted_ref: str | None
     truncated: bool
+
+
+@dataclass(slots=True)
+class ContentExternalizationResult(SerializableModel):
+    preview: str
+    persisted_ref: str | None
+    externalized: bool
+
+
+@dataclass(slots=True)
+class WorkingViewProjection(SerializableModel):
+    projected_messages: list[JsonObject] = field(default_factory=list)
+    projection_reason: str | None = None

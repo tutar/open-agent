@@ -1,4 +1,4 @@
-"""Bootstrap prompt assembly for the local OpenAgent harness."""
+"""Bootstrap prompt assembly for the OpenAgent harness."""
 
 from __future__ import annotations
 
@@ -30,14 +30,6 @@ class PromptBlocks(SerializableModel):
 
 
 @dataclass(slots=True)
-class InitialUserBootstrap(SerializableModel):
-    content: str = ""
-    first_turn_only: bool = True
-    transcript_visibility: str = "hidden"
-    dedup_policy: str = "once"
-
-
-@dataclass(slots=True)
 class BootstrapPromptAssembler:
     agent_name: str = "OpenAgent"
 
@@ -54,16 +46,15 @@ class BootstrapPromptAssembler:
                 text=(
                     f"You are {self.agent_name}, a local-first task execution agent. "
                     "You are not a generic chatbot. "
-                    "You should complete tasks by reasoning over the "
-                    "workspace, available tools, and prior conversation state."
+                    "You should complete tasks by reasoning over the workspace, "
+                    "available tools, and prior conversation state."
                 ),
             ),
             PromptSection(
                 name="agent_identity",
                 text=(
                     f"Identity: {self.agent_name}. "
-                    "Role: pragmatic software agent operating inside a "
-                    "real local workspace."
+                    "Role: pragmatic software agent operating inside a real local workspace."
                 ),
             ),
             PromptSection(
@@ -78,8 +69,8 @@ class BootstrapPromptAssembler:
                 name="workspace_context",
                 text=(
                     f"Workspace root: {workspace_root}. "
-                    "Restrict file assumptions and file operations "
-                    "to this workspace unless the user explicitly broadens the scope."
+                    "Restrict file assumptions and file operations to this workspace "
+                    "unless the user explicitly broadens the scope."
                 ),
                 dynamic=True,
                 cache_policy="volatile",
@@ -90,10 +81,7 @@ class BootstrapPromptAssembler:
                 text=(
                     "Tool contract: choose the most appropriate tool for the task and always "
                     "provide complete required arguments. "
-                    "Never emit an empty tool call or omit required fields. "
-                    "For directory listing or workspace inspection, "
-                    "prefer explicit file-system tools over "
-                    "free-form guessing."
+                    "Never emit an empty tool call or omit required fields."
                 ),
             ),
             PromptSection(

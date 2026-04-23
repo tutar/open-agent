@@ -67,20 +67,21 @@ loop 语义。
 - `harness/runtime/post_turn/`
   - 在 turn 到达稳定边界后执行 memory / continuity 后处理
 
-## Context Governance Integration
+## Context Engineering Integration
 
-当前 `build_model_input(...)` 会在真正构造模型输入前做治理判断：
+当前 `build_model_input(...)` 会先走 `harness/context_engineering/` 的 entry + assembly + governance 主链路：
 
-1. 先分析当前消息预算
-2. 接近阈值时做 proactive compact
-3. 已经超预算时走 overflow recovery
-4. 生成 continuation budget plan
-5. 生成 prompt-cache-aware plan
-6. 把结果写入 `last_context_report`
+1. 先解析 bootstrap prompts 和 startup contexts
+2. 读取 instruction markdown，并把规则放进 system context plane
+3. 对 transcript 做预算分析
+4. 接近阈值时做 proactive compact
+5. 已经超预算时走 overflow recovery
+6. 生成 continuation budget plan 和 prompt-cache-aware plan
+7. 通过 `ContextAssemblyPipeline` 产出最终 model request
 
 这意味着治理结果是可观测的，而不是只体现在 message 数量变化上。
 
-当前 `build_model_input(...)` 还会额外组装独立的 bootstrap prompt：
+当前 context engineering 还会额外维护独立的 bootstrap prompt：
 
 - `OpenAgent` identity / role
 - local-first operating mode
@@ -95,8 +96,8 @@ loop 语义。
 - `recommended_max_output_tokens`
 - `provider_cache_key`
 
-`ContextGovernance` 现在位于 `harness/context/`，并继续支持结构化 prompt-cache
-snapshot 和 break detection：
+`ContextGovernance` 现在位于 `harness/context_engineering/governance/`，并继续支持结构化
+prompt-cache snapshot 和 break detection：
 
 - stable prefix snapshot
 - dynamic suffix snapshot

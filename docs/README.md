@@ -22,7 +22,7 @@
 
 - 想快速看运行主链路：先读 [`Runtime`](./Features/runtime.md)、[`Providers`](./Features/providers.md)、[`Gateway And Channels`](./Features/gateway-and-channels.md)
 - 想看 agent 的可调用能力：读 [`Tools And Capability Surface`](./Features/tools-and-capability-surface.md)
-- 想看会话、记忆和上下文：读 [`Session`](./Features/session.md)、[`Durable Memory`](./Features/durable-memory.md)、[`Context Governance`](./Features/context-governance.md)
+- 想看会话、记忆和上下文：读 [`Session`](./Features/session.md)、[`Durable Memory`](./Features/durable-memory.md)、[`Context Engineering`](./Features/context-engineering.md)
 - 想看 Skills / MCP / Commands 兼容层：读 [`Ecosystem Compatibility`](./Features/ecosystem-compatibility.md)
 - 想看排障和数据沉淀：读 [`Observability And Model I/O`](./Features/observability-and-model-io.md)
 

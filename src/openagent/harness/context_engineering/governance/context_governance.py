@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from openagent.harness.context.models import (
+from openagent.harness.context_engineering.governance.context_editing import (
+    externalize_tool_result,
+    tool_result_message_content,
+)
+from openagent.harness.context_engineering.governance.models import (
     CompactResult,
     ContextReport,
     ContinuationBudgetPlan,
@@ -14,17 +18,13 @@ from openagent.harness.context.models import (
     PromptCacheSnapshot,
     PromptCacheStrategyName,
 )
-from openagent.harness.context.prompt_cache import (
+from openagent.harness.context_engineering.governance.prompt_cache_strategy import (
     build_continuation_budget_plan,
     build_prompt_cache_plan,
     detect_cache_break,
     fork_prompt_cache,
     provider_cache_key,
     snapshot_prompt_cache,
-)
-from openagent.harness.context.tool_result import (
-    externalize_tool_result,
-    tool_result_message_content,
 )
 from openagent.object_model import ToolResult
 from openagent.session import SessionMessage
@@ -75,7 +75,6 @@ class ContextGovernance:
                 summary="No compaction needed",
                 compacted_count=0,
             )
-
         kept = messages[-self.compact_to_messages :]
         compacted_count = len(messages) - len(kept)
         summary = f"Compacted {compacted_count} earlier messages into recent-context view"

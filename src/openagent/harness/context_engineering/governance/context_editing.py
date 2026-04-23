@@ -1,9 +1,12 @@
-"""Tool-result externalization helpers for context assembly."""
+"""Context editing helpers."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from openagent.harness.context_engineering.governance.models import (
+    ContentExternalizationResult,
+)
 from openagent.object_model import ToolResult
 
 
@@ -36,6 +39,34 @@ def externalize_tool_result(
         metadata["persisted_ref"] = persisted_ref
     result.metadata = metadata
     return result
+
+
+def externalize_payload(
+    payload: str,
+    *,
+    threshold_chars: int,
+    storage_dir: str | None,
+    name: str,
+) -> ContentExternalizationResult:
+    if len(payload) <= threshold_chars:
+        return ContentExternalizationResult(
+            preview=payload,
+            persisted_ref=None,
+            externalized=False,
+        )
+    preview = payload[:threshold_chars]
+    persisted_ref: str | None = None
+    if storage_dir is not None:
+        storage_path = Path(storage_dir)
+        storage_path.mkdir(parents=True, exist_ok=True)
+        payload_path = storage_path / f"{name}.txt"
+        payload_path.write_text(payload, encoding="utf-8")
+        persisted_ref = str(payload_path)
+    return ContentExternalizationResult(
+        preview=preview,
+        persisted_ref=persisted_ref,
+        externalized=True,
+    )
 
 
 def tool_result_message_content(result: ToolResult) -> str:

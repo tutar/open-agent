@@ -27,11 +27,17 @@ class ModelTurnRequest(SerializableModel):
     system_prompt: str | None = None
     prompt_sections: list[JsonObject] = field(default_factory=list)
     prompt_blocks: JsonObject | None = None
-    initial_user_bootstrap: JsonObject | None = None
+    startup_contexts: list[JsonObject] = field(default_factory=list)
     available_tools: list[str] = field(default_factory=list)
     tool_definitions: list[JsonObject] = field(default_factory=list)
     short_term_memory: JsonObject | None = None
     memory_context: list[JsonObject] = field(default_factory=list)
+    system_context: list[JsonObject] = field(default_factory=list)
+    user_context: list[JsonObject] = field(default_factory=list)
+    attachments: list[JsonObject] = field(default_factory=list)
+    capability_surface: JsonObject | None = None
+    evidence_refs: list[JsonObject] = field(default_factory=list)
+    request_metadata: JsonObject = field(default_factory=dict)
 
 
 @dataclass(slots=True)

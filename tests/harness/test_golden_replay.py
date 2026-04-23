@@ -3,7 +3,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from openagent.context_governance import ContextGovernance
+from openagent.harness.context_engineering.governance.context_governance import (
+    ContextGovernance,
+)
 from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse, SimpleHarness
 from openagent.object_model import RuntimeEvent, RuntimeEventType, ToolResult
 from openagent.session import (

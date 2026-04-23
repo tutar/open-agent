@@ -6,17 +6,21 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
-from pathlib import Path
 from time import perf_counter
 from typing import cast
 
 from openagent.durable_memory import MemoryStore
-from openagent.harness.bootstrap import (
+from openagent.harness.context_engineering import (
     BootstrapPromptAssembler,
-    InitialUserBootstrap,
+    ContextAssemblyInput,
+    ContextAssemblyPipeline,
+    ContextGovernance,
+    ContextReport,
+    InstructionMarkdownLoader,
+    StructuredContext,
+    build_startup_contexts,
     default_workspace_root_from_metadata,
 )
-from openagent.harness.context import ContextGovernance, ContextReport
 from openagent.harness.interfaces import Harness
 from openagent.harness.runtime.core.pipeline import (
     append_event,
@@ -98,6 +102,10 @@ class SimpleHarness(Harness):
     observability: AgentObservability | None = None
     model_io_capture: ModelIoCapture = field(default_factory=NoOpModelIoCapture)
     bootstrap_prompts: BootstrapPromptAssembler = field(default_factory=BootstrapPromptAssembler)
+    context_pipeline: ContextAssemblyPipeline = field(default_factory=ContextAssemblyPipeline)
+    instruction_markdown_loader: InstructionMarkdownLoader = field(
+        default_factory=InstructionMarkdownLoader
+    )
     runtime_loop: AgentRuntime = field(init=False, repr=False)
     hook_runtime: HookRuntime = field(default_factory=HookRuntime)
     post_turn_registry: PostTurnRegistry = field(default_factory=PostTurnRegistry)
@@ -143,7 +151,6 @@ class SimpleHarness(Harness):
         session_slice: SessionRecord,
         context_providers: list[object],
     ) -> ModelTurnRequest:
-        del context_providers
         compacted = False
         recovered_from_overflow = False
         available_tools = [tool.name for tool in self.tools.list_tools()]
@@ -201,7 +208,7 @@ class SimpleHarness(Harness):
                             attributes=self.last_context_report.to_dict(),
                         )
                     )
-        memory_context = self._load_agents_memory_context(session_slice)
+        memory_context: list[JsonObject] = []
         if (
             self.memory_store is not None
             and self.memory_store.is_enabled()
@@ -236,24 +243,81 @@ class SimpleHarness(Harness):
                 )
             )
         )
-        prompt_blocks = self.bootstrap_prompts.split_static_dynamic(prompt_sections)
-        system_prompt = "\n\n".join(
-            [*prompt_blocks.static_blocks, *prompt_blocks.dynamic_blocks]
-        ).strip() or None
-        initial_user_bootstrap = InitialUserBootstrap()
+        runtime_state: JsonObject = {
+            "session_id": session_slice.session_id,
+            "agent_id": session_slice.agent_id,
+            "target_path": (
+                session_slice.metadata.get("target_path")
+                if isinstance(session_slice.metadata, dict)
+                else None
+            ),
+        }
+        instruction_documents = self.instruction_markdown_loader.load(
+            workspace_root=default_workspace_root_from_metadata(session_slice.metadata),
+            runtime_state=runtime_state,
+        )
+        system_context = self._instruction_system_context(instruction_documents)
+        user_context = self._context_provider_fragments(
+            context_providers=context_providers,
+            method_name="user_context",
+        )
+        attachments = self._context_provider_fragments(
+            context_providers=context_providers,
+            method_name="attachments",
+        )
+        evidence_refs = self._context_provider_fragments(
+            context_providers=context_providers,
+            method_name="evidence_refs",
+        )
+        startup_contexts = [
+            context.to_dict()
+            for context in build_startup_contexts(
+                session_id=session_slice.session_id,
+                has_prior_messages=len(session_slice.messages) > 1,
+                has_pending_action=bool(session_slice.pending_tool_calls),
+                agent_id=session_slice.agent_id,
+            )
+        ]
+        capability_surface = self._capability_surface_payload(available_tools, context_providers)
+        assembly_result = self.context_pipeline.assemble(
+            ContextAssemblyInput(
+                transcript=messages,
+                bootstrap_prompt_sections=[
+                    section.to_dict() for section in prompt_sections.sections
+                ],
+                system_context=system_context,
+                user_context=user_context,
+                attachments=attachments,
+                capability_surface=capability_surface,
+                evidence_refs=evidence_refs,
+                request_metadata={
+                    "session_id": session_slice.session_id,
+                    "agent_id": session_slice.agent_id,
+                    "compacted": compacted,
+                    "recovered_from_overflow": recovered_from_overflow,
+                },
+                startup_contexts=startup_contexts,
+            )
+        )
         return ModelTurnRequest(
             session_id=session_slice.session_id,
-            messages=messages,
-            system_prompt=system_prompt,
-            prompt_sections=[section.to_dict() for section in prompt_sections.sections],
-            prompt_blocks=prompt_blocks.to_dict(),
-            initial_user_bootstrap=initial_user_bootstrap.to_dict(),
+            messages=assembly_result.message_stream,
+            system_prompt=assembly_result.system_prompt,
+            prompt_sections=assembly_result.prompt_sections,
+            prompt_blocks=assembly_result.prompt_blocks,
+            startup_contexts=assembly_result.startup_contexts,
             available_tools=available_tools,
             tool_definitions=tool_definitions,
             short_term_memory=(
                 short_term_memory.to_dict() if short_term_memory is not None else None
             ),
             memory_context=memory_context,
+            system_context=assembly_result.system_context,
+            user_context=assembly_result.user_context,
+            attachments=assembly_result.attachment_stream,
+            capability_surface=assembly_result.capability_surface,
+            evidence_refs=assembly_result.evidence_refs,
+            request_metadata=assembly_result.request_metadata,
         )
 
     def handle_model_output(self, output: ModelTurnResponse) -> ModelTurnResponse:
@@ -337,88 +401,98 @@ class SimpleHarness(Harness):
             normalized.append(payload)
         return normalized
 
-    def _load_agents_memory_context(self, session: SessionRecord) -> list[JsonObject]:
-        documents = self._resolve_agents_documents(session)
-        if not documents:
-            return []
-        merged_content = self._merge_agents_documents(documents)
-        if not merged_content:
-            return []
-        return [
-            {
-                "type": "agents_memory",
-                "scope": "agent",
-                "title": "AGENTS.md context",
-                "content": merged_content,
-                "source": "AGENTS.md",
-                "metadata": {
-                    "paths": [str(path) for path, _ in documents],
-                    "session_id": session.session_id,
-                },
-            }
-        ]
-
-    def _resolve_agents_documents(self, session: SessionRecord) -> list[tuple[Path, str]]:
-        metadata = session.metadata if isinstance(session.metadata, dict) else {}
-        workdir_value = metadata.get("workdir")
-        target_path_value = metadata.get("target_path")
-        documents: list[tuple[Path, str]] = []
-        seen: set[Path] = set()
-
-        def append_if_exists(path: Path) -> None:
-            resolved = path.resolve()
-            if resolved in seen or not resolved.exists() or not resolved.is_file():
-                return
-            text = resolved.read_text(encoding="utf-8").strip()
-            if not text:
-                return
-            seen.add(resolved)
-            documents.append((resolved, text))
-
-        append_if_exists(Path.home() / ".openagent" / "AGENTS.md")
-        workdir = (
-            Path(str(workdir_value)).resolve()
-            if isinstance(workdir_value, str) and workdir_value
-            else None
-        )
-        if workdir is not None:
-            append_if_exists(workdir / "AGENTS.md")
-        if workdir is not None and isinstance(target_path_value, str) and target_path_value:
-            target_path = Path(target_path_value)
-            if not target_path.is_absolute():
-                target_path = workdir / target_path
-            target_path = target_path.resolve()
-            target_dir = target_path if target_path.is_dir() else target_path.parent
-            try:
-                relative_parts = target_dir.relative_to(workdir).parts
-            except ValueError:
-                relative_parts = ()
-            current = workdir
-            for part in relative_parts:
-                current = current / part
-                append_if_exists(current / "AGENTS.md")
-        return documents
-
-    def _merge_agents_documents(self, documents: list[tuple[Path, str]]) -> str:
-        ordered_lines: list[str] = []
+    def _instruction_system_context(
+        self,
+        documents: object,
+    ) -> list[JsonObject]:
+        merged_lines: list[str] = []
         keyed_lines: dict[str, str] = {}
         keyed_order: list[str] = []
-        for _, content in documents:
-            for raw_line in content.splitlines():
-                line = raw_line.strip()
-                if not line:
+        source_paths: list[str] = []
+        if not isinstance(documents, list):
+            return []
+        for document in documents:
+            source_path = getattr(document, "source_path", None)
+            if isinstance(source_path, str):
+                source_paths.append(source_path)
+            rules = getattr(document, "rules", None)
+            if not isinstance(rules, list):
+                continue
+            for rule in rules:
+                text = getattr(rule, "text", None)
+                if not isinstance(text, str):
                     continue
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    normalized_key = key.strip().lower()
-                    keyed_lines[normalized_key] = f"{key.strip()}: {value.strip()}"
-                    if normalized_key not in keyed_order:
-                        keyed_order.append(normalized_key)
-                    continue
-                if line not in ordered_lines:
-                    ordered_lines.append(line)
-        merged = [*ordered_lines, *(keyed_lines[key] for key in keyed_order)]
-        return "\n".join(merged)
+                for raw_line in text.splitlines():
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    if ":" in line:
+                        key, value = line.split(":", 1)
+                        normalized_key = key.strip().lower()
+                        keyed_lines[normalized_key] = f"{key.strip()}: {value.strip()}"
+                        if normalized_key not in keyed_order:
+                            keyed_order.append(normalized_key)
+                        continue
+                    if line not in merged_lines:
+                        merged_lines.append(line)
+        merged_content = "\n".join([*merged_lines, *(keyed_lines[key] for key in keyed_order)])
+        if not merged_content:
+            return []
+        structured = StructuredContext(
+            scope="system",
+            lifecycle="startup",
+            payload={
+                "content": merged_content,
+                "source_paths": [path for path in source_paths],
+            },
+            provenance="instruction_markdown",
+        )
+        return [structured.to_dict()]
+
+    def _context_provider_fragments(
+        self,
+        *,
+        context_providers: list[object],
+        method_name: str,
+    ) -> list[JsonObject]:
+        fragments: list[JsonObject] = []
+        for provider in context_providers:
+            method = getattr(provider, method_name, None)
+            if not callable(method):
+                continue
+            produced = method()
+            if not isinstance(produced, list):
+                continue
+            for item in produced:
+                if isinstance(item, dict):
+                    fragments.append(item)
+                elif hasattr(item, "to_dict"):
+                    fragments.append(cast(JsonObject, item.to_dict()))
+        return fragments
+
+    def _capability_surface_payload(
+        self,
+        available_tools: list[str],
+        context_providers: list[object],
+    ) -> JsonObject:
+        always_loaded = list(available_tools)
+        for provider in context_providers:
+            method = getattr(provider, "capability_exposure", None)
+            if not callable(method):
+                continue
+            produced = method()
+            if hasattr(produced, "to_dict"):
+                payload = cast(JsonObject, produced.to_dict())
+            elif isinstance(produced, dict):
+                payload = produced
+            else:
+                continue
+            provider_always = payload.get("always_loaded")
+            if isinstance(provider_always, list):
+                always_loaded.extend(str(item) for item in provider_always)
+        return {
+            "always_loaded": [item for item in sorted(set(always_loaded))],
+        }
 
     def _execute_tool_stream(
         self,

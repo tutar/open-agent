@@ -3,6 +3,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from openagent.harness.context_engineering.instruction_markdown.loader import (
+    InstructionMarkdownLoader,
+)
 from openagent.harness.providers import (
     AnthropicMessagesModelAdapter,
     OpenAIChatCompletionsModelAdapter,
@@ -535,12 +538,7 @@ def test_harness_build_model_input_includes_bootstrap_prompt_sections(tmp_path: 
         "environment_summary",
     ]
     assert request.prompt_blocks is not None
-    assert request.initial_user_bootstrap == {
-        "content": "",
-        "first_turn_only": True,
-        "transcript_visibility": "hidden",
-        "dedup_policy": "once",
-    }
+    assert [item["kind"] for item in request.startup_contexts] == ["session_start", "turn_zero"]
 
 
 def test_harness_build_model_input_includes_short_term_memory() -> None:
@@ -588,6 +586,40 @@ def test_tool_results_preserve_tool_use_id_in_session_messages() -> None:
 
     assert len(tool_messages) == 1
     assert tool_messages[0].metadata["tool_use_id"] == "toolu_1"
+
+
+def test_instruction_markdown_loader_merges_home_workspace_and_target_hierarchy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    (home / ".openagent").mkdir(parents=True)
+    (home / ".openagent" / "AGENTS.md").write_text("Global guidance\nOwner: global\n", "utf-8")
+    workdir = tmp_path / "repo"
+    nested = workdir / "pkg" / "feature"
+    sibling = workdir / "pkg" / "other"
+    nested.mkdir(parents=True)
+    sibling.mkdir(parents=True)
+    (workdir / "AGENTS.md").write_text("Project guidance\nOwner: project\n", "utf-8")
+    (nested / "AGENTS.md").write_text("Feature guidance\nOwner: subtree\n", "utf-8")
+    (sibling / "AGENTS.md").write_text("Sibling guidance\n", "utf-8")
+
+    documents = InstructionMarkdownLoader().load(
+        workspace_root=str(workdir),
+        runtime_state={"target_path": "pkg/feature/file.py"},
+    )
+
+    rendered = "\n".join(
+        rule.text
+        for document in documents
+        for rule in document.rules
+    )
+
+    assert "Global guidance" in rendered
+    assert "Project guidance" in rendered
+    assert "Feature guidance" in rendered
+    assert "Sibling guidance" not in rendered
 
 
 def test_model_io_capture_persists_request_and_response_records(tmp_path: Path) -> None:

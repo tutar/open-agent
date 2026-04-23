@@ -7,6 +7,7 @@
 - [Module Structure](./module-structure.md)
 - [Object Model](./object-model.md)
 - [Harness And Session](./harness-and-session.md)
+- [Context Engineering](./context-engineering.md)
 - [Durable Memory](./durable-memory.md)
 - [Model Provider And Providers](./model-provider-and-providers.md)
 - [Tools And Capability Surface](./tools-and-capability-surface.md)
@@ -20,10 +21,11 @@
 1. `module-structure`
 2. `object-model`
 3. `harness-and-session`
-4. `durable-memory`
-5. `model-provider-and-providers`
-6. `tools-and-capability-surface`
-7. `skills`
-8. `gateway-and-frontend`
-9. `agent-observability`
-10. `tasks-and-sandbox`
+4. `context-engineering`
+5. `durable-memory`
+6. `model-provider-and-providers`
+7. `tools-and-capability-surface`
+8. `skills`
+9. `gateway-and-frontend`
+10. `agent-observability`
+11. `tasks-and-sandbox`

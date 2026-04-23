@@ -80,7 +80,8 @@ def test_memory_recall_and_consolidation_matches_golden(tmp_path: Path) -> None:
 
     assert consolidation.new_records
     assert request.memory_context
-    assert request.messages == [{"role": "user", "content": "What is my favorite city?"}]
+    assert request.messages[-1] == {"role": "user", "content": "What is my favorite city?"}
+    assert [item["kind"] for item in request.startup_contexts] == ["session_start", "turn_zero"]
     assert restored_request.memory_context
     assert (
         golden["constraints"][0]

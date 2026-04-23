@@ -9,7 +9,7 @@ from openagent.gateway.binding_store import FileSessionBindingStore
 from openagent.gateway.core import Gateway
 from openagent.gateway.interfaces import ChannelAdapter
 from openagent.gateway.session_adapter import InProcessSessionAdapter
-from openagent.harness.context import ContextGovernance
+from openagent.harness.context_engineering import ContextGovernance
 from openagent.harness.runtime import FileModelIoCapture, NoOpModelIoCapture
 from openagent.harness.runtime.core.agent_runtime import SimpleHarness
 from openagent.harness.runtime.io import ModelProviderAdapter

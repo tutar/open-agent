@@ -72,7 +72,8 @@ def test_conformance_memory_recall_and_consolidation(tmp_path: Path) -> None:
     assert consolidation.new_records or existing_records
     assert request.memory_context
     assert "sunrise" in str(request.memory_context[0]["content"])
-    assert request.messages == [{"role": "user", "content": "What is the launch code?"}]
+    assert request.messages[-1] == {"role": "user", "content": "What is the launch code?"}
+    assert [item["kind"] for item in request.startup_contexts] == ["session_start", "turn_zero"]
     assert restored_recall.recalled
     assert "sunrise" in str(restored_recall.recalled[0].content)
     if restored_request.memory_context:
@@ -105,7 +106,8 @@ def test_conformance_durable_memory_index_and_bounded_recall(tmp_path: Path) -> 
     )
 
     assert 1 <= len(request.memory_context) <= 5
-    assert request.messages == [{"role": "user", "content": "launch detail"}]
+    assert request.messages[-1] == {"role": "user", "content": "launch detail"}
+    assert [item["kind"] for item in request.startup_contexts] == ["session_start", "turn_zero"]
     assert all("Remember launch detail" in str(item["content"]) for item in request.memory_context)
 
 

@@ -377,7 +377,7 @@ def test_conformance_mcp_tool_adaptation() -> None:
     assert result.content == ["hello"]
 
 
-def test_conformance_agents_memory_loading_precedence(
+def test_conformance_instruction_markdown_loading_precedence(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
@@ -417,8 +417,8 @@ def test_conformance_agents_memory_loading_precedence(
 
     request = harness.build_model_input(session, [])
 
-    assert request.memory_context
-    content = str(request.memory_context[0]["content"])
+    assert request.system_context
+    content = str(request.system_context[0]["payload"]["content"])
     assert "Global guidance" in content
     assert "Project guidance" in content
     assert "Subtree guidance" in content

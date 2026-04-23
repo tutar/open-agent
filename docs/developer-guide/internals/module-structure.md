@@ -82,11 +82,21 @@
   - provider adapters
   - streaming integration
   - provider transport
-- `context/`
-  - bootstrap prompts
-  - context governance
-  - prompt cache
-  - tool-result externalization
+- `context_engineering/`
+  - `entry/`
+    - bootstrap prompts
+    - startup / turn-zero context
+  - `assembly/`
+    - structured context planes
+    - attachments / evidence / capability exposure
+  - `governance/`
+    - context governance
+    - context editing
+    - prompt cache strategy
+  - `instruction_markdown/`
+    - AGENTS / RULES loading
+    - include expansion
+    - conditional rules
 - `assemblies/`
   - local runtime assembly
   - runtime wiring helpers
@@ -136,9 +146,6 @@
 - `local.py`
   - 顶层 facade
   - 真实装配逻辑应继续放在 `harness/assemblies/`
-- `context_governance.py`
-  - compatibility re-export
-  - 真实实现应继续放在 `harness/context/`
 - `host/service.py`
   - compatibility export
   - 真实 host 实现应在 `host/` 子模块中维护
@@ -255,10 +262,10 @@
 - 已从单文件拆成 shared package
 - 继续保留顶层导入语义，但内部职责已经分开
 
-### `context_governance`
+### `context_engineering`
 
-- 已归位到 `harness/context/`
-- 顶层 `context_governance.py` 只保留兼容 re-export
+- 已归位到 `harness/context_engineering/`
+- startup context、bootstrap prompt、assembly、governance、instruction markdown 都在同一子域内维护
 
 ### `harness/runtime`
 

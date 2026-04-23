@@ -1,8 +1,10 @@
-"""Prompt cache and continuation planning helpers."""
+"""Prompt cache strategy helpers."""
 
 from __future__ import annotations
 
-from openagent.harness.context.models import (
+from dataclasses import dataclass
+
+from openagent.harness.context_engineering.governance.models import (
     ContinuationBudgetPlan,
     PromptCacheBreakResult,
     PromptCachePlan,
@@ -63,7 +65,6 @@ def detect_cache_break(
 ) -> PromptCacheBreakResult:
     reason: str | None = None
     expected_miss = False
-
     if previous.ttl_bucket != current.ttl_bucket:
         reason = "ttl_changed"
         expected_miss = True
@@ -78,7 +79,6 @@ def detect_cache_break(
         expected_miss = True
     elif previous.stable_prefix_key != current.stable_prefix_key:
         reason = "prompt_bytes_changed"
-
     return PromptCacheBreakResult(
         break_detected=reason is not None,
         reason=reason,
@@ -126,3 +126,29 @@ def build_continuation_budget_plan(
         requires_compaction=warning_threshold_reached,
         requires_overflow_recovery=over_budget,
     )
+
+
+@dataclass(slots=True)
+class PromptCacheStrategy:
+    def prepare_cacheable_prefix(self, messages: list[SessionMessage]) -> PromptCachePlan:
+        return build_prompt_cache_plan(messages)
+
+    def place_cache_markers(self, messages: list[SessionMessage]) -> PromptCachePlan:
+        return build_prompt_cache_plan(messages)
+
+    def build_cache_policy(
+        self,
+        messages: list[SessionMessage],
+        tools: list[str],
+        *,
+        cache_scope: str = "session",
+        ttl_bucket: str = "default",
+        model_identity: str = "default",
+    ) -> PromptCacheSnapshot:
+        return snapshot_prompt_cache(
+            messages,
+            tools,
+            cache_scope=cache_scope,
+            ttl_bucket=ttl_bucket,
+            model_identity=model_identity,
+        )

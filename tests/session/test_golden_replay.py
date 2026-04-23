@@ -102,12 +102,13 @@ def test_instruction_markdown_loading_precedence_matches_golden(
     )
 
     assert golden["expected"]["ordered_merge"] is True
-    assert request.memory_context
-    content = str(request.memory_context[0]["content"])
+    assert request.system_context
+    content = str(request.system_context[0]["payload"]["content"])
     assert "Home guidance" in content
     assert "Repo guidance" in content
     assert "Feature guidance" in content
     assert "Sibling guidance" not in content
     assert "Priority: subtree" in content
     assert golden["expected"]["transcript_unchanged"] is True
-    assert request.messages == [{"role": "user", "content": "edit pkg/feature/main.py"}]
+    assert request.messages[-1] == {"role": "user", "content": "edit pkg/feature/main.py"}
+    assert [item["kind"] for item in request.startup_contexts] == ["session_start", "turn_zero"]

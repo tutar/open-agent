@@ -1,24 +1,5 @@
 """Harness module exports."""
 
-from openagent.harness.bootstrap import (
-    BootstrapPromptAssembler,
-    InitialUserBootstrap,
-    PromptBlocks,
-    PromptSection,
-    ResolvedPromptSections,
-)
-from openagent.harness.context import (
-    CompactResult,
-    ContextGovernance,
-    ContextReport,
-    ContinuationBudgetPlan,
-    ExternalizedToolResult,
-    OverflowRecoveryResult,
-    PromptCacheBreakResult,
-    PromptCachePlan,
-    PromptCacheSnapshot,
-    PromptCacheStrategyName,
-)
 from openagent.harness.interfaces import Harness
 from openagent.harness.providers import (
     AnthropicMessagesModelAdapter,
@@ -52,28 +33,13 @@ __all__ = [
     "BackgroundTaskContext",
     "BackgroundTaskHandle",
     "AnthropicMessagesModelAdapter",
-    "BootstrapPromptAssembler",
-    "CompactResult",
-    "ContextGovernance",
-    "ContextReport",
-    "ContinuationBudgetPlan",
-    "ExternalizedToolResult",
     "FileTaskManager",
     "Harness",
-    "InitialUserBootstrap",
     "HttpResponse",
     "HttpTransport",
     "OpenAIChatCompletionsModelAdapter",
-    "OverflowRecoveryResult",
-    "PromptBlocks",
-    "PromptCacheBreakResult",
-    "PromptCachePlan",
-    "PromptCacheSnapshot",
-    "PromptCacheStrategyName",
-    "PromptSection",
     "ProviderConfigurationError",
     "ProviderError",
-    "ResolvedPromptSections",
     "InMemoryTaskManager",
     "LocalBackgroundAgentOrchestrator",
     "LocalVerificationRuntime",
