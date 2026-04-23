@@ -71,10 +71,11 @@ def externalize_payload(
 
 def tool_result_message_content(result: ToolResult) -> str:
     content_text = "\n".join(str(item) for item in result.content)
+    prefix = f"{result.tool_name}: " if result.success else f"{result.tool_name} failed: "
     if result.persisted_ref is None:
-        return f"{result.tool_name}: {content_text}"
+        return f"{prefix}{content_text}"
     return (
-        f"{result.tool_name}: {content_text}\n"
+        f"{prefix}{content_text}\n"
         "[tool result externalized to internal storage; this is not a workspace file path "
         "and should not be read with local file tools]"
     )

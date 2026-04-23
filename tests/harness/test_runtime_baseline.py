@@ -20,7 +20,9 @@ from openagent.tools import (
     ToolCall,
     ToolExecutionContext,
     ToolPermissionDeniedError,
+    WebSearchTool,
 )
+from openagent.tools.web import WebSearchBackendError
 
 
 @dataclass(slots=True)
@@ -92,6 +94,13 @@ class FlakyModel:
         return ModelTurnResponse(assistant_message="recovered")
 
 
+@dataclass(slots=True)
+class FailingSearchBackend:
+    def search(self, query: str) -> list[object]:
+        del query
+        raise WebSearchBackendError("HTTP 502: upstream unavailable")
+
+
 def test_simple_harness_basic_turn() -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])
@@ -138,6 +147,35 @@ def test_simple_harness_tool_roundtrip() -> None:
         RuntimeEventType.TURN_COMPLETED,
     ]
     assert echo.seen_arguments == [{"text": "payload"}]
+
+
+def test_simple_harness_continues_after_websearch_backend_failure() -> None:
+    session_store = InMemorySessionStore()
+    tools = StaticToolRegistry([WebSearchTool(backend=FailingSearchBackend())])
+    executor = SimpleToolExecutor(tools)
+    model = ScriptedModel(
+        responses=[
+            ModelTurnResponse(
+                tool_calls=[ToolCall(tool_name="WebSearch", arguments={"query": "latest news"})]
+            ),
+            ModelTurnResponse(assistant_message="search backend is unavailable right now"),
+        ]
+    )
+    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+
+    events, terminal = harness.run_turn("search", "sess_websearch_failure")
+
+    assert terminal.status is TerminalStatus.COMPLETED
+    assert [event.event_type for event in events] == [
+        RuntimeEventType.TURN_STARTED,
+        RuntimeEventType.TOOL_STARTED,
+        RuntimeEventType.TOOL_RESULT,
+        RuntimeEventType.ASSISTANT_MESSAGE,
+        RuntimeEventType.TURN_COMPLETED,
+    ]
+    tool_payload = events[2].payload
+    assert tool_payload["success"] is False
+    assert tool_payload["content"] == ["HTTP 502: upstream unavailable"]
 
 
 def test_simple_harness_skips_empty_assistant_event_before_tool_failure() -> None:

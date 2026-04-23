@@ -48,6 +48,8 @@
 - durable-memory recall 仍然通过 `memory_context` 进入 request，不回写 transcript
 - instruction markdown 属于规则层，不属于 durable memory
 - startup context 属于 entry plane，不直接塞进 transcript
+- startup context 也不再作为额外的 `role=system` message 进入 OpenAI-compatible
+  provider payload；provider-facing request 统一收成单一 system 前缀
 
 ## Governance And Editing
 

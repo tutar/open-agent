@@ -208,35 +208,36 @@ class OpenAIChatCompletionsModelAdapter:
         return tool_calls
 
     def _messages_payload(self, request: ModelTurnRequest) -> list[JsonObject]:
-        messages = [self._message_payload(message) for message in request.messages]
+        system_fragments: list[str] = []
         if request.system_prompt:
+            system_fragments.append(request.system_prompt)
+        if isinstance(request.short_term_memory, dict):
+            summary = str(request.short_term_memory.get("summary", "")).strip()
+            if summary:
+                system_fragments.append(f"Session continuity summary: {summary}")
+        for memory in request.memory_context:
+            memory_summary = str(memory.get("summary", memory.get("content", "")))
+            if memory_summary:
+                system_fragments.append(f"Relevant memory: {memory_summary}")
+        messages: list[JsonObject] = []
+        for message in request.messages:
+            role = str(message.get("role", "user"))
+            if role == "system":
+                content = str(message.get("content", "")).strip()
+                if content:
+                    system_fragments.append(content)
+                continue
+            messages.append(self._message_payload(message))
+        if system_fragments:
             messages.insert(
                 0,
                 {
                     "role": "system",
-                    "content": request.system_prompt,
+                    "content": "\n\n".join(
+                        fragment.strip() for fragment in system_fragments if fragment.strip()
+                    ),
                 },
             )
-        if isinstance(request.short_term_memory, dict):
-            summary = str(request.short_term_memory.get("summary", "")).strip()
-            if summary:
-                messages.insert(
-                    1 if request.system_prompt else 0,
-                    {
-                        "role": "system",
-                        "content": f"Session continuity summary: {summary}",
-                    },
-                )
-        for memory in request.memory_context:
-            memory_summary = str(memory.get("summary", memory.get("content", "")))
-            if memory_summary:
-                messages.insert(
-                    1 if request.system_prompt else 0,
-                    {
-                        "role": "system",
-                        "content": f"Relevant memory: {memory_summary}",
-                    },
-                )
         return messages
 
     def _message_payload(self, message: JsonObject) -> JsonObject:

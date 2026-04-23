@@ -369,6 +369,16 @@ def test_context_governance_formats_externalized_tool_result_without_path_leak(
     assert "not a workspace file path" in message_content
 
 
+def test_context_governance_marks_failed_tool_results_explicitly() -> None:
+    governance = ContextGovernance()
+
+    message_content = governance.tool_result_message_content(
+        ToolResult(tool_name="WebSearch", success=False, content=["HTTP 502: upstream unavailable"])
+    )
+
+    assert message_content == "WebSearch failed: HTTP 502: upstream unavailable"
+
+
 def test_context_governance_builds_budget_plan_and_provider_cache_key() -> None:
     governance = ContextGovernance(
         max_tokens=40,

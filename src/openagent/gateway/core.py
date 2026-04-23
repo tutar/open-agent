@@ -190,6 +190,8 @@ class Gateway:
         self,
         channel_identity: ChannelIdentity,
         control_message: JsonObject,
+        *,
+        session_id_override: str | None = None,
     ) -> list[EgressEnvelope]:
         """Route non-text channel control messages."""
 
@@ -199,6 +201,19 @@ class Gateway:
 
         conversation_id = channel_identity.conversation_id or "default"
         binding = self._get_binding(channel_identity.channel_type, conversation_id)
+        target_session_id = session_id_override or binding.session_id
+        projected_binding = binding
+        if target_session_id != binding.session_id:
+            projected_binding = SessionBinding(
+                channel_identity=dict(binding.channel_identity),
+                conversation_id=binding.conversation_id,
+                session_id=target_session_id,
+                adapter_name=binding.adapter_name,
+                event_types=list(binding.event_types),
+                checkpoint_event_offset=binding.checkpoint_event_offset,
+                checkpoint_last_event_id=binding.checkpoint_last_event_id,
+                restore_marker=binding.restore_marker,
+            )
         subtype = str(control_message["subtype"])
 
         if subtype == "permission_response":
@@ -212,8 +227,8 @@ class Gateway:
                         "approved": approved,
                     }
                 )
-            events = self._session_adapter.continue_session(binding.session_id, approved=approved)
-            return self._project_many(events, binding)
+            events = self._session_adapter.continue_session(target_session_id, approved=approved)
+            return self._project_many(events, projected_binding)
 
         if subtype == "interrupt":
             if self._observability is not None:
@@ -224,7 +239,7 @@ class Gateway:
                         "conversation_id": conversation_id,
                     }
                 )
-            self._session_adapter.kill(binding.session_id)
+            self._session_adapter.kill(target_session_id)
             return []
 
         if subtype == "resume":

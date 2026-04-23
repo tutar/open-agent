@@ -35,7 +35,9 @@ from openagent.tools.web import (
     TavilyConfig,
     TavilyWebSearchBackend,
     WebFetchBackend,
+    WebFetchBackendError,
     WebSearchBackend,
+    WebSearchBackendError,
 )
 
 
@@ -406,7 +408,21 @@ class WebFetchTool(_BuiltinTool):
 
     def call(self, arguments: dict[str, object]) -> ToolResult:
         url = str(arguments["url"])
-        document = self.backend.fetch(url)
+        try:
+            document = self.backend.fetch(url)
+        except WebFetchBackendError as exc:
+            message = str(exc).strip() or "web fetch backend failed"
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                content=[message],
+                structured_content={
+                    "ok": False,
+                    "error": message,
+                    "url": url,
+                    "kind": "web_fetch_backend_error",
+                },
+            )
         return ToolResult(
             tool_name=self.name,
             success=True,
@@ -453,7 +469,22 @@ class WebSearchTool(_BuiltinTool):
 
     def call(self, arguments: dict[str, object]) -> ToolResult:
         query = str(arguments["query"])
-        results = self.backend.search(query)
+        try:
+            results = self.backend.search(query)
+        except WebSearchBackendError as exc:
+            message = str(exc).strip() or "web search backend failed"
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                content=[message],
+                structured_content={
+                    "ok": False,
+                    "error": message,
+                    "query": query,
+                    "kind": "web_search_backend_error",
+                    "results": [],
+                },
+            )
         structured_results: list[JsonValue] = [to_json_value(result) for result in results]
         return ToolResult(
             tool_name=self.name,

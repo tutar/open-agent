@@ -634,6 +634,20 @@ class SimpleHarness(Harness):
                     streaming=callable(getattr(self.model, "stream_generate", None)),
                     error=exc,
                 )
+                print(
+                    "openagent-runtime> provider request failed "
+                    f"session_id={session_handle} "
+                    f"provider_adapter={type(self.model).__name__} "
+                    f"retry_index={attempt} "
+                    f"error={type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                if isinstance(self.model_io_capture, FileModelIoCapture):
+                    print(
+                        "openagent-runtime> provider failure captured under "
+                        f"{self.model_io_capture.root_dir}",
+                        flush=True,
+                    )
                 duration_ms = (perf_counter() - started_at) * 1000
                 observability.end_span(
                     llm_span,

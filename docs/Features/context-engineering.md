@@ -37,6 +37,20 @@
 - prompt-cache break detection
 - instruction markdown loading with hierarchical `AGENTS.md`
 
+## Provider-Facing System Assembly
+
+- startup context 继续保留在 lifecycle plane 和 model-io capture 中
+- 但它不再作为额外的 `role=system` message 进入 provider-facing message stream
+- OpenAI-compatible backends 现在只会收到一个 system 前缀：
+  - bootstrap prompt
+  - startup context fragments
+  - short-term memory summary
+  - durable-memory recall summary
+  - other system-level context
+
+这样可以避免本地 chat template 因多条 `role=system` message 报
+`System message must be at the beginning`
+
 ## 当前不支持
 
 - provider-native prompt cache integration

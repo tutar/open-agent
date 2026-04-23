@@ -2,6 +2,9 @@ import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.error import HTTPError
+
+import pytest
 
 from openagent.harness.context_engineering.instruction_markdown.loader import (
     InstructionMarkdownLoader,
@@ -9,8 +12,14 @@ from openagent.harness.context_engineering.instruction_markdown.loader import (
 from openagent.harness.providers import (
     AnthropicMessagesModelAdapter,
     OpenAIChatCompletionsModelAdapter,
+    load_model_from_env,
 )
-from openagent.harness.providers.base import HttpResponse
+from openagent.harness.providers.base import (
+    HttpResponse,
+    ProviderConfigurationError,
+    ProviderError,
+    UrllibHttpTransport,
+)
 from openagent.harness.runtime import (
     FileModelIoCapture,
     ModelProviderExchange,
@@ -237,6 +246,100 @@ def test_openai_chat_adapter_streams_deltas_and_sets_stream_true() -> None:
     )
 
 
+def test_provider_transport_reports_empty_http_error_body_readably(monkeypatch) -> None:
+    def _raise_http_error(*args, **kwargs):
+        del args, kwargs
+        raise HTTPError(
+            url="http://127.0.0.1:8001/v1/chat/completions",
+            code=502,
+            msg="Bad Gateway",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr("openagent.harness.providers.base.request.urlopen", _raise_http_error)
+
+    with pytest.raises(ProviderError) as exc:
+        UrllibHttpTransport().post_json(
+            "http://127.0.0.1:8001/v1/chat/completions",
+            {"model": "gpt-test", "messages": []},
+            {},
+            10.0,
+        )
+
+    assert str(exc.value) == "HTTP 502: upstream returned an empty error body"
+
+
+def test_load_model_from_env_resolves_single_advertised_openai_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Response:
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "data": [
+                        {
+                            "id": "unsloth/Qwen3.5-9B-GGUF",
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    monkeypatch.setenv("OPENAGENT_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAGENT_BASE_URL", "http://127.0.0.1:8001")
+    monkeypatch.setenv("OPENAGENT_MODEL", "gpt-4.1")
+    monkeypatch.setattr(
+        "openagent.harness.providers.request.urlopen",
+        lambda req, timeout=10.0: _Response(),
+    )
+
+    adapter = load_model_from_env()
+
+    assert isinstance(adapter, OpenAIChatCompletionsModelAdapter)
+    assert adapter.model == "unsloth/Qwen3.5-9B-GGUF"
+
+
+def test_load_model_from_env_rejects_unknown_openai_model_when_multiple_models_exist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Response:
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "data": [
+                        {"id": "model-a"},
+                        {"id": "model-b"},
+                    ]
+                }
+            ).encode("utf-8")
+
+    monkeypatch.setenv("OPENAGENT_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAGENT_BASE_URL", "http://127.0.0.1:8001")
+    monkeypatch.setenv("OPENAGENT_MODEL", "gpt-4.1")
+    monkeypatch.setattr(
+        "openagent.harness.providers.request.urlopen",
+        lambda req, timeout=10.0: _Response(),
+    )
+
+    with pytest.raises(ProviderConfigurationError) as exc:
+        load_model_from_env()
+
+    assert "requested=gpt-4.1" in str(exc.value)
+    assert "available=[model-a, model-b]" in str(exc.value)
+
+
 def test_anthropic_adapter_builds_tool_payload_and_parses_tool_use() -> None:
     transport = FakeTransport(
         response_body={
@@ -371,6 +474,42 @@ def test_provider_adapters_include_bootstrap_system_prompt() -> None:
     assert anthropic_transport.seen_payload["system"] == (
         "You are OpenAgent.\nWorkspace root: /tmp/workspace"
     )
+
+
+def test_openai_adapter_merges_system_planes_into_single_prefix() -> None:
+    transport = FakeTransport(response_body={"choices": [{"message": {"content": "ok"}}]})
+    adapter = OpenAIChatCompletionsModelAdapter(
+        model="gpt-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+
+    adapter.generate(
+        ModelTurnRequest(
+            session_id="sess_system_merge",
+            system_prompt="You are OpenAgent.",
+            messages=[
+                {"role": "system", "content": "Startup context (turn_zero): first turn."},
+                {"role": "user", "content": "当前目录下有哪些文件"},
+            ],
+            short_term_memory={"summary": "User is asking about workspace files."},
+            memory_context=[{"summary": "Project root is the current working directory."}],
+        )
+    )
+
+    assert transport.seen_payload is not None
+    messages = transport.seen_payload["messages"]
+    assert isinstance(messages, list)
+    assert messages[0]["role"] == "system"
+    assert "You are OpenAgent." in str(messages[0]["content"])
+    assert "Startup context (turn_zero): first turn." in str(messages[0]["content"])
+    assert "Session continuity summary: User is asking about workspace files." in str(
+        messages[0]["content"]
+    )
+    assert "Relevant memory: Project root is the current working directory." in str(
+        messages[0]["content"]
+    )
+    assert [message["role"] for message in messages] == ["system", "user"]
 
 
 def test_openai_chat_adapter_emits_complete_builtin_tool_schema() -> None:
@@ -539,6 +678,7 @@ def test_harness_build_model_input_includes_bootstrap_prompt_sections(tmp_path: 
     ]
     assert request.prompt_blocks is not None
     assert [item["kind"] for item in request.startup_contexts] == ["session_start", "turn_zero"]
+    assert all(message["role"] != "system" for message in request.messages)
 
 
 def test_harness_build_model_input_includes_short_term_memory() -> None:

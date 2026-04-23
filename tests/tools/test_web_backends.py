@@ -16,6 +16,8 @@ from openagent.tools.web import (
     TavilyWebSearchBackend,
     WebBackendHttpResponse,
     WebBackendTransportError,
+    WebFetchBackendError,
+    WebSearchBackendError,
 )
 
 
@@ -74,6 +76,18 @@ class FailingTransport:
     ) -> WebBackendHttpResponse:
         del url, headers, timeout_seconds
         raise WebBackendTransportError(self.message)
+
+
+class FailingFetchBackend:
+    def fetch(self, url: str):
+        del url
+        raise WebFetchBackendError("HTTP 502: upstream unavailable")
+
+
+class FailingSearchBackend:
+    def search(self, query: str):
+        del query
+        raise WebSearchBackendError("HTTP 502: upstream unavailable")
 
 
 def test_firecrawl_webfetch_backend_maps_scrape_markdown() -> None:
@@ -168,6 +182,37 @@ def test_firecrawl_webfetch_backend_summarizes_scrape_failure() -> None:
         "Firecrawl could not retrieve the page content. "
         "The page may block automated access, require authentication, or be unavailable."
     )
+
+
+def test_webfetch_tool_returns_failed_result_instead_of_raising() -> None:
+    tool = WebFetchTool(backend=FailingFetchBackend())
+
+    result = tool.call({"url": "https://example.com"})
+
+    assert result.success is False
+    assert result.content == ["HTTP 502: upstream unavailable"]
+    assert result.structured_content == {
+        "ok": False,
+        "error": "HTTP 502: upstream unavailable",
+        "url": "https://example.com",
+        "kind": "web_fetch_backend_error",
+    }
+
+
+def test_websearch_tool_returns_failed_result_instead_of_raising() -> None:
+    tool = WebSearchTool(backend=FailingSearchBackend())
+
+    result = tool.call({"query": "latest hermes-agent news"})
+
+    assert result.success is False
+    assert result.content == ["HTTP 502: upstream unavailable"]
+    assert result.structured_content == {
+        "ok": False,
+        "error": "HTTP 502: upstream unavailable",
+        "query": "latest hermes-agent news",
+        "kind": "web_search_backend_error",
+        "results": [],
+    }
 
 
 def test_tavily_websearch_backend_maps_results() -> None:

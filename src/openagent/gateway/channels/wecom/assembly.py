@@ -15,6 +15,7 @@ from openagent.harness.runtime.core.agent_runtime import SimpleHarness
 from openagent.harness.runtime.io import ModelProviderAdapter
 from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
+from openagent.shared import normalize_workspace_root
 from openagent.tools import ToolDefinition
 
 from .adapter import WeComChannelAdapter
@@ -61,7 +62,10 @@ class WeComAppConfig:
             session_root=session_root,
             binding_root=binding_root,
             allowed_users=_parse_allowed_users(os.getenv("OPENAGENT_WECOM_ALLOWED_USERS", "")),
-            workspace_root=os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd()),
+            workspace_root=normalize_workspace_root(
+                os.getenv("OPENAGENT_WORKSPACE_ROOT"),
+                default=os.getcwd(),
+            ),
         )
 
 

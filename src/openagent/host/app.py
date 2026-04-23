@@ -505,14 +505,17 @@ class OpenAgentHost:
         if os.getenv("OPENAGENT_MODEL") is None:
             self._model_summary = "demo (OPENAGENT_MODEL not set)"
             return DemoModel()
+        provider = os.getenv("OPENAGENT_PROVIDER", "openai").strip().lower()
+        model_name = os.getenv("OPENAGENT_MODEL", "").strip()
+        base_url = os.getenv("OPENAGENT_BASE_URL", "").strip()
         try:
-            provider = os.getenv("OPENAGENT_PROVIDER", "openai").strip().lower()
-            model_name = os.getenv("OPENAGENT_MODEL", "").strip()
-            base_url = os.getenv("OPENAGENT_BASE_URL", "").strip()
-            self._model_summary = (
-                f"{provider}:{model_name} via {base_url or '<missing-base-url>'}"
-            )
-            return load_model_from_env()
+            adapter = load_model_from_env()
         except ProviderConfigurationError as exc:
-            self._model_summary = f"demo (provider config fallback: {exc})"
-            return DemoModel()
+            self._model_summary = f"invalid provider config: {exc}"
+            print(f"openagent-host> invalid provider config: {exc}")
+            raise
+        resolved_model_name = getattr(adapter, "model", model_name)
+        self._model_summary = (
+            f"{provider}:{resolved_model_name} via {base_url or '<missing-base-url>'}"
+        )
+        return adapter

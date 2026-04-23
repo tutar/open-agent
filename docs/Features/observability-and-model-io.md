@@ -46,10 +46,11 @@
 - non-streaming and streaming final result capture
 - error-path capture for provider failure / timeout / retry exhaustion
 - configurable roots via `OPENAGENT_DATA_ROOT` and `OPENAGENT_MODEL_IO_ROOT`
+- provider failures are also echoed to the local host console with session id, adapter, retry index,
+  and the model-io capture root so local debugging does not depend on opening the card output first
 
 ### 当前不支持
 
 - automatic retention cleanup
 - transcript-level redaction policy
 - provider-hidden reasoning recovery
-

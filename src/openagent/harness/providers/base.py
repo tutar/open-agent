@@ -80,7 +80,7 @@ class UrllibHttpTransport:
                     headers=response_headers,
                 )
         except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            detail = _format_http_error_detail(exc)
             raise ProviderError(f"HTTP {exc.code}: {detail}") from exc
         except URLError as exc:
             raise ProviderError(f"Network error: {exc.reason}") from exc
@@ -109,7 +109,7 @@ class UrllibHttpTransport:
         try:
             response = request.urlopen(http_request, timeout=timeout_seconds)
         except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            detail = _format_http_error_detail(exc)
             raise ProviderError(f"HTTP {exc.code}: {detail}") from exc
         except URLError as exc:
             raise ProviderError(f"Network error: {exc.reason}") from exc
@@ -120,3 +120,10 @@ class UrllibHttpTransport:
                     yield raw_line.decode("utf-8", errors="replace")
 
         return _iter_lines()
+
+
+def _format_http_error_detail(exc: HTTPError) -> str:
+    detail = exc.read().decode("utf-8", errors="replace").strip()
+    if detail:
+        return detail
+    return "upstream returned an empty error body"

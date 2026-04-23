@@ -39,16 +39,12 @@ def _user_context_message(item: JsonObject) -> JsonObject:
     }
 
 
-def _startup_context_message(item: JsonObject) -> JsonObject:
-    return {
-        "role": "system",
-        "content": _payload_content(item) or str(item.get("kind", "")),
-        "metadata": {
-            "startup_kind": _string_field(item, "kind"),
-            "transcript_visibility": _string_field(item, "transcript_visibility"),
-            "dedup_policy": _string_field(item, "dedup_policy"),
-        },
-    }
+def _startup_context_fragment(item: JsonObject) -> str | None:
+    kind = _string_field(item, "kind") or "startup"
+    content = _payload_content(item).strip()
+    if content:
+        return f"Startup context ({kind}): {content}"
+    return f"Startup context ({kind})."
 
 
 @dataclass(slots=True)
@@ -60,23 +56,25 @@ class ContextAssemblyPipeline:
             for section in sections
             if isinstance(section, dict) and section.get("text")
         ]
+        startup_fragments = [
+            fragment
+            for item in assembly_input.startup_contexts
+            if isinstance(item, dict)
+            for fragment in [_startup_context_fragment(item)]
+            if fragment
+        ]
         system_fragments = [
             _payload_content(item)
             for item in assembly_input.system_context
             if isinstance(item, dict) and _payload_content(item)
         ]
         system_prompt = (
-            "\n\n".join([*section_text, *system_fragments]).strip() or None
+            "\n\n".join([*section_text, *startup_fragments, *system_fragments]).strip() or None
         )
         user_context_messages = [
             _user_context_message(item)
             for item in assembly_input.user_context
             if isinstance(item, dict) and _payload_content(item)
-        ]
-        startup_context_messages = [
-            _startup_context_message(item)
-            for item in assembly_input.startup_contexts
-            if isinstance(item, dict)
         ]
         prompt_blocks: JsonObject = {
             "static_blocks": cast_json_list(section_text),
@@ -85,11 +83,7 @@ class ContextAssemblyPipeline:
         }
         return ContextAssemblyResult(
             system_prompt=system_prompt,
-            message_stream=[
-                *startup_context_messages,
-                *assembly_input.transcript,
-                *user_context_messages,
-            ],
+            message_stream=[*assembly_input.transcript, *user_context_messages],
             attachment_stream=assemble_attachment_stream(
                 assembly_input.attachments,
                 assembly_input.evidence_refs,

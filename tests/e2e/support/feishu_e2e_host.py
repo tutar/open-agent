@@ -10,11 +10,10 @@ from openagent.gateway import (
     create_feishu_gateway,
     create_feishu_host,
 )
-from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse
+from openagent.harness.providers import load_model_from_env
 from openagent.object_model import ToolResult
 from openagent.tools import (
     PermissionDecision,
-    ToolCall,
     ToolExecutionContext,
     ToolProgressUpdate,
     ToolStreamItem,
@@ -94,49 +93,20 @@ class StreamingTool:
         )
 
 
-@dataclass(slots=True)
-class DeterministicFeishuModel:
-    """Scriptable model for stable Feishu E2E assertions."""
-
-    def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
-        latest = request.messages[-1]
-        role = str(latest.get("role", "user"))
-        content = str(latest.get("content", ""))
-
-        if role == "tool":
-            if "admin action completed" in content:
-                return ModelTurnResponse(assistant_message="e2e approval completed")
-            if "payload" in content:
-                return ModelTurnResponse(assistant_message="e2e stream completed")
-            return ModelTurnResponse(assistant_message="e2e tool completed")
-
-        if content == "admin rotate":
-            return ModelTurnResponse(
-                tool_calls=[ToolCall(tool_name="admin", arguments={"text": "rotate"})]
-            )
-        if content == "run stream":
-            return ModelTurnResponse(
-                tool_calls=[ToolCall(tool_name="stream", arguments={"text": "payload"})]
-            )
-        if "group" in content:
-            return ModelTurnResponse(assistant_message=f"e2e group reply: {content}")
-        return ModelTurnResponse(assistant_message=f"e2e reply: {content}")
-
-
 def create_feishu_e2e_host_from_env():
-    """Build a deterministic Feishu host for local E2E tests."""
+    """Build a real-provider Feishu host for local E2E tests."""
 
     config = FeishuAppConfig.from_env()
     gateway, _ = create_feishu_gateway(
         config=config,
-        model=DeterministicFeishuModel(),
+        model=load_model_from_env(),
         tools=[ApprovalTool(), StreamingTool()],
     )
     return create_feishu_host(gateway, config)
 
 
 def main() -> None:
-    """Start the deterministic Feishu host used by local E2E tests."""
+    """Start the real-provider Feishu host used by local E2E tests."""
 
     host = create_feishu_e2e_host_from_env()
     host.run()

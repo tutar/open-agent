@@ -25,6 +25,7 @@ from openagent.harness.task import (
 from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
 from openagent.session import FileSessionStore, InMemorySessionStore
+from openagent.shared import normalize_workspace_root
 from openagent.tools import (
     SimpleToolExecutor,
     StaticToolRegistry,
@@ -145,9 +146,10 @@ def _resolve_runtime_tools(
 
 
 def _default_workspace_root(workspace_root: str | None) -> str:
-    if workspace_root is not None:
-        return workspace_root
-    return os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd())
+    return normalize_workspace_root(
+        workspace_root,
+        default=os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd()),
+    )
 
 
 def _default_model_io_root(session_root: str, model_io_root: str | None) -> str:

@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import sleep
 
+import pytest
+
 from openagent import create_feishu_runtime
 from openagent.gateway import (
     FEISHU_REACTION_COMPLETED,
@@ -16,6 +18,7 @@ from openagent.gateway import (
     FileFeishuInboundDedupeStore,
     InMemoryFeishuInboundDedupeStore,
     OfficialFeishuBotClient,
+    SessionBinding,
     create_feishu_gateway,
 )
 from openagent.gateway.channels.feishu.cards import (
@@ -694,6 +697,137 @@ def test_feishu_adapter_coalesces_tool_progress_notifications(tmp_path: Path) ->
         "Tool stream is working..." in item["card"]["elements"][0]["content"]
         for item in client.updated_cards
     )
+
+
+def test_feishu_host_card_action_uses_card_record_session_id(tmp_path: Path) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(
+        config=config,
+        model=ToolThenReplyModel(),
+        tools=[DemoTool(name="admin", permission=PermissionDecision.ASK)],
+    )
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+        card_delivery_store=FileFeishuCardDeliveryStore(str(tmp_path / "cards.json")),
+    )
+
+    host.handle_event(make_text_event("admin rotate"))
+    reply_message_id = str(client.sent_cards[0]["message_id"])
+    binding_key = ("feishu", "feishu:chat:oc_chat_1")
+    stale_session_id = "feishu-session:stale"
+    gateway._session_adapter.spawn(stale_session_id)  # type: ignore[attr-defined]
+    gateway._bindings[binding_key] = SessionBinding(  # type: ignore[attr-defined]
+        channel_identity={"channel_type": "feishu", "conversation_id": "feishu:chat:oc_chat_1"},
+        conversation_id="feishu:chat:oc_chat_1",
+        session_id=stale_session_id,
+        adapter_name="feishu",
+        event_types=list(adapter.accepted_event_types()),
+    )
+
+    result = host.handle_card_action(
+        type(
+            "Card",
+            (),
+            {
+                "open_message_id": reply_message_id,
+                "open_chat_id": "oc_chat_1",
+                "open_id": "ou_user_1",
+                "action": type(
+                    "Action",
+                    (),
+                    {"value": {"subtype": "permission_response", "approved": True}},
+                )(),
+            },
+        )()
+    )
+
+    assert result == {"toast": {"type": "info", "content": "Action received."}}
+    final_card = client.updated_cards[-1]["card"]
+    assert final_card["header"]["title"]["content"] == "OpenAgent · Completed"
+    assert "tool completed after approval" in final_card["elements"][0]["content"]
+
+
+def test_feishu_host_card_action_surfaces_runtime_error_when_requires_action_is_gone(
+    tmp_path: Path,
+) -> None:
+    client = FakeFeishuClient()
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(
+        config=config,
+        model=ToolThenReplyModel(),
+        tools=[DemoTool(name="admin", permission=PermissionDecision.ASK)],
+    )
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    cards_path = tmp_path / "cards.json"
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+        card_delivery_store=FileFeishuCardDeliveryStore(str(cards_path)),
+    )
+
+    host.handle_event(make_text_event("admin rotate"))
+    reply_message_id = str(client.sent_cards[0]["message_id"])
+    record = host.card_delivery_store.get_by_reply_message_id(reply_message_id)
+    assert record is not None
+    session = gateway._session_adapter._runtime.sessions.load_session(record.session_id)  # type: ignore[attr-defined]
+    session.pending_tool_calls = []
+    session.status = session.status.IDLE
+    gateway._session_adapter._runtime.sessions.save_session(record.session_id, session)  # type: ignore[attr-defined]
+
+    with pytest.raises(ValueError, match="Session has no pending requires_action continuation"):
+        host.handle_card_action(
+            type(
+                "Card",
+                (),
+                {
+                    "open_message_id": reply_message_id,
+                    "open_chat_id": "oc_chat_1",
+                    "open_id": "ou_user_1",
+                    "action": type(
+                        "Action",
+                        (),
+                        {"value": {"subtype": "permission_response", "approved": True}},
+                    )(),
+                },
+            )()
+        )
+
+    latest = host.card_delivery_store.get_by_reply_message_id(reply_message_id)
+    assert latest is not None
+    assert latest.status == "failed"
+    assert latest.status_message == "Session has no pending requires_action continuation"
+
+
+def test_feishu_app_config_expands_workspace_root_from_env(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENAGENT_FEISHU_APP_ID", "app")
+    monkeypatch.setenv("OPENAGENT_FEISHU_APP_SECRET", "secret")
+    monkeypatch.setenv("OPENAGENT_WORKSPACE_ROOT", "$PWD")
+    monkeypatch.setenv("PWD", str(tmp_path))
+
+    config = FeishuAppConfig.from_env()
+
+    assert config.workspace_root == str(tmp_path.resolve())
 
 
 def test_feishu_gateway_registers_single_adapter_instance(tmp_path: Path) -> None:

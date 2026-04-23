@@ -7,6 +7,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from openagent.shared import normalize_workspace_root
+
 
 @dataclass(slots=True)
 class OpenAgentHostConfig:
@@ -31,7 +33,10 @@ class OpenAgentHostConfig:
         model_io_root = os.getenv("OPENAGENT_MODEL_IO_ROOT", str(Path(data_root) / "model-io"))
         session_root = os.getenv("OPENAGENT_SESSION_ROOT", str(root / "sessions"))
         binding_root = os.getenv("OPENAGENT_BINDING_ROOT", str(root / "bindings"))
-        workspace_root = os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd())
+        workspace_root = normalize_workspace_root(
+            os.getenv("OPENAGENT_WORKSPACE_ROOT"),
+            default=os.getcwd(),
+        )
         terminal_host = os.getenv("OPENAGENT_TERMINAL_HOST", "127.0.0.1")
         terminal_port = int(os.getenv("OPENAGENT_TERMINAL_PORT", "8765"))
         return cls(

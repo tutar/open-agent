@@ -51,6 +51,8 @@ def _ensure_environment() -> None:
     _require_env("OPENAGENT_FEISHU_APP_ID")
     _require_env("OPENAGENT_FEISHU_APP_SECRET")
     _require_env("OPENAGENT_FEISHU_E2E_P2P_CHAT_ID")
+    _require_env("OPENAGENT_MODEL")
+    _require_env("OPENAGENT_BASE_URL")
 
 
 def _skip_if_group_e2e_disabled() -> None:
@@ -292,7 +294,114 @@ def test_feishu_e2e_private_reply_card_lifecycle(
         ],
         after=offset,
     )
-    host.wait_for("status=completed", after=offset)
+    _wait_for_any_log(
+        host,
+        ["status=completed", "status=requires_action"],
+        after=offset,
+        timeout=40,
+    )
+    host.assert_absent("status=failed", after=offset, duration=1.5)
+
+
+@pytest.mark.feishu_e2e
+def test_feishu_e2e_private_workspace_listing_does_not_fail(
+    feishu_e2e_environment: tuple[HostProcess, LarkCliDriver],
+) -> None:
+    host, driver = feishu_e2e_environment
+    offset = host.snapshot()
+    driver.send_private("当前目录下有哪些文件")
+
+    host.wait_for("feishu-host> received raw event", after=offset)
+    host.wait_for("normalized input kind=user_message", after=offset)
+    host.wait_for("sending reply card", after=offset)
+    host.wait_for("resolving card id", after=offset)
+    _wait_for_any_log(
+        host,
+        [
+            "agent stream_update_card",
+            "cardkit streaming unavailable; falling back to message patch",
+            "agent patch_card",
+        ],
+        after=offset,
+    )
+    _wait_for_any_log(
+        host,
+        ["status=requires_action", "status=completed"],
+        after=offset,
+        timeout=60,
+    )
+    host.assert_absent("status=failed", after=offset, duration=1.5)
+    host.assert_absent("HTTP 500", after=offset, duration=1.5)
+    host.assert_absent("System message must be at the beginning", after=offset, duration=1.5)
+    host.assert_absent(
+        "Bash: [Errno 2] No such file or directory: '$PWD'",
+        after=offset,
+        duration=1.5,
+    )
+
+
+@pytest.mark.feishu_e2e
+def test_feishu_e2e_private_firecrawl_search_does_not_fail(
+    feishu_e2e_environment: tuple[HostProcess, LarkCliDriver],
+) -> None:
+    host, driver = feishu_e2e_environment
+    offset = host.snapshot()
+    driver.send_private("搜一下最新hermes-agent 新闻")
+
+    host.wait_for("feishu-host> received raw event", after=offset)
+    host.wait_for("normalized input kind=user_message", after=offset)
+    host.wait_for("sending reply card", after=offset)
+    host.wait_for("resolving card id", after=offset)
+    _wait_for_any_log(
+        host,
+        [
+            "agent stream_update_card",
+            "cardkit streaming unavailable; falling back to message patch",
+            "agent patch_card",
+        ],
+        after=offset,
+    )
+    host.wait_for("status=completed", after=offset, timeout=90)
+    host.assert_absent("status=failed", after=offset, duration=1.5)
+    host.assert_absent("HTTP 500", after=offset, duration=1.5)
+    host.assert_absent("HTTP 502", after=offset, duration=1.5)
+    host.assert_absent("Turn failed", after=offset, duration=1.5)
+
+
+@pytest.mark.feishu_e2e
+def test_feishu_e2e_private_intro_does_not_fail_with_bare_502(
+    feishu_e2e_environment: tuple[HostProcess, LarkCliDriver],
+) -> None:
+    host, driver = feishu_e2e_environment
+    offset = host.snapshot()
+    driver.send_private("介绍下自己")
+
+    host.wait_for("feishu-host> received raw event", after=offset)
+    host.wait_for("normalized input kind=user_message", after=offset)
+    host.wait_for("sending reply card", after=offset)
+    host.wait_for("resolving card id", after=offset)
+    _wait_for_any_log(
+        host,
+        [
+            "agent stream_update_card",
+            "cardkit streaming unavailable; falling back to message patch",
+            "agent patch_card",
+        ],
+        after=offset,
+    )
+    _wait_for_any_log(
+        host,
+        ["status=completed", "status=requires_action"],
+        after=offset,
+        timeout=60,
+    )
+    host.assert_absent("status=failed", after=offset, duration=1.5)
+    host.assert_absent("Turn failed: HTTP 502:", after=offset, duration=1.5)
+    host.assert_absent(
+        "HTTP 502: upstream returned an empty error body",
+        after=offset,
+        duration=1.5,
+    )
 
 
 @pytest.mark.feishu_e2e

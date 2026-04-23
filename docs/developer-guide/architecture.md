@@ -46,6 +46,7 @@
   - `SimpleHarness` facade
   - `RalphLoop` turn runtime
   - `context_engineering/` for bootstrap prompts, startup context, assembly, governance, and instruction markdown
+  - provider-facing system assembly is normalized into a single system prefix
   - `multi_agent/` for delegated worker identity, routing, and viewed transcript projection
   - `projection / post_turn / hooks`
   - provider adapters under `harness/providers`
@@ -255,6 +256,11 @@ turn 级控制当前通过 `TurnControl` 暴露：
 harness 在 `build_model_input(...)` 阶段先读取 transcript、short-term memory、durable-memory recall 和 instruction markdown，
 再通过 `ContextAssemblyPipeline` 生成结构化的 model request。治理结果继续通过
 `last_context_report` 暴露给测试和 host 层。
+
+startup context 继续保留在 entry/lifecycle plane 和 model-io capture 中，但不会再
+作为额外的 `role=system` message 发给 OpenAI-compatible backend。provider-facing
+request 统一收成单一 system 前缀，避免本地 chat template 因多条 system message
+直接报错。
 
 ## Agent Observability
 

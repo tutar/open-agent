@@ -90,7 +90,7 @@ export OPENAGENT_FEISHU_APP_ID=cli_xxx
 export OPENAGENT_FEISHU_APP_SECRET=xxx
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
-export OPENAGENT_MODEL=gpt-4.1
+export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
 uv run openagent-host --channel feishu
 ```
 

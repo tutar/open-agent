@@ -17,6 +17,7 @@ from openagent.harness.runtime.core.agent_runtime import SimpleHarness
 from openagent.harness.runtime.io import ModelProviderAdapter
 from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
+from openagent.shared import normalize_workspace_root
 from openagent.tools import ToolDefinition
 
 from .adapter import FeishuChannelAdapter
@@ -58,7 +59,10 @@ class FeishuAppConfig:
             "OPENAGENT_BINDING_ROOT",
             str(Path(session_root) / "bindings"),
         )
-        workspace_root = os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd())
+        workspace_root = normalize_workspace_root(
+            os.getenv("OPENAGENT_WORKSPACE_ROOT"),
+            default=os.getcwd(),
+        )
         lock_root = os.getenv(
             "OPENAGENT_FEISHU_LOCK_ROOT",
             str(Path("/tmp") / "openagent-feishu-locks"),

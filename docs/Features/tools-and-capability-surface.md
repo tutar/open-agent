@@ -39,6 +39,8 @@
   - builtin web backend environment variables can be read from the process
     environment or a project-root `.env` file
   - GitHub blob URL normalization for Firecrawl-backed `WebFetch`
+  - backend transport/search failures are returned as failed `ToolResult` payloads so a turn can
+    continue and explain the upstream problem instead of immediately hard-failing the whole turn
 - review command baseline via `CommandKind.REVIEW`
 - tool provenance / visibility metadata
 - MCP tool / prompt / skill adaptation seam
