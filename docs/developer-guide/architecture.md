@@ -38,6 +38,9 @@
   - runtime events
   - terminal state
   - task record / task event
+- `capability_surface`
+  - shared capability descriptors
+  - capability projection helpers
 - `harness`
   - `harness/runtime/` 主运行时子域
   - `SimpleHarness` facade
@@ -68,13 +71,21 @@
   - harness-owned frontend integration boundary
   - channel bindings and harness-instance management
 - `observability`
-  - session signal
+  - observability facade
+  - session-state signal emission
   - progress projection
+  - runtime metrics
   - span-based tracing
 - `host`
   - host app
   - startup surface
   - local transport and channel loading
+- `shared`
+  - shared version helpers
+- `cli.py`
+  - top-level CLI entrypoint
+- `local.py`
+  - local runtime facade over `harness/assemblies`
 
 其中 task 与 multi-agent 编排属于 `harness` 域：
 
@@ -258,6 +269,8 @@ runtime 侧的调用点现在归在 `harness/runtime/projection/`，而具体 si
 - tool span
 - background task span
 - session lifecycle signal
+- runtime metric emission
+- progress updates
 - task / background progress projection
 - local stdout sink baseline
 

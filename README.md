@@ -11,7 +11,7 @@ It focuses on a unified Python host, multi-channel interaction, builtin tools, d
 - Rich capability surface: builtin tools, policy-aware executor, skills, commands, and MCP compatibility
 - Local multi-agent baseline: delegated worker identity, background delegation, viewed transcript, and task notification routing
 - Real integrations: terminal TUI, Feishu channel, Firecrawl-backed `WebFetch / WebSearch`
-- Spec-aligned architecture: harness, session, durable memory, tools, sandbox, and object model remain explicit
+- Explicit architecture: harness, session, durable memory, tools, sandbox, and object model remain explicit
 
 ## Quick Start
 
@@ -46,6 +46,7 @@ At a high level:
 - `durable_memory`: layered durable recall, direct write / extract / dream consolidation, taxonomy-aware long-term memory
 - `tools`: builtin tools, executor, policy, skills, MCP, command surfaces
 - `gateway`: channel normalization, session binding, egress projection
+- `observability`: trace spans, progress, runtime metrics, session-state signals
 - `sandbox`: local execution boundaries
 - `harness/task`: local background task and verifier baseline
 
@@ -75,10 +76,6 @@ Current shipped baseline includes:
 - local multi-agent delegation baseline
 - session, short-term memory, durable memory, and replay
 - model I/O capture and observability baseline
-- skills, commands, MCP, and local sandbox/orchestration baseline
+- skills, commands, MCP, and local sandbox/task baseline
 
 Planned and discussion-stage features are tracked under [docs/Proposals](./docs/Proposals/README.md).
-
-## Built On `agent-spec`
-
-OpenAgent uses `agent-spec` as its architectural reference point, but stays intentionally scoped to local-first host scenarios instead of introducing cloud/distributed machinery by default.

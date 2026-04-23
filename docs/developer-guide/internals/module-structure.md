@@ -17,6 +17,10 @@
   - canonical objects
   - runtime events
   - shared records and payloads
+- `capability_surface/`
+  - shared capability surface
+  - capability projection
+  - cross-domain capability exposure seam
 - `durable_memory/`
   - bounded recall
   - resident index / manifest layering
@@ -50,10 +54,22 @@
   - frontend / channel integration boundary
   - bindings
   - projection
+- `observability/`
+  - observability facade
+  - normalized observability models
+  - sink interface
+  - local/dev sinks
 - `host/`
   - host app
   - startup surface
   - host-local config and transport wiring
+- `shared/`
+  - shared versioning
+  - cross-cutting constants or helpers that do not belong to a domain package
+- `cli.py`
+  - top-level CLI entrypoint
+- `local.py`
+  - top-level local runtime facade
 
 ## Harness Structure
 
@@ -134,9 +150,25 @@
 
 ### `observability/`
 
-- 负责 tracing、progress、metrics
+- 负责 observability facade、normalized models、sink interface、local/dev sinks
+- 当前主要承载：
+  - trace span emission
+  - progress projection
+  - runtime metric emission
+  - session-state signal emission
 - 当前同时被 `harness/runtime/projection/`、tools、gateway、task 路径复用
 - 作为 shared seam 保留顶层更合理
+
+### `capability_surface/`
+
+- 负责 capability descriptors、origin metadata、projection helpers
+- 当前被 tools、context engineering、gateway-facing exposure 共同使用
+- 保持顶层 shared seam 更符合当前代码边界
+
+### `shared/`
+
+- 放真正轻量的 shared helpers
+- 当前主要是版本信息，不应扩张成新的领域实现目录
 
 ### `host/`
 
@@ -150,6 +182,9 @@
 - `local.py`
   - 顶层 facade
   - 真实装配逻辑应继续放在 `harness/assemblies/`
+- `cli.py`
+  - 顶层 CLI 入口
+  - 不视为业务子域
 - `host/service.py`
   - compatibility export
   - 真实 host 实现应在 `host/` 子模块中维护
@@ -170,6 +205,8 @@
 - `gateway/`
 - `observability/`
 - `host/`
+- `capability_surface/`
+- `shared/`
 
 当前 `harness/multi_agent/` 已经覆盖本地 baseline：
 
