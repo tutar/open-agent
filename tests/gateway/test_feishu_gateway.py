@@ -939,17 +939,6 @@ def test_feishu_host_card_action_surfaces_runtime_error_when_requires_action_is_
     assert latest.status_message == "Session has no pending requires_action continuation"
 
 
-def test_feishu_app_config_expands_workspace_root_from_env(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("OPENAGENT_FEISHU_APP_ID", "app")
-    monkeypatch.setenv("OPENAGENT_FEISHU_APP_SECRET", "secret")
-    monkeypatch.setenv("OPENAGENT_WORKSPACE_ROOT", "$PWD")
-    monkeypatch.setenv("PWD", str(tmp_path))
-
-    config = FeishuAppConfig.from_env()
-
-    assert config.workspace_root == str(tmp_path.resolve())
-
-
 def test_feishu_gateway_registers_single_adapter_instance(tmp_path: Path) -> None:
     config = FeishuAppConfig(
         app_id="app",

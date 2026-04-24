@@ -46,7 +46,7 @@
 - MCP tool / prompt / skill adaptation seam
 - runtime 默认注入 builtin tool baseline；host 默认 demo tools 只是额外叠加
 - builtin file / shell tools 默认作用于当前 session/subagent 的 workspace
-- `OPENAGENT_WORKSPACE_ROOT` 现在只作为 bootstrap/fallback；实际执行根以 `ToolExecutionContext.working_directory` 为准
+- builtin file / shell tools 只在显式 `ToolExecutionContext.working_directory` 下执行，不再存在全局 workspace fallback
 - `Bash` 在自己 workspace 内默认允许执行，但不能删除或替换 workspace 根目录本身；越界访问仍需授权
 - externalized tool results are exposed back to the model as internal references with previews, not raw workspace file paths
 

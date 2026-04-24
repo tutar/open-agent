@@ -2,6 +2,8 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
+import pytest
+
 from openagent.harness.runtime import (
     ModelStreamEvent,
     ModelTurnRequest,
@@ -101,12 +103,18 @@ class FailingSearchBackend:
         raise WebSearchBackendError("HTTP 502: upstream unavailable")
 
 
-def test_simple_harness_basic_turn() -> None:
+def test_simple_harness_basic_turn(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(responses=[ModelTurnResponse(assistant_message="hello from model")])
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("hi", "sess_basic")
 
@@ -121,7 +129,7 @@ def test_simple_harness_basic_turn() -> None:
     assert harness.runtime_loop.state.transition == "completed"
 
 
-def test_simple_harness_tool_roundtrip() -> None:
+def test_simple_harness_tool_roundtrip(tmp_path) -> None:
     echo = FakeTool(name="echo")
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([echo])
@@ -134,7 +142,13 @@ def test_simple_harness_tool_roundtrip() -> None:
             ModelTurnResponse(assistant_message="tool completed"),
         ]
     )
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("use tool", "sess_tool")
 
@@ -149,7 +163,7 @@ def test_simple_harness_tool_roundtrip() -> None:
     assert echo.seen_arguments == [{"text": "payload"}]
 
 
-def test_simple_harness_continues_after_websearch_backend_failure() -> None:
+def test_simple_harness_continues_after_websearch_backend_failure(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([WebSearchTool(backend=FailingSearchBackend())])
     executor = SimpleToolExecutor(tools)
@@ -161,7 +175,13 @@ def test_simple_harness_continues_after_websearch_backend_failure() -> None:
             ModelTurnResponse(assistant_message="search backend is unavailable right now"),
         ]
     )
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("search", "sess_websearch_failure")
 
@@ -178,7 +198,7 @@ def test_simple_harness_continues_after_websearch_backend_failure() -> None:
     assert tool_payload["content"] == ["HTTP 502: upstream unavailable"]
 
 
-def test_simple_harness_skips_empty_assistant_event_before_tool_failure() -> None:
+def test_simple_harness_skips_empty_assistant_event_before_tool_failure(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([BashTool(".")])
     executor = SimpleToolExecutor(tools)
@@ -190,7 +210,13 @@ def test_simple_harness_skips_empty_assistant_event_before_tool_failure() -> Non
             )
         ]
     )
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("list files", "sess_tool_fail")
 
@@ -205,7 +231,9 @@ def test_simple_harness_skips_empty_assistant_event_before_tool_failure() -> Non
     ]
 
 
-def test_simple_harness_skips_nonempty_assistant_event_when_model_also_requests_tool() -> None:
+def test_simple_harness_skips_nonempty_assistant_event_when_model_also_requests_tool(
+    tmp_path,
+) -> None:
     echo = FakeTool(name="echo")
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([echo])
@@ -219,7 +247,13 @@ def test_simple_harness_skips_nonempty_assistant_event_when_model_also_requests_
             ModelTurnResponse(assistant_message="tool completed"),
         ]
     )
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("use tool", "sess_tool_preface")
 
@@ -236,7 +270,7 @@ def test_simple_harness_skips_nonempty_assistant_event_when_model_also_requests_
     assert messages[-1].content == "tool completed"
 
 
-def test_simple_harness_streaming_model_emits_deltas() -> None:
+def test_simple_harness_streaming_model_emits_deltas(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
@@ -246,7 +280,13 @@ def test_simple_harness_streaming_model_emits_deltas() -> None:
             ModelStreamEvent(assistant_delta="world"),
         ]
     )
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("stream please", "sess_stream")
 
@@ -261,12 +301,18 @@ def test_simple_harness_streaming_model_emits_deltas() -> None:
     assert events[3].payload["message"] == "hello world"
 
 
-def test_simple_harness_cancellation_stops_turn() -> None:
+def test_simple_harness_cancellation_stops_turn(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(responses=[ModelTurnResponse(assistant_message="never emitted")])
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn(
         "cancel me",
@@ -282,7 +328,7 @@ def test_simple_harness_cancellation_stops_turn() -> None:
     ]
 
 
-def test_simple_harness_timeout_fails_turn() -> None:
+def test_simple_harness_timeout_fails_turn(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
@@ -291,6 +337,7 @@ def test_simple_harness_timeout_fails_turn() -> None:
         sessions=session_store,
         tools=tools,
         executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
     )
 
     events, terminal = harness.run_turn(
@@ -305,12 +352,18 @@ def test_simple_harness_timeout_fails_turn() -> None:
     assert events[-1].event_type is RuntimeEventType.TURN_FAILED
 
 
-def test_simple_harness_retries_and_recovers() -> None:
+def test_simple_harness_retries_and_recovers(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = FlakyModel(failures_before_success=1)
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn(
         "retry",
@@ -323,12 +376,18 @@ def test_simple_harness_retries_and_recovers() -> None:
     assert events[-1].event_type is RuntimeEventType.TURN_COMPLETED
 
 
-def test_simple_harness_retry_exhaustion_fails_turn() -> None:
+def test_simple_harness_retry_exhaustion_fails_turn(tmp_path) -> None:
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = FlakyModel(failures_before_success=3)
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn(
         "retry until fail",
@@ -342,7 +401,7 @@ def test_simple_harness_retry_exhaustion_fails_turn() -> None:
     assert events[-1].event_type is RuntimeEventType.TURN_FAILED
 
 
-def test_simple_harness_requires_action_blocks_turn() -> None:
+def test_simple_harness_requires_action_blocks_turn(tmp_path) -> None:
     privileged = FakeTool(name="admin", permission=PermissionDecision.ASK)
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([privileged])
@@ -352,7 +411,13 @@ def test_simple_harness_requires_action_blocks_turn() -> None:
             ModelTurnResponse(tool_calls=[ToolCall(tool_name="admin", arguments={"op": "restart"})])
         ]
     )
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("restart service", "sess_ask")
 
@@ -360,7 +425,7 @@ def test_simple_harness_requires_action_blocks_turn() -> None:
     assert events[-1].event_type is RuntimeEventType.REQUIRES_ACTION
 
 
-def test_tool_permission_denied_raises_failed_terminal_state() -> None:
+def test_tool_permission_denied_raises_failed_terminal_state(tmp_path) -> None:
     denied = FakeTool(name="rm", permission=PermissionDecision.DENY)
     session_store = InMemorySessionStore()
     tools = StaticToolRegistry([denied])
@@ -370,7 +435,13 @@ def test_tool_permission_denied_raises_failed_terminal_state() -> None:
             ModelTurnResponse(tool_calls=[ToolCall(tool_name="rm", arguments={"path": "/tmp/x"})])
         ]
     )
-    harness = SimpleHarness(model=model, sessions=session_store, tools=tools, executor=executor)
+    harness = SimpleHarness(
+        model=model,
+        sessions=session_store,
+        tools=tools,
+        executor=executor,
+        session_root_dir=str(tmp_path / "sessions"),
+    )
 
     events, terminal = harness.run_turn("delete file", "sess_deny")
 
@@ -382,7 +453,7 @@ def test_tool_permission_denied_raises_failed_terminal_state() -> None:
     assert terminal.reason == "tool_permission_denied"
 
 
-def test_route_tool_call_returns_single_result() -> None:
+def test_route_tool_call_requires_session_backed_workspace() -> None:
     echo = FakeTool(name="echo")
     registry = StaticToolRegistry([echo])
     harness = SimpleHarness(
@@ -392,9 +463,8 @@ def test_route_tool_call_returns_single_result() -> None:
         executor=SimpleToolExecutor(registry),
     )
 
-    result = harness.route_tool_call(ToolCall(tool_name="echo", arguments={"text": "single"}))
-
-    assert result.content == ["single"]
+    with pytest.raises(RuntimeError, match="session workspace"):
+        harness.route_tool_call(ToolCall(tool_name="echo", arguments={"text": "single"}))
 
 
 def test_tool_executor_rejects_denied_tool() -> None:

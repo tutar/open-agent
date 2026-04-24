@@ -181,7 +181,6 @@ def test_host_config_from_env_expands_openagent_root_references(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("OPENAGENT_ROOT", str(tmp_path / ".openagent"))
-    monkeypatch.setenv("OPENAGENT_WORKSPACE_ROOT", "$PWD")
 
     config = OpenAgentHostConfig.from_env()
 

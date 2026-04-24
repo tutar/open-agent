@@ -116,12 +116,16 @@ def test_builtin_file_tools_roundtrip(tmp_path: Path) -> None:
         for tool in create_builtin_toolset(root=str(tmp_path))
         if tool.name in {"Read", "Write", "Edit", "Glob", "Grep"}
     }
+    context = ToolExecutionContext(session_id="sess_roundtrip", working_directory=str(tmp_path))
 
-    write_result = tools["Write"].call({"path": "notes.txt", "content": "alpha\nbeta\n"})
-    read_result = tools["Read"].call({"path": "notes.txt"})
-    edit_result = tools["Edit"].call({"path": "notes.txt", "old": "beta", "new": "gamma"})
-    glob_result = tools["Glob"].call({"pattern": "*.txt"})
-    grep_result = tools["Grep"].call({"pattern": "gamma"})
+    write_result = tools["Write"].call({"path": "notes.txt", "content": "alpha\nbeta\n"}, context)
+    read_result = tools["Read"].call({"path": "notes.txt"}, context)
+    edit_result = tools["Edit"].call(
+        {"path": "notes.txt", "old": "beta", "new": "gamma"},
+        context,
+    )
+    glob_result = tools["Glob"].call({"pattern": "*.txt"}, context)
+    grep_result = tools["Grep"].call({"pattern": "gamma"}, context)
 
     assert write_result.content == [str((tmp_path / "notes.txt").resolve())]
     assert read_result.content == ["alpha\nbeta\n"]
@@ -216,8 +220,9 @@ def test_agent_tool_schema_and_background_flag() -> None:
 
 def test_bash_tool_executes_successfully(tmp_path: Path) -> None:
     tool = BashTool(str(tmp_path))
+    context = ToolExecutionContext(session_id="sess_bash_ok", working_directory=str(tmp_path))
 
-    result = tool.call({"command": "pwd"})
+    result = tool.call({"command": "pwd"}, context)
 
     assert result.success is True
     assert result.content == [str(tmp_path)]
@@ -225,9 +230,10 @@ def test_bash_tool_executes_successfully(tmp_path: Path) -> None:
 
 def test_bash_tool_reports_non_zero_exit(tmp_path: Path) -> None:
     tool = BashTool(str(tmp_path))
+    context = ToolExecutionContext(session_id="sess_bash_fail", working_directory=str(tmp_path))
 
     try:
-        tool.call({"command": "bash -lc 'echo nope >&2; exit 7'"})
+        tool.call({"command": "bash -lc 'echo nope >&2; exit 7'"}, context)
     except RuntimeError as exc:
         assert str(exc) == "nope"
     else:
@@ -330,6 +336,17 @@ def test_local_runtime_defaults_to_builtin_tool_baseline(tmp_path: Path) -> None
         "AskUserQuestion",
     }
     assert expected.issubset(file_names)
+
+
+def test_builtin_file_tools_require_explicit_working_directory(tmp_path: Path) -> None:
+    tool = WriteTool(str(tmp_path))
+
+    try:
+        tool.call({"path": "notes.txt", "content": "hello\n"})
+    except RuntimeError as exc:
+        assert "working_directory" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError when working_directory is missing")
 
 
 def test_openagent_root_reexports_tools_surface() -> None:

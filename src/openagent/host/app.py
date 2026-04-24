@@ -45,7 +45,6 @@ class OpenAgentHost:
             self.model,
             session_root=self.config.session_root,
             tools=self.tools,
-            workspace_root=self.config.workspace_root,
             model_io_root=self.config.model_io_root,
         )
         self.gateway = create_gateway_for_runtime(
@@ -194,7 +193,6 @@ class OpenAgentHost:
         tools = cast(
             list[ToolDefinition],
             create_builtin_toolset(
-                root=self.config.workspace_root,
                 agent_handler=multi_agent.as_agent_handler(),
             ),
         )

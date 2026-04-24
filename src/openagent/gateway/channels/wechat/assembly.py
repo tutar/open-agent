@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from openagent.gateway.binding_store import FileSessionBindingStore
@@ -17,7 +17,6 @@ from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
 from openagent.shared import (
     normalize_openagent_root,
-    normalize_workspace_root,
     resolve_agent_root,
     resolve_path_env,
 )
@@ -40,7 +39,6 @@ class WechatAppConfig:
     session_root: str = str(Path(".openagent") / "agent_default" / "sessions")
     binding_root: str = str(Path(".openagent") / "agent_default" / "bindings")
     allowed_senders: tuple[str, ...] = ()
-    workspace_root: str = field(default_factory=os.getcwd)
 
     @classmethod
     def from_env(cls) -> WechatAppConfig:
@@ -68,10 +66,6 @@ class WechatAppConfig:
             allowed_senders=_parse_allowed_senders(
                 os.getenv("OPENAGENT_WECHAT_ALLOWED_SENDERS", "")
             ),
-            workspace_root=normalize_workspace_root(
-                os.getenv("OPENAGENT_WORKSPACE_ROOT"),
-                default=os.getcwd(),
-            ),
         )
 
 
@@ -80,14 +74,12 @@ def create_wechat_runtime(
     session_root: str,
     tools: list[ToolDefinition] | None = None,
     observability: AgentObservability | None = None,
-    workspace_root: str | None = None,
 ) -> SimpleHarness:
     return create_file_runtime_assembly(
         model=model,
         session_root=session_root,
         tools=tools,
         observability=observability,
-        workspace_root=workspace_root,
     )
 
 
@@ -100,7 +92,6 @@ def create_wechat_gateway(
         model=model,
         session_root=config.session_root,
         tools=tools,
-        workspace_root=config.workspace_root,
     )
     gateway = Gateway(
         InProcessSessionAdapter(runtime),

@@ -14,7 +14,7 @@ from openagent.shared.layout import (
     resolve_subagent_workspace,
     write_subagent_ref,
 )
-from openagent.shared.paths import normalize_workspace_root, resolve_path_env
+from openagent.shared.paths import resolve_path_env
 from openagent.shared.version import SPEC_VERSION, __version__
 
 __all__ = [
@@ -25,7 +25,6 @@ __all__ = [
     "ensure_session_workspace",
     "ensure_subagent_workspace",
     "normalize_openagent_root",
-    "normalize_workspace_root",
     "resolve_path_env",
     "resolve_agent_directory",
     "resolve_agent_root",

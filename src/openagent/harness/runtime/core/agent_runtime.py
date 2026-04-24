@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -116,7 +115,6 @@ class SimpleHarness(Harness):
     instruction_markdown_loader: InstructionMarkdownLoader = field(
         default_factory=InstructionMarkdownLoader
     )
-    workspace_root: str = field(default_factory=os.getcwd)
     session_root_dir: str | None = None
     openagent_root: str | None = None
     agent_root_dir: str | None = None
@@ -346,14 +344,11 @@ class SimpleHarness(Harness):
         return output
 
     def route_tool_call(self, tool_call: ToolCall) -> ToolResult:
-        result = self.executor.run_tools(
-            [tool_call],
-            ToolExecutionContext(
-                session_id="ad_hoc",
-                working_directory=str(Path(self.workspace_root).resolve()),
-            ),
+        del tool_call
+        raise RuntimeError(
+            "ad-hoc tool routing without a session workspace is not supported; "
+            "use a session-backed turn"
         )
-        return result[0]
 
     def ensure_session_workspace(self, session_handle: str, session: SessionRecord) -> str:
         metadata = dict(session.metadata or {})
@@ -366,9 +361,7 @@ class SimpleHarness(Harness):
             metadata["workdir"] = workdir
             session.metadata = metadata
         else:
-            workdir = str(Path(self.workspace_root).resolve())
-            metadata["workdir"] = workdir
-            session.metadata = metadata
+            raise RuntimeError("session_root_dir is required to resolve a session workspace")
         return workdir
 
     def prepare_delegated_agent_workspace(
@@ -378,7 +371,7 @@ class SimpleHarness(Harness):
         metadata: JsonObject | None = None,
     ) -> str:
         if self.agent_root_dir is None:
-            return str(Path(self.workspace_root).resolve())
+            raise RuntimeError("agent_root_dir is required to resolve a delegated workspace")
         parent_workspace: str | None = None
         if parent_session_id is not None:
             parent_session = self.sessions.load_session(parent_session_id)

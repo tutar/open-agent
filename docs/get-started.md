@@ -45,7 +45,6 @@ mypy .
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host
 ```
 
@@ -108,7 +107,6 @@ OpenAI-compatible:
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host
 ```
 
@@ -126,7 +124,6 @@ Anthropic-compatible:
 export OPENAGENT_PROVIDER=anthropic
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=claude-sonnet-4-5
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host
 ```
 
@@ -222,7 +219,6 @@ export OPENAGENT_FEISHU_APP_SECRET=xxx
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host --channel feishu
 ```
 
@@ -270,7 +266,6 @@ uv sync --extra wechat
 
 ```bash
 export OPENAGENT_WECHAT_ALLOWED_SENDERS=wx_user_1,wx_user_2
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host --channel wechat
 ```
 
@@ -311,7 +306,6 @@ export OPENAGENT_WECOM_ALLOWED_USERS=userid_1,userid_2
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8080
 export OPENAGENT_MODEL=Qwen3.5-9B-Q4_K_M.gguf
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run --extra wecom openagent-host --channel wecom
 ```
 

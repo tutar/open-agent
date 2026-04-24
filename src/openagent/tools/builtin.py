@@ -715,7 +715,7 @@ def _effective_root(root: str, context: ToolExecutionContext | None) -> str:
         and context.working_directory
     ):
         return str(Path(context.working_directory).resolve())
-    return str(Path(root).resolve())
+    raise RuntimeError("tool execution requires an explicit working_directory")
 
 
 def _resolve_path(root: str, raw_path: str) -> Path:

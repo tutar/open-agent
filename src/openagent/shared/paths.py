@@ -24,15 +24,3 @@ def resolve_path_env(name: str, default: str | None = None) -> str | None:
         raw_value = default
     expanded = _expand_env_path(raw_value)
     return str(Path(expanded).resolve())
-
-
-def normalize_workspace_root(
-    workspace_root: str | None,
-    *,
-    default: str | None = None,
-) -> str:
-    """Resolve a workspace root from env-like input into an absolute path."""
-
-    raw_value = workspace_root if workspace_root is not None else default
-    candidate = raw_value if raw_value else os.getcwd()
-    return str(Path(_expand_env_path(candidate)).resolve())

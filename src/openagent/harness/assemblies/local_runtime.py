@@ -26,7 +26,6 @@ from openagent.observability import AgentObservability
 from openagent.session import FileSessionStore
 from openagent.shared import (
     normalize_openagent_root,
-    normalize_workspace_root,
     resolve_agent_root_from_session_root,
     resolve_path_env,
 )
@@ -44,7 +43,6 @@ def create_file_runtime_assembly(
     session_root: str,
     tools: list[ToolDefinition] | None = None,
     observability: AgentObservability | None = None,
-    workspace_root: str | None = None,
     model_io_root: str | None = None,
     openagent_root: str | None = None,
     role_id: str | None = None,
@@ -62,7 +60,6 @@ def create_file_runtime_assembly(
     )
     registry = StaticToolRegistry(
         _resolve_runtime_tools(
-            root=_default_workspace_root(workspace_root),
             tools=tools,
             agent_handler=multi_agent.as_agent_handler(),
         )
@@ -77,7 +74,6 @@ def create_file_runtime_assembly(
         model_io_capture=FileModelIoCapture(
             _default_model_io_root(session_root, model_io_root, agent_root=agent_root)
         ),
-        workspace_root=_default_workspace_root(workspace_root),
         session_root_dir=session_root,
         openagent_root=_default_openagent_root(openagent_root),
         agent_root_dir=agent_root,
@@ -107,7 +103,6 @@ def create_gateway_for_runtime_assembly(
 
 
 def _resolve_runtime_tools(
-    root: str,
     tools: list[ToolDefinition] | None,
     agent_handler: (
         Callable[[dict[str, object], ToolExecutionContext | None], JsonObject] | None
@@ -119,7 +114,7 @@ def _resolve_runtime_tools(
             resolved.extend(
                 cast(
                     list[ToolDefinition],
-                    create_builtin_toolset(root=root, agent_handler=agent_handler),
+                    create_builtin_toolset(agent_handler=agent_handler),
                 )
             )
             deduped: dict[str, ToolDefinition] = {}
@@ -129,21 +124,14 @@ def _resolve_runtime_tools(
         return resolved
     return cast(
         list[ToolDefinition],
-        create_builtin_toolset(root=root, agent_handler=agent_handler),
-    )
-
-
-def _default_workspace_root(workspace_root: str | None) -> str:
-    return normalize_workspace_root(
-        workspace_root,
-        default=os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd()),
+        create_builtin_toolset(agent_handler=agent_handler),
     )
 
 
 def _default_openagent_root(openagent_root: str | None) -> str:
     return normalize_openagent_root(
         openagent_root,
-        default=os.getenv("OPENAGENT_ROOT", ".openagent"),
+        default=".openagent",
     )
 
 

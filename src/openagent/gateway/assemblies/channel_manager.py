@@ -218,7 +218,6 @@ class ChannelHostManager:
             agent_root=self._host_config.agent_root,
             session_root=self._host_config.session_root,
             binding_root=self._host_config.binding_root,
-            workspace_root=self._host_config.workspace_root,
             lock_root=resolve_path_env(
                 "OPENAGENT_FEISHU_LOCK_ROOT",
                 str(Path("/tmp") / "openagent-feishu-locks"),
@@ -261,7 +260,6 @@ class ChannelHostManager:
                 for sender in allowed_senders_value.split(",")
                 if sender.strip()
             ),
-            workspace_root=self._host_config.workspace_root,
         )
 
     def _resolve_wecom_config(self) -> WeComAppConfig:
@@ -296,5 +294,4 @@ class ChannelHostManager:
             allowed_users=tuple(
                 user.strip() for user in allowed_users_value.split(",") if user.strip()
             ),
-            workspace_root=self._host_config.workspace_root,
         )
