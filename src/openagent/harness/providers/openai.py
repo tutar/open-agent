@@ -238,6 +238,8 @@ class OpenAIChatCompletionsModelAdapter:
                     ),
                 },
             )
+        if not any(str(message.get("role", "")) == "user" for message in messages):
+            raise ProviderError("model request is missing a user message after context compaction")
         return messages
 
     def _message_payload(self, message: JsonObject) -> JsonObject:

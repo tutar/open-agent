@@ -51,6 +51,13 @@
 这样可以避免本地 chat template 因多条 `role=system` message 报
 `System message must be at the beginning`
 
+## User Message Retention
+
+- compact / overflow recovery 现在都会保留最近一条真实 `role=user` message
+- provider-facing request 也会在发送前校验至少存在一条 user message
+- 这样可以避免长工具链 + overflow recovery 场景把 user query 裁掉后，再触发
+  `No user query found in messages.`
+
 ## 当前不支持
 
 - provider-native prompt cache integration

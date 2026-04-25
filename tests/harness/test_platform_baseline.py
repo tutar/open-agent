@@ -361,12 +361,47 @@ def test_context_governance_compacts_and_externalizes(tmp_path: Path) -> None:
     cache_plan = governance.build_prompt_cache_plan(session.messages)
 
     assert isinstance(request.messages, list)
-    assert len(request.messages) <= 1
+    assert len(request.messages) <= 2
+    assert any(message["role"] == "user" for message in request.messages)
     assert report is not None
     assert report.warning_threshold_reached is True
     assert report.recovered_from_overflow is True
     assert report.cache_stable_prefix_messages >= 0
     assert len(cache_plan.cache_breakpoints) <= 1
+
+
+def test_context_governance_compaction_preserves_latest_user_message() -> None:
+    governance = ContextGovernance(compact_to_messages=2)
+    messages = [
+        SessionMessage(role="user", content="original user request"),
+        SessionMessage(role="assistant", content="thinking"),
+        SessionMessage(role="tool", content="search result one"),
+        SessionMessage(role="assistant", content="continuing"),
+    ]
+
+    result = governance.compact(messages)
+    roles = [message["role"] for message in result.messages]
+    contents = [message["content"] for message in result.messages]
+
+    assert roles == ["user", "tool", "assistant"]
+    assert contents[0] == "original user request"
+
+
+def test_context_governance_overflow_recovery_preserves_latest_user_message() -> None:
+    governance = ContextGovernance(overflow_compact_to_messages=2)
+    messages = [
+        SessionMessage(role="user", content="original user request"),
+        SessionMessage(role="assistant", content="thinking"),
+        SessionMessage(role="tool", content="search result one"),
+        SessionMessage(role="assistant", content="continuing"),
+    ]
+
+    result = governance.recover_overflow(messages)
+    roles = [message["role"] for message in result.messages]
+    contents = [message["content"] for message in result.messages]
+
+    assert roles == ["user", "tool", "assistant"]
+    assert contents[0] == "original user request"
 
 
 def test_context_governance_externalizes_long_tool_result(tmp_path: Path) -> None:

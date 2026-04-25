@@ -43,6 +43,28 @@ class ContextGovernance:
     reserve_output_tokens: int = 256
     minimum_continuation_tokens: int = 128
 
+    def _retain_recent_messages(
+        self,
+        messages: list[SessionMessage],
+        *,
+        limit: int,
+    ) -> list[SessionMessage]:
+        if len(messages) <= limit:
+            return list(messages)
+        kept = list(messages[-limit:])
+        if any(message.role == "user" for message in kept):
+            return kept
+        latest_user_index = next(
+            (index for index in range(len(messages) - 1, -1, -1) if messages[index].role == "user"),
+            None,
+        )
+        if latest_user_index is None:
+            return kept
+        kept_indexes = list(range(len(messages) - limit, len(messages)))
+        if latest_user_index not in kept_indexes:
+            kept_indexes.append(latest_user_index)
+        return [messages[index] for index in sorted(set(kept_indexes))]
+
     def analyze(self, messages: list[SessionMessage], tools: list[str]) -> ContextReport:
         estimated_tokens = self.estimate_tokens(messages, tools)
         budget_remaining = self.max_tokens - estimated_tokens
@@ -75,7 +97,7 @@ class ContextGovernance:
                 summary="No compaction needed",
                 compacted_count=0,
             )
-        kept = messages[-self.compact_to_messages :]
+        kept = self._retain_recent_messages(messages, limit=self.compact_to_messages)
         compacted_count = len(messages) - len(kept)
         summary = f"Compacted {compacted_count} earlier messages into recent-context view"
         return CompactResult(
@@ -91,7 +113,10 @@ class ContextGovernance:
                 summary="No overflow recovery needed",
                 recovered=False,
             )
-        kept = messages[-self.overflow_compact_to_messages :]
+        kept = self._retain_recent_messages(
+            messages,
+            limit=self.overflow_compact_to_messages,
+        )
         trimmed = len(messages) - len(kept)
         return OverflowRecoveryResult(
             messages=[message.to_dict() for message in kept],

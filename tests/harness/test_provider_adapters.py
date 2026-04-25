@@ -512,6 +512,30 @@ def test_openai_adapter_merges_system_planes_into_single_prefix() -> None:
     assert [message["role"] for message in messages] == ["system", "user"]
 
 
+def test_openai_adapter_rejects_requests_without_user_message() -> None:
+    transport = FakeTransport(response_body={"choices": [{"message": {"content": "ok"}}]})
+    adapter = OpenAIChatCompletionsModelAdapter(
+        model="gpt-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+
+    with pytest.raises(ProviderError) as exc:
+        adapter.generate(
+            ModelTurnRequest(
+                session_id="sess_missing_user",
+                messages=[
+                    {"role": "assistant", "content": "intermediate summary"},
+                    {"role": "tool", "content": "result", "metadata": {"tool_use_id": "call_1"}},
+                ],
+                system_prompt="You are OpenAgent.",
+            )
+        )
+
+    assert str(exc.value) == "model request is missing a user message after context compaction"
+    assert transport.seen_payload is None
+
+
 def test_openai_chat_adapter_emits_complete_builtin_tool_schema() -> None:
     transport = FakeTransport(response_body={"choices": [{"message": {"content": "ok"}}]})
     adapter = OpenAIChatCompletionsModelAdapter(
@@ -705,7 +729,7 @@ def test_harness_build_model_input_includes_short_term_memory() -> None:
     assert "rollout" in str(request.short_term_memory["summary"]).lower()
 
 
-def test_tool_results_preserve_tool_use_id_in_session_messages() -> None:
+def test_tool_results_preserve_tool_use_id_in_session_messages(tmp_path: Path) -> None:
     tool = EchoTool()
     registry = StaticToolRegistry([tool])
     harness = SimpleHarness(
@@ -718,6 +742,7 @@ def test_tool_results_preserve_tool_use_id_in_session_messages() -> None:
         sessions=InMemorySessionStore(),
         tools=registry,
         executor=SimpleToolExecutor(registry),
+        session_root_dir=tmp_path / "agent_default" / "sessions",
     )
 
     harness.run_turn("use tool", "sess_tool_metadata")
@@ -781,6 +806,7 @@ def test_model_io_capture_persists_request_and_response_records(tmp_path: Path) 
         executor=SimpleToolExecutor(StaticToolRegistry([])),
         short_term_memory_store=InMemoryShortTermMemoryStore(),
         model_io_capture=FileModelIoCapture(model_io_root),
+        session_root_dir=tmp_path / "agent_default" / "sessions",
     )
     session = harness.sessions.load_session("sess_capture")
     session.messages.append(harness._new_session_message(role="user", content="first"))

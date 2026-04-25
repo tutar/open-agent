@@ -64,3 +64,12 @@
 - long tool-result externalization
 
 tool 结果外化和 compaction rewrite 现在都被视为 `context_engineering/governance/` 的 editing plane。
+
+此外，governance trimming 现在有一个稳定 invariant：
+
+- compact / overflow recovery 不能把最后一条真实 `role=user` message 裁掉
+- provider adapter 发送前也会再次校验 request 里仍存在 user message
+
+这条约束用于避免长工具链 overflow 后把 transcript 尾部压成只有
+`assistant/tool`，最终触发上游 chat template 的
+`No user query found in messages.`
