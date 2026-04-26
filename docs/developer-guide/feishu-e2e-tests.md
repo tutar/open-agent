@@ -179,13 +179,13 @@ provider/runtime 失败时，现在本地 console 还会额外打印：
 
 ```text
 openagent-runtime> provider request failed ...
-openagent-runtime> provider failure captured under .openagent/data/model-io
+openagent-runtime> provider failure captured under .openagent/agent_default/agents/local-agent/model-io
 ```
 
 更完整的 assembled request / provider payload / error 记录可在：
 
-- `.openagent/data/model-io/index.jsonl`
-- `.openagent/data/model-io/records/<session_id>/`
+- `.openagent/agent_default/agents/local-agent/model-io/index.jsonl`
+- `.openagent/agent_default/agents/local-agent/model-io/records/<session_id>/`
 
 查看。
 

@@ -9,33 +9,34 @@ from pathlib import Path
 
 from openagent.shared import (
     DEFAULT_AGENT_DIRECTORY,
+    DEFAULT_RUNTIME_AGENT_ID,
     normalize_openagent_root,
+    resolve_agent_instance_root,
     resolve_agent_root,
+    resolve_sessions_root,
 )
 
 DEFAULT_OPENAGENT_ROOT = ".openagent"
 
 
 def _default_host_path(*parts: str) -> str:
-    return str(Path(DEFAULT_OPENAGENT_ROOT, DEFAULT_AGENT_DIRECTORY, *parts))
+    return str(Path(DEFAULT_OPENAGENT_ROOT, *parts))
 
 
-def _derived_host_path(agent_root: str, *parts: str) -> str:
-    return str(Path(agent_root, *parts))
-
-
-DEFAULT_AGENT_ROOT = _default_host_path()
+DEFAULT_AGENT_ROOT = _default_host_path(DEFAULT_AGENT_DIRECTORY)
 DEFAULT_DERIVED_ROOT_FIELDS = {
     "session_root": _default_host_path("sessions"),
-    "binding_root": _default_host_path("bindings"),
+    "binding_root": _default_host_path("sessions"),
     "data_root": _default_host_path("data"),
-    "model_io_root": _default_host_path("model-io"),
-}
-DERIVED_ROOT_SUFFIXES = {
-    "session_root": "sessions",
-    "binding_root": "bindings",
-    "data_root": "data",
-    "model_io_root": "model-io",
+    "model_io_root": str(
+        Path(
+            DEFAULT_OPENAGENT_ROOT,
+            DEFAULT_AGENT_DIRECTORY,
+            "agents",
+            DEFAULT_RUNTIME_AGENT_ID,
+            "model-io",
+        )
+    ),
 }
 
 
@@ -57,13 +58,17 @@ class OpenAgentHostConfig:
         if self.agent_root == DEFAULT_AGENT_ROOT:
             self.agent_root = resolve_agent_root(self.openagent_root)
 
-        for field_name, default_value in DEFAULT_DERIVED_ROOT_FIELDS.items():
-            if getattr(self, field_name) == default_value:
-                setattr(
-                    self,
-                    field_name,
-                    _derived_host_path(self.agent_root, DERIVED_ROOT_SUFFIXES[field_name]),
-                )
+        if self.session_root == DEFAULT_DERIVED_ROOT_FIELDS["session_root"]:
+            self.session_root = resolve_sessions_root(self.openagent_root)
+        if self.binding_root == DEFAULT_DERIVED_ROOT_FIELDS["binding_root"]:
+            self.binding_root = resolve_sessions_root(self.openagent_root)
+        if self.data_root == DEFAULT_DERIVED_ROOT_FIELDS["data_root"]:
+            self.data_root = str(Path(self.openagent_root) / "data")
+        if self.model_io_root == DEFAULT_DERIVED_ROOT_FIELDS["model_io_root"]:
+            self.model_io_root = str(
+                resolve_agent_instance_root(self.agent_root, DEFAULT_RUNTIME_AGENT_ID)
+                / "model-io"
+            )
 
     @classmethod
     def from_env(
@@ -75,14 +80,16 @@ class OpenAgentHostConfig:
         agent_root = resolve_agent_root(openagent_root, role_id)
         terminal_host = os.getenv("OPENAGENT_TERMINAL_HOST", "127.0.0.1")
         terminal_port = int(os.getenv("OPENAGENT_TERMINAL_PORT", "8765"))
-        agent_root = str(agent_root)
         return cls(
             openagent_root=openagent_root,
-            agent_root=agent_root,
-            session_root=_derived_host_path(agent_root, "sessions"),
-            binding_root=_derived_host_path(agent_root, "bindings"),
-            data_root=_derived_host_path(agent_root, "data"),
-            model_io_root=_derived_host_path(agent_root, "model-io"),
+            agent_root=str(agent_root),
+            session_root=resolve_sessions_root(openagent_root),
+            binding_root=resolve_sessions_root(openagent_root),
+            data_root=str(Path(openagent_root) / "data"),
+            model_io_root=str(
+                resolve_agent_instance_root(str(agent_root), DEFAULT_RUNTIME_AGENT_ID)
+                / "model-io"
+            ),
             terminal_host=terminal_host,
             terminal_port=terminal_port,
             preload_channels=tuple(preload_channels),

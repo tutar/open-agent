@@ -118,7 +118,7 @@ class HostProcess:
         env = os.environ.copy()
         env.setdefault("OPENAGENT_FEISHU_GROUP_AT_ONLY", "true")
         env["OPENAGENT_SESSION_ROOT"] = str(session_root / "sessions")
-        env["OPENAGENT_BINDING_ROOT"] = str(session_root / "bindings")
+        env["OPENAGENT_BINDING_ROOT"] = str(session_root / "sessions")
         process = subprocess.Popen(
             [sys.executable, "-m", "tests.e2e.support.feishu_e2e_host"],
             cwd=workdir,

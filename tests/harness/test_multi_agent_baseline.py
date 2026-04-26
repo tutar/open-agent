@@ -197,8 +197,18 @@ def test_delegated_subagent_gets_independent_workspace_and_parent_ref(tmp_path: 
 
     workspace = Path(str(result["workspace"]))
     child_ref = json.loads(
-        (tmp_path / "agent_default" / "subagents" / str(result["agent"]["agent_id"]) / "agent.json")
-        .read_text(encoding="utf-8")
+        (
+            tmp_path
+            / "agent_default"
+            / "agents"
+            / str(result["agent"]["agent_id"])
+            / "parent_agent"
+        ).read_text(encoding="utf-8")
+    )
+    parent_subagents = json.loads(
+        (tmp_path / "agent_default" / "agents" / "local-agent" / "subagents").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert workspace.is_dir()
@@ -206,3 +216,4 @@ def test_delegated_subagent_gets_independent_workspace_and_parent_ref(tmp_path: 
     assert (workspace / "seed.txt").read_text(encoding="utf-8") == "seed\n"
     assert child_ref["parent_session_id"] == "sess_parent"
     assert child_ref["metadata"]["parent_agent_ref"] == "agent_default"
+    assert str(result["agent"]["agent_id"]) in parent_subagents

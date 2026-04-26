@@ -19,6 +19,7 @@ from openagent.shared import (
     normalize_openagent_root,
     resolve_agent_root,
     resolve_path_env,
+    resolve_sessions_root,
 )
 from openagent.tools import ToolDefinition
 
@@ -38,8 +39,8 @@ class WeComAppConfig:
     ping_interval_seconds: float = 30.0
     openagent_root: str = str(Path(".openagent"))
     agent_root: str = str(Path(".openagent") / "agent_default")
-    session_root: str = str(Path(".openagent") / "agent_default" / "sessions")
-    binding_root: str = str(Path(".openagent") / "agent_default" / "bindings")
+    session_root: str = str(Path(".openagent") / "sessions")
+    binding_root: str = str(Path(".openagent") / "sessions")
     allowed_users: tuple[str, ...] = ()
 
     @classmethod
@@ -55,12 +56,12 @@ class WeComAppConfig:
         agent_root = resolve_agent_root(openagent_root, role_id)
         session_root = resolve_path_env(
             "OPENAGENT_SESSION_ROOT",
-            str(Path(agent_root) / "sessions"),
-        ) or str(Path(agent_root) / "sessions")
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
         binding_root = resolve_path_env(
             "OPENAGENT_BINDING_ROOT",
-            str(Path(agent_root) / "bindings"),
-        ) or str(Path(agent_root) / "bindings")
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
         ping_interval = float(os.getenv("OPENAGENT_WECOM_PING_INTERVAL_SECONDS", "30"))
         return cls(
             bot_id=bot_id,

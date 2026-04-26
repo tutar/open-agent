@@ -126,11 +126,13 @@ def test_file_session_store_writes_transcript_separately(tmp_path: Path) -> None
     runtime.run_turn("hello", "sess_transcript")
 
     root = tmp_path / "sessions"
-    state_payload = json.loads((root / "sess_transcript.json").read_text(encoding="utf-8"))
-    transcript_lines = (root / "sess_transcript.transcript.jsonl").read_text(
+    session_root = root / "sess_transcript"
+    state_payload = json.loads((session_root / "state.json").read_text(encoding="utf-8"))
+    transcript_ref = (session_root / "transcript.ref").read_text(encoding="utf-8").strip()
+    transcript_lines = Path(transcript_ref).read_text(
         encoding="utf-8"
     ).splitlines()
-    event_lines = (root / "sess_transcript.events.jsonl").read_text(encoding="utf-8").splitlines()
+    event_lines = (session_root / "events.jsonl").read_text(encoding="utf-8").splitlines()
 
     assert "messages" not in state_payload
     assert state_payload["transcript_message_count"] == 2
@@ -153,6 +155,6 @@ def test_file_runtime_assigns_session_workspace_under_session_root(tmp_path: Pat
     session = runtime.sessions.load_session("sess_workspace")
 
     assert session.metadata["workdir"] == str(
-        (tmp_path / "agent_default" / "sessions" / "sess_workspace" / "workspace").resolve()
+        (tmp_path / "agent_default" / "agents" / "local-agent" / "workspace").resolve()
     )
     assert Path(str(session.metadata["workdir"])).is_dir()

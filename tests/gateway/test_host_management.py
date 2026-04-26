@@ -30,10 +30,10 @@ def build_host(tmp_path: Path) -> OpenAgentHost:
         OpenAgentHostConfig(
             openagent_root=str(tmp_path),
             agent_root=str(agent_root),
-            session_root=str(agent_root / "sessions"),
-            binding_root=str(agent_root / "bindings"),
+            session_root=str(tmp_path / "sessions"),
+            binding_root=str(tmp_path / "sessions"),
             data_root=str(agent_root / "data"),
-            model_io_root=str(agent_root / "model-io"),
+            model_io_root=str(agent_root / "agents" / "local-agent" / "model-io"),
             terminal_host="127.0.0.1",
             terminal_port=8765,
         ),
@@ -188,10 +188,12 @@ def test_host_config_from_env_expands_openagent_root_references(
     expected_host_root = (expected_root / "agent_default").resolve()
     assert Path(config.openagent_root) == expected_root
     assert Path(config.agent_root) == expected_host_root
-    assert Path(config.session_root) == (expected_host_root / "sessions").resolve()
-    assert Path(config.binding_root) == (expected_host_root / "bindings").resolve()
-    assert Path(config.data_root) == (expected_host_root / "data").resolve()
-    assert Path(config.model_io_root) == (expected_host_root / "model-io").resolve()
+    assert Path(config.session_root) == (expected_root / "sessions").resolve()
+    assert Path(config.binding_root) == (expected_root / "sessions").resolve()
+    assert Path(config.data_root) == (expected_root / "data").resolve()
+    assert Path(config.model_io_root) == (
+        expected_host_root / "agents" / "local-agent" / "model-io"
+    ).resolve()
 
 
 def test_host_config_from_env_ignores_legacy_root_overrides(
@@ -209,10 +211,12 @@ def test_host_config_from_env_ignores_legacy_root_overrides(
 
     expected_agent_root = (tmp_path / ".openagent" / "agent_default").resolve()
     assert Path(config.agent_root) == expected_agent_root
-    assert Path(config.session_root) == expected_agent_root / "sessions"
-    assert Path(config.binding_root) == expected_agent_root / "bindings"
-    assert Path(config.data_root) == expected_agent_root / "data"
-    assert Path(config.model_io_root) == expected_agent_root / "model-io"
+    assert Path(config.session_root) == expected_agent_root.parent / "sessions"
+    assert Path(config.binding_root) == expected_agent_root.parent / "sessions"
+    assert Path(config.data_root) == expected_agent_root.parent / "data"
+    assert Path(config.model_io_root) == (
+        expected_agent_root / "agents" / "local-agent" / "model-io"
+    )
 
 
 def test_host_config_direct_init_derives_paths_from_openagent_root(tmp_path: Path) -> None:
@@ -223,10 +227,12 @@ def test_host_config_direct_init_derives_paths_from_openagent_root(tmp_path: Pat
 
     assert Path(config.openagent_root) == expected_root
     assert Path(config.agent_root) == expected_agent_root
-    assert Path(config.session_root) == expected_agent_root / "sessions"
-    assert Path(config.binding_root) == expected_agent_root / "bindings"
-    assert Path(config.data_root) == expected_agent_root / "data"
-    assert Path(config.model_io_root) == expected_agent_root / "model-io"
+    assert Path(config.session_root) == expected_root / "sessions"
+    assert Path(config.binding_root) == expected_root / "sessions"
+    assert Path(config.data_root) == expected_root / "data"
+    assert Path(config.model_io_root) == (
+        expected_agent_root / "agents" / "local-agent" / "model-io"
+    )
 
 
 def test_host_config_direct_init_preserves_explicit_path_overrides(tmp_path: Path) -> None:
@@ -278,8 +284,8 @@ def test_host_channel_manager_uses_agent_root_for_feishu_paths(
 
     config = host._channel_manager._resolve_feishu_config()  # type: ignore[attr-defined]
 
-    assert Path(config.session_root) == (tmp_path / "agent_default" / "sessions").resolve()
-    assert Path(config.binding_root) == (tmp_path / "agent_default" / "bindings").resolve()
+    assert Path(config.session_root) == (tmp_path / "sessions").resolve()
+    assert Path(config.binding_root) == (tmp_path / "sessions").resolve()
     assert Path(config.card_state_root) == (
-        tmp_path / "agent_default" / "cards" / "feishu"
+        tmp_path / "cards" / "feishu"
     ).resolve()

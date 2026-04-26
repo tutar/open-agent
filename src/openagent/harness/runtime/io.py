@@ -209,7 +209,7 @@ class NoOpModelIoCapture:
 
 @dataclass(slots=True)
 class FileModelIoCapture:
-    """Persist every model invocation under `.openagent/data/model-io`."""
+    """Persist every model invocation under the agent-instance model-io root."""
 
     root_dir: str | Path
     max_string_chars: int = 20000

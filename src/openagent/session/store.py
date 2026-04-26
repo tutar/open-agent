@@ -15,10 +15,16 @@ from openagent.session.models import (
     SessionRecord,
     WakeRequest,
 )
+from openagent.shared import (
+    DEFAULT_RUNTIME_AGENT_ID,
+    resolve_agent_root,
+    resolve_agent_transcript_path,
+    resolve_session_root,
+)
 
 
 class FileSessionStore:
-    """Durable file-backed session store with append-only transcript and event logs."""
+    """Durable file-backed session store with agent-owned transcript refs."""
 
     def __init__(self, root_dir: str | Path) -> None:
         self._root_dir = Path(root_dir)
@@ -69,7 +75,8 @@ class FileSessionStore:
         existing_state = self._load_state_payload(session_id)
         transcript_count = self._persisted_count(existing_state, "transcript_message_count")
         event_count = self._persisted_count(existing_state, "event_count")
-        self._append_transcript_suffix(session_id, state, transcript_count)
+        transcript_path = self._ensure_transcript_ref(session_id, state)
+        self._append_transcript_suffix(session_id, state, transcript_count, transcript_path)
         self._append_event_suffix(session_id, state, event_count)
         payload = self._session_state_payload(
             state,
@@ -183,13 +190,15 @@ class FileSessionStore:
         return data
 
     def _read_transcript(self, session_id: str) -> list[SessionMessage]:
-        transcript_path = self._transcript_path(session_id)
-        if not transcript_path.exists():
+        transcript_path = self._resolve_transcript_path(session_id)
+        if transcript_path is None or not transcript_path.exists():
             return []
         messages: list[SessionMessage] = []
         for line in transcript_path.read_text(encoding="utf-8").splitlines():
             raw = json.loads(line)
             if not isinstance(raw, dict):
+                continue
+            if raw.get("session_id") != session_id:
                 continue
             role = raw.get("role")
             content = raw.get("content")
@@ -216,13 +225,14 @@ class FileSessionStore:
         session_id: str,
         state: SessionRecord,
         transcript_count: int,
+        transcript_path: Path,
     ) -> None:
         if transcript_count > len(state.messages):
             raise ValueError("Cannot truncate append-only transcript")
         new_messages = state.messages[transcript_count:]
         if not new_messages:
             return
-        transcript_path = self._transcript_path(session_id)
+        transcript_path.parent.mkdir(parents=True, exist_ok=True)
         with transcript_path.open("a", encoding="utf-8") as handle:
             for message in new_messages:
                 handle.write(
@@ -241,6 +251,7 @@ class FileSessionStore:
         if not new_events:
             return
         log_path = self._event_log_path(session_id)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
             for event in new_events:
                 handle.write(json.dumps(event.to_dict()) + "\n")
@@ -251,10 +262,10 @@ class FileSessionStore:
         state: SessionRecord,
         message: SessionMessage,
     ) -> dict[str, object]:
-        task_id, timestamp = self._transcript_entry_context(state, message.role)
+        turn_id, timestamp = self._transcript_entry_context(state, message.role)
         return {
             "session_id": session_id,
-            "turn_id": task_id,
+            "turn_id": turn_id,
             "timestamp": timestamp,
             "role": message.role,
             "content": message.content,
@@ -286,7 +297,7 @@ class FileSessionStore:
         transcript_message_count: int,
         event_count: int,
     ) -> dict[str, object]:
-        payload = {
+        return {
             "session_id": state.session_id,
             "agent_id": state.agent_id,
             "status": state.status.value,
@@ -297,16 +308,64 @@ class FileSessionStore:
             "transcript_message_count": transcript_message_count,
             "event_count": event_count,
         }
-        return payload
+
+    def _ensure_transcript_ref(self, session_id: str, state: SessionRecord) -> Path:
+        path = self._resolve_transcript_path(session_id)
+        if path is None:
+            path = self._default_transcript_path(state)
+            self._transcript_ref_path(session_id).parent.mkdir(parents=True, exist_ok=True)
+            self._transcript_ref_path(session_id).write_text(
+                str(path.resolve()),
+                encoding="utf-8",
+            )
+        return path
+
+    def _resolve_transcript_path(self, session_id: str) -> Path | None:
+        ref_path = self._transcript_ref_path(session_id)
+        if not ref_path.exists():
+            return None
+        target = ref_path.read_text(encoding="utf-8").strip()
+        if not target:
+            return None
+        return Path(target).expanduser().resolve()
+
+    def _default_transcript_path(self, state: SessionRecord) -> Path:
+        metadata = dict(state.metadata) if isinstance(state.metadata, dict) else {}
+        explicit_root = metadata.get("agent_root_dir")
+        if isinstance(explicit_root, str) and explicit_root.strip():
+            agent_root = Path(explicit_root).expanduser().resolve()
+        else:
+            openagent_root = self._default_openagent_root()
+            role_id = metadata.get("role_id")
+            agent_root = Path(
+                resolve_agent_root(
+                    str(openagent_root),
+                    role_id if isinstance(role_id, str) else None,
+                )
+            )
+        agent_id = state.agent_id or metadata.get("agent_id")
+        if not isinstance(agent_id, str) or not agent_id.strip():
+            agent_id = DEFAULT_RUNTIME_AGENT_ID
+        return resolve_agent_transcript_path(str(agent_root), agent_id)
+
+    def _default_openagent_root(self) -> Path:
+        if self._root_dir.name == "sessions":
+            return self._root_dir.parent.resolve()
+        return self._root_dir.resolve().parent
+
+    def _session_dir(self, session_id: str) -> Path:
+        path = resolve_session_root(str(self._root_dir), session_id)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def _session_path(self, session_id: str) -> Path:
-        return self._root_dir / f"{session_id}.json"
+        return self._session_dir(session_id) / "state.json"
 
     def _event_log_path(self, session_id: str) -> Path:
-        return self._root_dir / f"{session_id}.events.jsonl"
+        return self._session_dir(session_id) / "events.jsonl"
 
-    def _transcript_path(self, session_id: str) -> Path:
-        return self._root_dir / f"{session_id}.transcript.jsonl"
+    def _transcript_ref_path(self, session_id: str) -> Path:
+        return self._session_dir(session_id) / "transcript.ref"
 
     def _lease_path(self, session_id: str) -> Path:
-        return self._root_dir / f"{session_id}.lease.json"
+        return self._session_dir(session_id) / "lease.json"

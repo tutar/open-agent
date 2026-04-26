@@ -138,6 +138,20 @@ session 不放进 harness 内部，是为了把执行和状态持久化拆开。
 - event index / checkpoint 相关状态
 - restore marker
 - latest stable short-term memory snapshot
+
+当前文件布局里，session 与 transcript 已经拆开：
+
+- `sessions/<session_id>/state.json`
+  - 非 transcript session state
+- `sessions/<session_id>/events.jsonl`
+  - runtime event log
+- `sessions/<session_id>/transcript.ref`
+  - 指向 agent-owned transcript 的路径
+- `agent_<role_id|default>/agents/<agent_id>/transcript.jsonl`
+  - append-only transcript 真正落点
+
+session reload 时会通过 `transcript.ref` 回到 agent transcript，并按 `session_id` 过滤出当前
+session 的消息切片；所以 transcript 是 agent-owned log，session 是 turn/runtime state 容器。
 - `agent_id`
 - metadata
 

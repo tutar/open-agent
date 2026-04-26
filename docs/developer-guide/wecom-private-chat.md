@@ -39,8 +39,13 @@ export OPENAGENT_WECOM_ALLOWED_USERS=userid_1,userid_2
 export OPENAGENT_WECOM_PING_INTERVAL_SECONDS=30
 ```
 
-`openagent-host` 会从 `OPENAGENT_ROOT` 推导默认的 agent/session/binding/model-io 目录，不需要再单独配置
-`OPENAGENT_SESSION_ROOT` / `OPENAGENT_BINDING_ROOT` 这类细分 root。
+`openagent-host` 会从 `OPENAGENT_ROOT` 推导默认目录：
+
+- `${OPENAGENT_ROOT}/sessions`
+- `${OPENAGENT_ROOT}/agent_<role_id|default>/agents/local-agent/model-io`
+- `${OPENAGENT_ROOT}/sessions/<session_id>/bindings/`
+
+一般不需要再单独配置 `OPENAGENT_SESSION_ROOT` / `OPENAGENT_BINDING_ROOT`。
 
 `OPENAGENT_WECOM_ALLOWED_USERS` 为空时允许所有私聊用户驱动当前 agent。真实使用时建议配置允许列表。
 

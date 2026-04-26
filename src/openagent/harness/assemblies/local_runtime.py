@@ -25,7 +25,9 @@ from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
 from openagent.session import FileSessionStore
 from openagent.shared import (
+    DEFAULT_RUNTIME_AGENT_ID,
     normalize_openagent_root,
+    resolve_agent_instance_root,
     resolve_agent_root_from_session_root,
     resolve_path_env,
 )
@@ -47,9 +49,11 @@ def create_file_runtime_assembly(
     openagent_root: str | None = None,
     role_id: str | None = None,
 ) -> SimpleHarness:
-    agent_root = resolve_agent_root_from_session_root(session_root)
+    resolved_openagent_root = _default_openagent_root(openagent_root)
+    agent_root = resolve_agent_root_from_session_root(session_root, role_id)
+    runtime_agent_root = resolve_agent_instance_root(agent_root, DEFAULT_RUNTIME_AGENT_ID)
     task_manager = FileTaskManager(
-        str(os.path.join(agent_root, "tasks")),
+        str(runtime_agent_root / "tasks"),
         retention_policy=TaskRetentionPolicy(),
     )
     multi_agent = LocalMultiAgentRuntime(
@@ -72,10 +76,14 @@ def create_file_runtime_assembly(
         context_governance=ContextGovernance(storage_dir=session_root),
         observability=observability,
         model_io_capture=FileModelIoCapture(
-            _default_model_io_root(session_root, model_io_root, agent_root=agent_root)
+            _default_model_io_root(
+                session_root,
+                model_io_root,
+                runtime_agent_root=str(runtime_agent_root),
+            )
         ),
         session_root_dir=session_root,
-        openagent_root=_default_openagent_root(openagent_root),
+        openagent_root=resolved_openagent_root,
         agent_root_dir=agent_root,
         role_id=role_id,
     )
@@ -139,21 +147,15 @@ def _default_model_io_root(
     session_root: str,
     model_io_root: str | None,
     *,
-    agent_root: str | None = None,
+    runtime_agent_root: str | None = None,
 ) -> str:
     if model_io_root is not None:
         return model_io_root
-    if agent_root is not None:
-        return os.path.join(agent_root, "model-io")
+    if runtime_agent_root is not None:
+        return os.path.join(runtime_agent_root, "model-io")
     if resolved_model_io_root := resolve_path_env("OPENAGENT_MODEL_IO_ROOT"):
         return resolved_model_io_root
     if resolved_data_root := resolve_path_env("OPENAGENT_DATA_ROOT"):
         return str(os.path.join(resolved_data_root, "model-io"))
-    session_path = os.path.abspath(session_root)
-    session_dir = os.path.basename(session_path)
-    parent_dir = os.path.basename(os.path.dirname(session_path))
-    if session_dir == "sessions" and parent_dir == "host":
-        return os.path.join(os.path.dirname(os.path.dirname(session_path)), "data", "model-io")
-    if session_dir == "sessions":
-        return os.path.join(os.path.dirname(session_path), "data", "model-io")
-    return os.path.join(os.path.dirname(session_path), "model-io")
+    agent_root = resolve_agent_root_from_session_root(session_root)
+    return str(resolve_agent_instance_root(agent_root, DEFAULT_RUNTIME_AGENT_ID) / "model-io")

@@ -31,6 +31,12 @@
   - 返回 task handle
   - 终态通过 task notification 回流给 parent leader
 
+当前 delegated worker 的本地目录也改成 agent-instance 布局：
+
+- `agent_<role_id|default>/agents/<delegated_agent_id>/workspace/`
+- `agent_<role_id|default>/agents/<delegated_agent_id>/parent_agent`
+- `agent_<role_id|default>/agents/<parent_agent_id>/subagents`
+
 ## Routing
 
 当前实现了两条本地通道：

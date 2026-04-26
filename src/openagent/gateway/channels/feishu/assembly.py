@@ -19,8 +19,10 @@ from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
 from openagent.shared import (
     normalize_openagent_root,
+    resolve_cards_root,
     resolve_agent_root,
     resolve_path_env,
+    resolve_sessions_root,
 )
 from openagent.tools import ToolDefinition
 
@@ -39,11 +41,11 @@ class FeishuAppConfig:
     app_secret: str
     openagent_root: str = str(Path(".openagent"))
     agent_root: str = str(Path(".openagent") / "agent_default")
-    session_root: str = str(Path(".openagent") / "agent_default" / "sessions")
-    binding_root: str = str(Path(".openagent") / "agent_default" / "bindings")
+    session_root: str = str(Path(".openagent") / "sessions")
+    binding_root: str = str(Path(".openagent") / "sessions")
     lock_root: str = str(Path("/tmp") / "openagent-feishu-locks")
     mention_required_in_group: bool = True
-    card_state_root: str = str(Path(".openagent") / "feishu" / "cards")
+    card_state_root: str = str(Path(".openagent") / "cards" / "feishu")
 
     @classmethod
     def from_env(cls) -> FeishuAppConfig:
@@ -61,12 +63,12 @@ class FeishuAppConfig:
         agent_root = resolve_agent_root(openagent_root, role_id)
         session_root = resolve_path_env(
             "OPENAGENT_SESSION_ROOT",
-            str(Path(agent_root) / "sessions"),
-        ) or str(Path(agent_root) / "sessions")
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
         binding_root = resolve_path_env(
             "OPENAGENT_BINDING_ROOT",
-            str(Path(agent_root) / "bindings"),
-        ) or str(Path(agent_root) / "bindings")
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
         lock_root = resolve_path_env(
             "OPENAGENT_FEISHU_LOCK_ROOT",
             str(Path("/tmp") / "openagent-feishu-locks"),
@@ -74,8 +76,8 @@ class FeishuAppConfig:
         mention_required = os.getenv("OPENAGENT_FEISHU_GROUP_AT_ONLY", "true").lower() != "false"
         card_state_root = resolve_path_env(
             "OPENAGENT_FEISHU_CARD_STATE_ROOT",
-            str(Path(agent_root) / "cards" / "feishu"),
-        ) or str(Path(agent_root) / "cards" / "feishu")
+            resolve_cards_root(openagent_root, "feishu"),
+        ) or resolve_cards_root(openagent_root, "feishu")
         return cls(
             app_id=app_id,
             app_secret=app_secret,

@@ -78,11 +78,10 @@ from openagent.session import (
 from openagent.session.short_term_memory import ShortTermMemoryStore, ShortTermSessionMemory
 from openagent.shared import (
     DEFAULT_AGENT_DIRECTORY,
+    DEFAULT_RUNTIME_AGENT_ID,
+    ensure_agent_workspace,
     ensure_subagent_workspace,
     write_subagent_ref,
-)
-from openagent.shared import (
-    ensure_session_workspace as ensure_session_workspace_dir,
 )
 from openagent.tools import (
     ToolCall,
@@ -356,18 +355,25 @@ class SimpleHarness(Harness):
         if isinstance(existing, str) and existing:
             workdir = str(Path(existing).resolve())
             Path(workdir).mkdir(parents=True, exist_ok=True)
-        elif self.session_root_dir is not None:
-            workdir = ensure_session_workspace_dir(self.session_root_dir, session_handle)
+        elif self.agent_root_dir is not None:
+            agent_id = session.agent_id or DEFAULT_RUNTIME_AGENT_ID
+            if session.agent_id is None:
+                session.agent_id = agent_id
+            workdir = ensure_agent_workspace(self.agent_root_dir, agent_id)
             metadata["workdir"] = workdir
+            metadata.setdefault("agent_root_dir", str(Path(self.agent_root_dir).resolve()))
+            if self.role_id is not None:
+                metadata.setdefault("role_id", self.role_id)
             session.metadata = metadata
         else:
             store_root = getattr(self.sessions, "root_dir", None)
             if isinstance(store_root, Path):
-                workdir = ensure_session_workspace_dir(str(store_root), session_handle)
+                workdir = str((store_root / session_handle / "workspace").resolve())
+                Path(workdir).mkdir(parents=True, exist_ok=True)
                 metadata["workdir"] = workdir
                 session.metadata = metadata
             else:
-                raise RuntimeError("session_root_dir is required to resolve a session workspace")
+                raise RuntimeError("agent_root_dir is required to resolve an agent workspace")
         return workdir
 
     def prepare_delegated_agent_workspace(
@@ -379,6 +385,7 @@ class SimpleHarness(Harness):
         if self.agent_root_dir is None:
             raise RuntimeError("agent_root_dir is required to resolve a delegated workspace")
         parent_workspace: str | None = None
+        parent_session: SessionRecord | None = None
         if parent_session_id is not None:
             parent_session = self.sessions.load_session(parent_session_id)
             if isinstance(parent_session, SessionRecord):
@@ -395,6 +402,13 @@ class SimpleHarness(Harness):
             parent_session_id=parent_session_id,
             workspace=workspace,
             metadata=dict(metadata) if metadata is not None else None,
+            parent_agent_id=(
+                parent_session.agent_id
+                if parent_session_id is not None
+                and isinstance(parent_session, SessionRecord)
+                and parent_session.agent_id is not None
+                else DEFAULT_RUNTIME_AGENT_ID
+            ),
         )
         return workspace
 

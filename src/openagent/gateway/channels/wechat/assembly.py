@@ -19,6 +19,7 @@ from openagent.shared import (
     normalize_openagent_root,
     resolve_agent_root,
     resolve_path_env,
+    resolve_sessions_root,
 )
 from openagent.tools import ToolDefinition
 
@@ -36,8 +37,8 @@ class WechatAppConfig:
     openagent_root: str = str(Path(".openagent"))
     agent_root: str = str(Path(".openagent") / "agent_default")
     cred_path: str = str(Path(".openagent") / "wechat" / "credentials.json")
-    session_root: str = str(Path(".openagent") / "agent_default" / "sessions")
-    binding_root: str = str(Path(".openagent") / "agent_default" / "bindings")
+    session_root: str = str(Path(".openagent") / "sessions")
+    binding_root: str = str(Path(".openagent") / "sessions")
     allowed_senders: tuple[str, ...] = ()
 
     @classmethod
@@ -47,12 +48,12 @@ class WechatAppConfig:
         agent_root = resolve_agent_root(openagent_root, role_id)
         session_root = resolve_path_env(
             "OPENAGENT_SESSION_ROOT",
-            str(Path(agent_root) / "sessions"),
-        ) or str(Path(agent_root) / "sessions")
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
         binding_root = resolve_path_env(
             "OPENAGENT_BINDING_ROOT",
-            str(Path(agent_root) / "bindings"),
-        ) or str(Path(agent_root) / "bindings")
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
         return cls(
             base_url=os.getenv("OPENAGENT_WECHAT_BASE_URL", "https://ilinkai.weixin.qq.com"),
             openagent_root=openagent_root,

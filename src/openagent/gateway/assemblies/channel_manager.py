@@ -21,7 +21,7 @@ from openagent.gateway.core import Gateway
 from openagent.gateway.interfaces import ChannelAdapter
 from openagent.host.config import OpenAgentHostConfig
 from openagent.object_model import JsonObject, JsonValue
-from openagent.shared import resolve_path_env
+from openagent.shared import resolve_cards_root, resolve_path_env
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,9 +227,9 @@ class ChannelHostManager:
             != "false",
             card_state_root=resolve_path_env(
                 "OPENAGENT_FEISHU_CARD_STATE_ROOT",
-                str(Path(self._host_config.agent_root) / "cards" / "feishu"),
+                resolve_cards_root(self._host_config.openagent_root, "feishu"),
             )
-            or str(Path(self._host_config.agent_root) / "cards" / "feishu"),
+            or resolve_cards_root(self._host_config.openagent_root, "feishu"),
         )
 
     def _resolve_wechat_config(self) -> WechatAppConfig:

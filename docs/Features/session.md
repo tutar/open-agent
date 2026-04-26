@@ -24,6 +24,14 @@
 
 ## 持久化边界
 
-- transcript 是独立的 append-only turn 持久记录
+- transcript 是 agent-owned append-only turn 记录
+- session 自己只保存 `transcript.ref`
 - session state 单独保存非 transcript 字段
 - runtime event log 继续独立保存运行时事件
+
+当前默认落盘结构：
+
+- `sessions/<session_id>/state.json`
+- `sessions/<session_id>/events.jsonl`
+- `sessions/<session_id>/transcript.ref`
+- `agent_<role_id|default>/agents/<agent_id>/transcript.jsonl`
