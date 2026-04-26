@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from openagent.durable_memory import FileMemoryStore
 from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse, SimpleHarness
-from openagent.session import InMemorySessionStore, SessionMessage, SessionRecord
+from openagent.session import FileSessionStore, SessionMessage, SessionRecord
 from openagent.tools import SimpleToolExecutor, StaticToolRegistry
 
 
@@ -49,7 +49,7 @@ def test_memory_recall_and_consolidation_matches_golden(tmp_path: Path) -> None:
     )
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
         memory_store=memory_store,
@@ -65,7 +65,7 @@ def test_memory_recall_and_consolidation_matches_golden(tmp_path: Path) -> None:
     restored_store = FileMemoryStore(tmp_path / "memory")
     restored_harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
         memory_store=restored_store,

@@ -15,7 +15,7 @@ from openagent.durable_memory import (
     MemoryRecord,
 )
 from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse, SimpleHarness
-from openagent.session import InMemorySessionStore, SessionMessage, SessionRecord
+from openagent.session import FileSessionStore, SessionMessage, SessionRecord
 from openagent.tools import SimpleToolExecutor, StaticToolRegistry
 
 
@@ -29,7 +29,7 @@ class ScriptedModel:
 
 
 def test_conformance_memory_recall_and_consolidation(tmp_path: Path) -> None:
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions")
     memory_store = FileMemoryStore(tmp_path / "memory")
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="stored")]),
@@ -92,7 +92,7 @@ def test_conformance_durable_memory_index_and_bounded_recall(tmp_path: Path) -> 
 
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
         memory_store=memory_store,
@@ -113,7 +113,7 @@ def test_conformance_durable_memory_index_and_bounded_recall(tmp_path: Path) -> 
 
 def test_conformance_agent_global_long_memory(tmp_path: Path) -> None:
     memory_store = FileMemoryStore(tmp_path / "memory")
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions"),
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="ok")]),
         sessions=store,

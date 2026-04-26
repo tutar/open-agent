@@ -4,10 +4,10 @@
 
 ## 当前支持
 
-- `InMemorySessionStore`
 - `FileSessionStore`
 - `InMemoryShortTermMemoryStore`
 - `FileShortTermMemoryStore`
+- append-only transcript log baseline
 - append-only event log baseline
 - session checkpoint / cursor baseline
 - wake / resume snapshot baseline
@@ -21,3 +21,9 @@
 - richer branch / sidechain transcript graph
 - richer short-term salience / eviction policy
 - more explicit restore mode matrix
+
+## 持久化边界
+
+- transcript 是独立的 append-only turn 持久记录
+- session state 单独保存非 transcript 字段
+- runtime event log 继续独立保存运行时事件

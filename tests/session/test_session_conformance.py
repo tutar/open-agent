@@ -7,7 +7,6 @@ from openagent.object_model import RuntimeEventType, TerminalStatus, ToolResult
 from openagent.session import (
     FileSessionStore,
     FileShortTermMemoryStore,
-    InMemorySessionStore,
     SessionMessage,
     SessionRecord,
     SessionStatus,
@@ -82,7 +81,7 @@ def test_conformance_session_resume(tmp_path: Path) -> None:
 
 def test_conformance_session_transcript_vs_short_term_memory_boundary(tmp_path: Path) -> None:
     short_term_store = FileShortTermMemoryStore(tmp_path / "short-term")
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions")
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="done")]),
         sessions=store,

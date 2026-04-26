@@ -21,7 +21,6 @@ from openagent.object_model import JsonObject, RuntimeEventType, TerminalStatus,
 from openagent.sandbox import LocalSandbox, SandboxExecutionRequest
 from openagent.session import (
     FileSessionStore,
-    InMemorySessionStore,
     SessionMessage,
     SessionRecord,
     SessionStatus,
@@ -59,8 +58,8 @@ class ScriptedModel:
         return self.responses.pop(0)
 
 
-def test_conformance_basic_turn() -> None:
-    store = InMemorySessionStore()
+def test_conformance_basic_turn(tmp_path: Path) -> None:
+    store = FileSessionStore(tmp_path / "sessions")
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="hello")]),
         sessions=store,
@@ -81,7 +80,7 @@ def test_conformance_basic_turn() -> None:
     assert [message.role for message in session.messages] == ["user", "assistant"]
 
 
-def test_conformance_tool_call_roundtrip() -> None:
+def test_conformance_tool_call_roundtrip(tmp_path: Path) -> None:
     tool = FakeTool(name="echo")
     registry = StaticToolRegistry([tool])
     harness = SimpleHarness(
@@ -91,7 +90,7 @@ def test_conformance_tool_call_roundtrip() -> None:
                 ModelTurnResponse(assistant_message="done"),
             ]
         ),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=registry,
         executor=SimpleToolExecutor(registry),
     )
@@ -105,10 +104,10 @@ def test_conformance_tool_call_roundtrip() -> None:
     assert events[-1].event_type is RuntimeEventType.TURN_COMPLETED
 
 
-def test_conformance_chat_session_binding() -> None:
+def test_conformance_chat_session_binding(tmp_path: Path) -> None:
     runtime = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="hello")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
     )
@@ -148,10 +147,10 @@ def test_conformance_chat_session_binding() -> None:
         raise AssertionError("Expected one chat to reject rebinding to a second session")
 
 
-def test_conformance_requires_action_approval() -> None:
+def test_conformance_requires_action_approval(tmp_path: Path) -> None:
     tool = FakeTool(name="admin", permission=PermissionDecision.ASK)
     registry = StaticToolRegistry([tool])
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions")
     harness = SimpleHarness(
         model=ScriptedModel(
             [
@@ -186,12 +185,12 @@ def test_conformance_requires_action_approval() -> None:
     assert resumed.status is SessionStatus.IDLE
 
 
-def test_conformance_policy_ask_deny_allow() -> None:
+def test_conformance_policy_ask_deny_allow(tmp_path: Path) -> None:
     allow_tool = FakeTool(name="allow_tool", permission=PermissionDecision.ALLOW)
     ask_tool = FakeTool(name="ask_tool", permission=PermissionDecision.ASK)
     deny_tool = FakeTool(name="deny_tool", permission=PermissionDecision.DENY)
     registry = StaticToolRegistry([allow_tool, ask_tool, deny_tool])
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions")
 
     allow_harness = SimpleHarness(
         model=ScriptedModel(
@@ -479,7 +478,7 @@ def test_conformance_instruction_markdown_loading_precedence(
 
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
     )

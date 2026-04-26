@@ -1,6 +1,7 @@
 import io
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from openagent.harness.runtime import (
     ModelStreamEvent,
@@ -16,7 +17,7 @@ from openagent.observability import (
     ProgressUpdate,
     StdoutObservabilitySink,
 )
-from openagent.session import InMemorySessionStore
+from openagent.session import FileSessionStore
 from openagent.tools import (
     PermissionDecision,
     SimpleToolExecutor,
@@ -129,21 +130,23 @@ def build_harness(
     model: object,
     tools: list[object],
     sink: InMemoryObservabilitySink,
+    session_root: Path,
 ) -> SimpleHarness:
     registry = StaticToolRegistry(tools)
     executor = SimpleToolExecutor(registry)
     return SimpleHarness(
         model=model,  # type: ignore[arg-type]
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(session_root),
         tools=registry,
         executor=executor,
         observability=AgentObservability([sink]),
+        session_root_dir=str(session_root),
     )
 
 
-def test_harness_emits_session_states_and_interaction_spans() -> None:
+def test_harness_emits_session_states_and_interaction_spans(tmp_path: Path) -> None:
     sink = InMemoryObservabilitySink()
-    harness = build_harness(StaticModel(message="hello"), [], sink)
+    harness = build_harness(StaticModel(message="hello"), [], sink, tmp_path / "sessions")
 
     harness.run_turn("hi", "sess_observe")
 
@@ -154,12 +157,13 @@ def test_harness_emits_session_states_and_interaction_spans() -> None:
     assert span_kinds[0].payload["span_type"] == "interaction"
 
 
-def test_requires_action_emits_blocked_session_state() -> None:
+def test_requires_action_emits_blocked_session_state(tmp_path: Path) -> None:
     sink = InMemoryObservabilitySink()
     harness = build_harness(
         ToolOnlyModel(),
         [AskTool()],
         sink,
+        tmp_path / "sessions",
     )
 
     harness.run_turn("admin rotate", "sess_requires_action")
@@ -169,7 +173,7 @@ def test_requires_action_emits_blocked_session_state() -> None:
     assert session_states == ["running", "requires_action"]
 
 
-def test_streaming_model_emits_llm_span_and_metric() -> None:
+def test_streaming_model_emits_llm_span_and_metric(tmp_path: Path) -> None:
     sink = InMemoryObservabilitySink()
     harness = build_harness(
         StreamingModel(chunks=[
@@ -178,6 +182,7 @@ def test_streaming_model_emits_llm_span_and_metric() -> None:
         ]),
         [],
         sink,
+        tmp_path / "sessions",
     )
 
     harness.run_turn("stream", "sess_stream_obs")
@@ -189,9 +194,9 @@ def test_streaming_model_emits_llm_span_and_metric() -> None:
     assert any(event.payload["name"] == "llm_request.duration_ms" for event in metrics)
 
 
-def test_turn_progress_events_include_task_id() -> None:
+def test_turn_progress_events_include_task_id(tmp_path: Path) -> None:
     sink = InMemoryObservabilitySink()
-    harness = build_harness(StaticModel(message="hello"), [], sink)
+    harness = build_harness(StaticModel(message="hello"), [], sink, tmp_path / "sessions")
 
     harness.run_turn("hi", "sess_task_progress")
 
@@ -205,9 +210,14 @@ def test_turn_progress_events_include_task_id() -> None:
     assert all(progress.get("task_id") for progress in turn_progress)
 
 
-def test_tool_progress_and_tool_span_are_emitted() -> None:
+def test_tool_progress_and_tool_span_are_emitted(tmp_path: Path) -> None:
     sink = InMemoryObservabilitySink()
-    harness = build_harness(ToolThenReplyModel(), [StreamingTool()], sink)
+    harness = build_harness(
+        ToolThenReplyModel(),
+        [StreamingTool()],
+        sink,
+        tmp_path / "sessions",
+    )
 
     harness.run_turn("run stream", "sess_tool_obs")
 

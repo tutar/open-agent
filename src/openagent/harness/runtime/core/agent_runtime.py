@@ -361,7 +361,13 @@ class SimpleHarness(Harness):
             metadata["workdir"] = workdir
             session.metadata = metadata
         else:
-            raise RuntimeError("session_root_dir is required to resolve a session workspace")
+            store_root = getattr(self.sessions, "root_dir", None)
+            if isinstance(store_root, Path):
+                workdir = ensure_session_workspace_dir(str(store_root), session_handle)
+                metadata["workdir"] = workdir
+                session.metadata = metadata
+            else:
+                raise RuntimeError("session_root_dir is required to resolve a session workspace")
         return workdir
 
     def prepare_delegated_agent_workspace(

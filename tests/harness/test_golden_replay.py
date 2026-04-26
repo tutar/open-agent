@@ -9,7 +9,7 @@ from openagent.harness.context_engineering.governance.context_governance import 
 from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse, SimpleHarness
 from openagent.object_model import RuntimeEvent, RuntimeEventType, ToolResult
 from openagent.session import (
-    InMemorySessionStore,
+    FileSessionStore,
     SessionMessage,
     SessionStatus,
 )
@@ -69,9 +69,9 @@ class ScriptedModel:
         return self.responses.pop(0)
 
 
-def test_basic_turn_matches_golden() -> None:
+def test_basic_turn_matches_golden(tmp_path: Path) -> None:
     golden = _load_golden("basic-turn.events.json")
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions")
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="hello")]),
         sessions=store,
@@ -90,7 +90,7 @@ def test_basic_turn_matches_golden() -> None:
     ] == golden["lifecycle"]
 
 
-def test_tool_roundtrip_matches_golden() -> None:
+def test_tool_roundtrip_matches_golden(tmp_path: Path) -> None:
     golden = _load_golden("tool-call-roundtrip.events.json")
     tool = FakeTool(name="echo")
     registry = StaticToolRegistry([tool])
@@ -101,7 +101,7 @@ def test_tool_roundtrip_matches_golden() -> None:
                 ModelTurnResponse(assistant_message="done"),
             ]
         ),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=registry,
         executor=SimpleToolExecutor(registry),
     )
@@ -116,11 +116,11 @@ def test_tool_roundtrip_matches_golden() -> None:
     )
 
 
-def test_requires_action_matches_golden() -> None:
+def test_requires_action_matches_golden(tmp_path: Path) -> None:
     golden = _load_golden("requires-action-approval.events.json")
     tool = FakeTool(name="admin", permission=PermissionDecision.ASK)
     registry = StaticToolRegistry([tool])
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions")
     harness = SimpleHarness(
         model=ScriptedModel(
             [
@@ -154,13 +154,13 @@ def test_requires_action_matches_golden() -> None:
     assert second_session.status.value == golden["phase_2"]["lifecycle"][-1]
 
 
-def test_policy_ask_deny_allow_matches_golden() -> None:
+def test_policy_ask_deny_allow_matches_golden(tmp_path: Path) -> None:
     golden = _load_golden("policy-ask-deny-allow.json")
     allow_tool = FakeTool(name="allow_tool", permission=PermissionDecision.ALLOW)
     ask_tool = FakeTool(name="ask_tool", permission=PermissionDecision.ASK)
     deny_tool = FakeTool(name="deny_tool", permission=PermissionDecision.DENY)
     registry = StaticToolRegistry([allow_tool, ask_tool, deny_tool])
-    store = InMemorySessionStore()
+    store = FileSessionStore(tmp_path / "sessions")
 
     allow_harness = SimpleHarness(
         model=ScriptedModel(

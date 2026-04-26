@@ -29,7 +29,7 @@ from openagent.harness.runtime import (
     SimpleHarness,
 )
 from openagent.object_model import JsonObject, ToolResult
-from openagent.session import InMemorySessionStore, InMemoryShortTermMemoryStore
+from openagent.session import FileSessionStore, InMemoryShortTermMemoryStore
 from openagent.tools import (
     BashTool,
     GlobTool,
@@ -648,11 +648,11 @@ def test_anthropic_adapter_generate_with_exchange_exposes_reasoning_blocks() -> 
     assert exchange.response.assistant_message == "answer"
 
 
-def test_harness_build_model_input_includes_tool_definitions() -> None:
+def test_harness_build_model_input_includes_tool_definitions(tmp_path: Path) -> None:
     tool = EchoTool()
     harness = SimpleHarness(
         model=ToolThenReplyModel(responses=[ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([tool]),
         executor=SimpleToolExecutor(StaticToolRegistry([tool])),
     )
@@ -678,7 +678,7 @@ def test_harness_build_model_input_includes_bootstrap_prompt_sections(tmp_path: 
     tool = EchoTool()
     harness = SimpleHarness(
         model=ToolThenReplyModel(responses=[ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([tool]),
         executor=SimpleToolExecutor(StaticToolRegistry([tool])),
     )
@@ -705,10 +705,10 @@ def test_harness_build_model_input_includes_bootstrap_prompt_sections(tmp_path: 
     assert all(message["role"] != "system" for message in request.messages)
 
 
-def test_harness_build_model_input_includes_short_term_memory() -> None:
+def test_harness_build_model_input_includes_short_term_memory(tmp_path: Path) -> None:
     harness = SimpleHarness(
         model=ToolThenReplyModel(responses=[ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
         short_term_memory_store=InMemoryShortTermMemoryStore(),
@@ -739,7 +739,7 @@ def test_tool_results_preserve_tool_use_id_in_session_messages(tmp_path: Path) -
                 ModelTurnResponse(assistant_message="done"),
             ]
         ),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=registry,
         executor=SimpleToolExecutor(registry),
         session_root_dir=tmp_path / "agent_default" / "sessions",
@@ -801,7 +801,7 @@ def test_model_io_capture_persists_request_and_response_records(tmp_path: Path) 
                 reasoning="deliberation",
             )
         ),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
         short_term_memory_store=InMemoryShortTermMemoryStore(),

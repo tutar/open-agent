@@ -18,12 +18,11 @@ from openagent.session.short_term_memory import (
     ShortTermMemoryUpdateResult,
     ShortTermSessionMemory,
 )
-from openagent.session.store import FileSessionStore, InMemorySessionStore
+from openagent.session.store import FileSessionStore
 
 __all__ = [
     "FileSessionStore",
     "FileShortTermMemoryStore",
-    "InMemorySessionStore",
     "InMemoryShortTermMemoryStore",
     "ResumeSnapshot",
     "SessionCheckpoint",

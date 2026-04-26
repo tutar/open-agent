@@ -13,7 +13,7 @@ from openagent.harness.runtime import (
     TurnControl,
 )
 from openagent.object_model import JsonObject, RuntimeEventType, TerminalStatus, ToolResult
-from openagent.session import InMemorySessionStore
+from openagent.session import FileSessionStore
 from openagent.tools import (
     BashTool,
     PermissionDecision,
@@ -104,7 +104,7 @@ class FailingSearchBackend:
 
 
 def test_simple_harness_basic_turn(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(responses=[ModelTurnResponse(assistant_message="hello from model")])
@@ -131,7 +131,7 @@ def test_simple_harness_basic_turn(tmp_path) -> None:
 
 def test_simple_harness_tool_roundtrip(tmp_path) -> None:
     echo = FakeTool(name="echo")
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([echo])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -164,7 +164,7 @@ def test_simple_harness_tool_roundtrip(tmp_path) -> None:
 
 
 def test_simple_harness_continues_after_websearch_backend_failure(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([WebSearchTool(backend=FailingSearchBackend())])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -199,7 +199,7 @@ def test_simple_harness_continues_after_websearch_backend_failure(tmp_path) -> N
 
 
 def test_simple_harness_skips_empty_assistant_event_before_tool_failure(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([BashTool(".")])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -235,7 +235,7 @@ def test_simple_harness_skips_nonempty_assistant_event_when_model_also_requests_
     tmp_path,
 ) -> None:
     echo = FakeTool(name="echo")
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([echo])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -271,7 +271,7 @@ def test_simple_harness_skips_nonempty_assistant_event_when_model_also_requests_
 
 
 def test_simple_harness_streaming_model_emits_deltas(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = StreamingScriptedModel(
@@ -302,7 +302,7 @@ def test_simple_harness_streaming_model_emits_deltas(tmp_path) -> None:
 
 
 def test_simple_harness_cancellation_stops_turn(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(responses=[ModelTurnResponse(assistant_message="never emitted")])
@@ -329,7 +329,7 @@ def test_simple_harness_cancellation_stops_turn(tmp_path) -> None:
 
 
 def test_simple_harness_timeout_fails_turn(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     harness = SimpleHarness(
@@ -353,7 +353,7 @@ def test_simple_harness_timeout_fails_turn(tmp_path) -> None:
 
 
 def test_simple_harness_retries_and_recovers(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = FlakyModel(failures_before_success=1)
@@ -377,7 +377,7 @@ def test_simple_harness_retries_and_recovers(tmp_path) -> None:
 
 
 def test_simple_harness_retry_exhaustion_fails_turn(tmp_path) -> None:
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([])
     executor = SimpleToolExecutor(tools)
     model = FlakyModel(failures_before_success=3)
@@ -403,7 +403,7 @@ def test_simple_harness_retry_exhaustion_fails_turn(tmp_path) -> None:
 
 def test_simple_harness_requires_action_blocks_turn(tmp_path) -> None:
     privileged = FakeTool(name="admin", permission=PermissionDecision.ASK)
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([privileged])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -427,7 +427,7 @@ def test_simple_harness_requires_action_blocks_turn(tmp_path) -> None:
 
 def test_tool_permission_denied_raises_failed_terminal_state(tmp_path) -> None:
     denied = FakeTool(name="rm", permission=PermissionDecision.DENY)
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([denied])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -455,7 +455,7 @@ def test_tool_permission_denied_raises_failed_terminal_state(tmp_path) -> None:
 
 def test_iteration_limit_exceeded_reports_search_loop_summary(tmp_path) -> None:
     search_tool = FakeTool(name="WebSearch")
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([search_tool])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -488,7 +488,7 @@ def test_iteration_limit_exceeded_reports_search_loop_summary(tmp_path) -> None:
 
 def test_iteration_limit_exceeded_reports_file_ops_loop_summary(tmp_path) -> None:
     read_tool = FakeTool(name="Read")
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([read_tool])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -520,7 +520,7 @@ def test_iteration_limit_exceeded_reports_file_ops_loop_summary(tmp_path) -> Non
 def test_iteration_limit_exceeded_reports_generic_tool_chain_summary(tmp_path) -> None:
     alpha_tool = FakeTool(name="alpha")
     beta_tool = FakeTool(name="beta")
-    session_store = InMemorySessionStore()
+    session_store = FileSessionStore(tmp_path / "sessions")
     tools = StaticToolRegistry([alpha_tool, beta_tool])
     executor = SimpleToolExecutor(tools)
     model = ScriptedModel(
@@ -547,12 +547,12 @@ def test_iteration_limit_exceeded_reports_generic_tool_chain_summary(tmp_path) -
     )
 
 
-def test_route_tool_call_requires_session_backed_workspace() -> None:
+def test_route_tool_call_requires_session_backed_workspace(tmp_path) -> None:
     echo = FakeTool(name="echo")
     registry = StaticToolRegistry([echo])
     harness = SimpleHarness(
         model=ScriptedModel(responses=[]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=registry,
         executor=SimpleToolExecutor(registry),
     )

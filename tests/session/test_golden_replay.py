@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse, SimpleHarness
 from openagent.object_model import RuntimeEventType, TerminalStatus
-from openagent.session import FileSessionStore, InMemorySessionStore, SessionMessage, SessionRecord
+from openagent.session import FileSessionStore, SessionMessage, SessionRecord
 from openagent.tools import SimpleToolExecutor, StaticToolRegistry
 
 
@@ -88,7 +88,7 @@ def test_instruction_markdown_loading_precedence_matches_golden(
 
     harness = SimpleHarness(
         model=ScriptedModel([ModelTurnResponse(assistant_message="ok")]),
-        sessions=InMemorySessionStore(),
+        sessions=FileSessionStore(tmp_path / "sessions"),
         tools=StaticToolRegistry([]),
         executor=SimpleToolExecutor(StaticToolRegistry([])),
     )

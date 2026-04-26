@@ -130,7 +130,6 @@ from openagent.sandbox import (
 from openagent.session import (
     FileSessionStore,
     FileShortTermMemoryStore,
-    InMemorySessionStore,
     InMemoryShortTermMemoryStore,
     ResumeSnapshot,
     SessionCheckpoint,
@@ -293,7 +292,6 @@ __all__ = [
     "InMemoryFeishuInboundDedupeStore",
     "InMemoryWeComInboundDedupeStore",
     "InMemoryWechatInboundDedupeStore",
-    "InMemorySessionStore",
     "InMemoryShortTermMemoryStore",
     "InMemoryTaskManager",
     "InProcessSessionAdapter",

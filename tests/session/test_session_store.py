@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,7 +8,6 @@ from openagent.object_model import RuntimeEventType
 from openagent.session import (
     FileSessionStore,
     FileShortTermMemoryStore,
-    InMemorySessionStore,
     InMemoryShortTermMemoryStore,
     SessionMessage,
     WakeRequest,
@@ -55,8 +55,8 @@ def test_file_short_term_memory_store_persists_snapshots(tmp_path: Path) -> None
     assert "deployment status" in loaded.summary.lower()
 
 
-def test_resume_snapshot_includes_short_term_memory() -> None:
-    sessions = InMemorySessionStore()
+def test_resume_snapshot_includes_short_term_memory(tmp_path: Path) -> None:
+    sessions = FileSessionStore(tmp_path / "sessions")
     session = sessions.load_session("sess_resume_short")
     session.messages.append(SessionMessage(role="user", content="Continue the migration"))
     session.short_term_memory = {
@@ -116,6 +116,32 @@ def test_file_session_store_appends_event_log(tmp_path: Path) -> None:
     assert resumed.working_state["event_count"] == len(all_events)
     assert restored_record.restore_marker == first_checkpoint.last_event_id
 
+
+def test_file_session_store_writes_transcript_separately(tmp_path: Path) -> None:
+    runtime = create_file_runtime(
+        model=ScriptedModel([ModelTurnResponse(assistant_message="saved")]),
+        session_root=str(tmp_path / "sessions"),
+    )
+
+    runtime.run_turn("hello", "sess_transcript")
+
+    root = tmp_path / "sessions"
+    state_payload = json.loads((root / "sess_transcript.json").read_text(encoding="utf-8"))
+    transcript_lines = (root / "sess_transcript.transcript.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    event_lines = (root / "sess_transcript.events.jsonl").read_text(encoding="utf-8").splitlines()
+
+    assert "messages" not in state_payload
+    assert state_payload["transcript_message_count"] == 2
+    assert state_payload["event_count"] == 3
+    assert len(transcript_lines) == 2
+    assert len(event_lines) == 3
+    first_entry = json.loads(transcript_lines[0])
+    assert first_entry["session_id"] == "sess_transcript"
+    assert first_entry["role"] == "user"
+    assert first_entry["content"] == "hello"
+    assert first_entry["turn_id"] is not None
 
 def test_file_runtime_assigns_session_workspace_under_session_root(tmp_path: Path) -> None:
     runtime = create_file_runtime(

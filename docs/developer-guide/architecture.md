@@ -140,10 +140,10 @@ terminal TUI 当前使用：
 
 当前 session 子系统提供：
 
-- `InMemorySessionStore`
 - `FileSessionStore`
 - `InMemoryShortTermMemoryStore`
 - `FileShortTermMemoryStore`
+- append-only transcript log baseline
 - append-only event log baseline
 - checkpoint baseline
 - cursor baseline
