@@ -40,6 +40,13 @@
   - tool
   - background task
 
+并且当前已经接入两条外部可视化路径：
+
+- `OTLP traces / metrics`
+  - 面向 Tempo / Prometheus / Grafana
+- `.openagent` 数据投影到 `OTLP logs`
+  - 面向 Loki / Grafana logs
+
 ## Main Wiring
 
 当前主要接线位置：
@@ -57,12 +64,21 @@
   - tool span
   - tool progress projection
   - tool duration metric
+  - tool runtime event 持久化关联 `task_id`
 - `LocalBackgroundAgentOrchestrator`
   - task progress
   - background task span
   - task lifecycle external event projection
+- `FileSessionStore`
+  - transcript / event append-only persistence
+  - transcript / runtime event Loki 投影
+- `FileModelIoCapture`
+  - model-io append-only persistence
+  - provider evidence Loki 投影
+  - streaming provider exchange persistence, including provider payload, raw streamed events,
+    and provider-reported usage when exposed
 
-## Sinks
+## Sinks And Export
 
 当前默认 sink 是 vendor-neutral 的：
 
@@ -70,9 +86,23 @@
 - `InMemoryObservabilitySink`
 - `StdoutObservabilitySink`
 - `CompositeObservabilitySink`
+- `OtelObservabilitySink`
 
 本地开发默认更偏向 `StdoutObservabilitySink`，目的是在接入新 channel 或排查 host 问题时，
 不必先接外部 tracing 平台就能看见发生了什么。
+
+当配置 `OPENAGENT_OTLP_HTTP_ENDPOINT` 时：
+
+- runtime metrics 会导出到 OTLP metrics
+- completed spans 会导出到 OTLP traces
+- progress / session state / external event 会导出到 OTLP logs
+- `.openagent` 的 transcript / events / model-io 也会额外投影到 OTLP logs
+
+当前 provider 边界：
+
+- OpenAI-compatible adapter 的 streaming 路径会显式请求 provider usage，并把完整
+  streaming exchange 写入 `model-io`
+- Anthropic-compatible adapter 当前仍走 non-streaming exchange capture
 
 ## Boundary
 
@@ -80,7 +110,6 @@
 
 - 不替代 session event log
 - 不替代 `.openagent/agent_default/agents/local-agent/model-io` 模型数据集
-- 不直接绑定 OTel
 - 不单独做 durable trace storage
 - 不负责质量评估或 correctness judgement
 

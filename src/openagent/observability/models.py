@@ -22,6 +22,7 @@ class RuntimeMetric(SerializableModel):
     value: float
     timestamp: str = field(default_factory=now_iso)
     unit: str | None = None
+    instrument_kind: str = "gauge"
     session_id: str | None = None
     task_id: str | None = None
     agent_id: str | None = None
@@ -54,6 +55,8 @@ class ProgressUpdate(SerializableModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     cache_tokens: int | None = None
+    cache_creation_input_tokens: int | None = None
+    cache_read_input_tokens: int | None = None
     attributes: JsonObject = field(default_factory=dict)
 
 
@@ -89,6 +92,8 @@ class TraceSpan(SerializableModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     cache_tokens: int | None = None
+    cache_creation_input_tokens: int | None = None
+    cache_read_input_tokens: int | None = None
     attributes: JsonObject = field(default_factory=dict)
     result: JsonObject = field(default_factory=dict)
 

@@ -58,6 +58,7 @@ from openagent.harness.runtime.projection.observability import RuntimeObservabil
 from openagent.harness.runtime.projection.state_projection import terminal_state_from_event
 from openagent.object_model import (
     JsonObject,
+    JsonValue,
     RuntimeEvent,
     RuntimeEventType,
     TerminalState,
@@ -68,6 +69,10 @@ from openagent.observability import (
     ProgressUpdate,
     RuntimeMetric,
     SpanHandle,
+)
+from openagent.observability.metrics import (
+    normalized_duration_metrics,
+    normalized_token_usage_metrics,
 )
 from openagent.session import (
     SessionMessage,
@@ -680,6 +685,54 @@ class SimpleHarness(Harness):
                         attributes={"retry_index": attempt},
                     )
                 )
+                self._record_turn_api_duration(duration_ms)
+                for metric in normalized_duration_metrics(
+                    scope="llm_request",
+                    total_duration_ms=duration_ms,
+                    total_api_duration_ms=duration_ms,
+                    session_id=session_handle,
+                    task_id=self._current_task_id(),
+                    callsite=(
+                        "turn.continuation_model_request"
+                        if getattr(self.runtime_loop, "state", None) is not None
+                        and getattr(self.runtime_loop.state, "requires_action", False)
+                        else "turn.model_request"
+                    ),
+                    model=str(getattr(self.model, "model", type(self.model).__name__)),
+                    provider_adapter=type(self.model).__name__,
+                    api_kind="llm_provider",
+                    api_target=str(getattr(self.model, "model", type(self.model).__name__)),
+                    extra_attributes={"retry_index": attempt},
+                ):
+                    self._emit_metric(metric)
+                for metric in normalized_token_usage_metrics(
+                    scope="llm_request",
+                    session_id=session_handle,
+                    task_id=self._current_task_id(),
+                    callsite=(
+                        "turn.continuation_model_request"
+                        if getattr(self.runtime_loop, "state", None) is not None
+                        and getattr(self.runtime_loop.state, "requires_action", False)
+                        else "turn.model_request"
+                    ),
+                    model=str(getattr(self.model, "model", type(self.model).__name__)),
+                    provider_adapter=type(self.model).__name__,
+                    input_tokens=self._usage_value(response.usage, "input_tokens", "prompt_tokens"),
+                    output_tokens=self._usage_value(
+                        response.usage, "output_tokens", "completion_tokens"
+                    ),
+                    cache_creation_input_tokens=self._usage_value(
+                        response.usage,
+                        "cache_creation_input_tokens",
+                    ),
+                    cache_read_input_tokens=self._usage_value(
+                        response.usage,
+                        "cache_read_input_tokens",
+                        "cached_tokens",
+                    ),
+                    extra_attributes={"retry_index": attempt},
+                ):
+                    self._emit_metric(metric)
                 observability.end_span(
                     llm_span,
                     {"retry_index": attempt},
@@ -693,6 +746,15 @@ class SimpleHarness(Harness):
                         "completion_tokens",
                     ),
                     cache_tokens=self._usage_value(
+                        response.usage,
+                        "cache_read_input_tokens",
+                        "cached_tokens",
+                    ),
+                    cache_creation_input_tokens=self._usage_value(
+                        response.usage,
+                        "cache_creation_input_tokens",
+                    ),
+                    cache_read_input_tokens=self._usage_value(
                         response.usage,
                         "cache_read_input_tokens",
                         "cached_tokens",
@@ -799,6 +861,10 @@ class SimpleHarness(Harness):
         ttft_ms: float | None = None
         stream_deltas: list[str] = []
         final_usage: JsonObject | None = None
+        final_provider_payload: JsonObject | None = None
+        raw_provider_events: list[JsonObject] = []
+        final_reasoning: JsonValue | None = None
+        final_transport_metadata: JsonObject = {"streaming": True}
         for stream_event in stream:
             if self._check_cancelled(control):
                 raise CancelledTurn()
@@ -823,6 +889,14 @@ class SimpleHarness(Harness):
                 final_tool_calls = stream_event.tool_calls
             if stream_event.usage is not None:
                 final_usage = dict(stream_event.usage)
+            if stream_event.provider_payload is not None:
+                final_provider_payload = dict(stream_event.provider_payload)
+            if stream_event.raw_provider_events:
+                raw_provider_events = [dict(event) for event in stream_event.raw_provider_events]
+            if stream_event.reasoning is not None:
+                final_reasoning = stream_event.reasoning
+            if stream_event.transport_metadata:
+                final_transport_metadata = dict(stream_event.transport_metadata)
         assistant_message = (
             final_message if final_message is not None else aggregated_message or None
         )
@@ -837,7 +911,16 @@ class SimpleHarness(Harness):
             ttft_ms,
             ModelProviderExchange(
                 response=response,
-                transport_metadata={"streaming": True},
+                provider_payload=final_provider_payload,
+                raw_response=(
+                    {"events": raw_provider_events, "usage": dict(final_usage)}
+                    if raw_provider_events and final_usage is not None
+                    else {"events": raw_provider_events}
+                    if raw_provider_events
+                    else None
+                ),
+                reasoning=final_reasoning,
+                transport_metadata=final_transport_metadata,
                 stream_deltas=stream_deltas,
             ),
         )
@@ -925,6 +1008,24 @@ class SimpleHarness(Harness):
         if metric.task_id is None:
             metric.task_id = self._current_task_id()
         self.projection.emit_metric(metric)
+        if metric.name == "turn.duration_ms" and isinstance(metric.value, (int, float)):
+            state = getattr(self.runtime_loop, "state", None)
+            api_duration_ms = (
+                state.api_duration_ms
+                if state is not None and state.task_id == metric.task_id
+                else 0.0
+            )
+            for normalized in normalized_duration_metrics(
+                scope="turn",
+                total_duration_ms=float(metric.value),
+                total_api_duration_ms=api_duration_ms,
+                session_id=metric.session_id,
+                task_id=metric.task_id,
+                agent_id=metric.agent_id,
+                aggregation="terminal",
+                extra_attributes=dict(metric.attributes),
+            ):
+                self.projection.emit_metric(normalized)
 
     def _emit_progress(self, progress: ProgressUpdate) -> None:
         if progress.task_id is None:
@@ -944,6 +1045,12 @@ class SimpleHarness(Harness):
             reason=reason,
             attributes=attributes,
         )
+
+    def _record_turn_api_duration(self, duration_ms: float) -> None:
+        state = getattr(self.runtime_loop, "state", None)
+        if state is None:
+            return
+        state.api_duration_ms += duration_ms
 
     def _usage_value(self, usage: JsonObject | None, *keys: str) -> int | None:
         if usage is None:

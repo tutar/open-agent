@@ -178,7 +178,25 @@ def test_streaming_model_emits_llm_span_and_metric(tmp_path: Path) -> None:
     harness = build_harness(
         StreamingModel(chunks=[
             ModelStreamEvent(assistant_delta="hello "),
-            ModelStreamEvent(assistant_delta="world"),
+            ModelStreamEvent(
+                assistant_delta="world",
+                usage={"prompt_tokens": 3, "completion_tokens": 2},
+                provider_payload={
+                    "model": "gpt-test",
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                },
+                raw_provider_events=[
+                    {
+                        "choices": [{"delta": {"content": "hello "}}],
+                    },
+                    {
+                        "choices": [{"delta": {"content": "world"}}],
+                        "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+                    },
+                ],
+                transport_metadata={"streaming": True},
+            ),
         ]),
         [],
         sink,
@@ -192,6 +210,8 @@ def test_streaming_model_emits_llm_span_and_metric(tmp_path: Path) -> None:
 
     assert any(event.payload["span_type"] == "llm_request" for event in ended_spans)
     assert any(event.payload["name"] == "llm_request.duration_ms" for event in metrics)
+    assert any(event.payload["name"] == "openagent_token_usage" for event in metrics)
+    assert any(event.payload["name"] == "openagent_token_usage_total" for event in metrics)
 
 
 def test_turn_progress_events_include_task_id(tmp_path: Path) -> None:

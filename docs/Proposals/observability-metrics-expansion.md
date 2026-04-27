@@ -1,6 +1,6 @@
 # Observability Metrics Expansion
 
-Status: proposed
+Status: in-progress
 
 ## Summary
 
@@ -8,6 +8,13 @@ Status: proposed
 补齐 `runtime`、`session`、`turn`、`task`、`tool` 五类对象的统一指标口径。
 
 本 proposal 覆盖 core metrics 设计，并补充 OTel exporter 方案。
+
+当前代码已经落地这些子集能力：
+
+- `OtelObservabilitySink` 已支持 `OTLP/HTTP JSON` traces / metrics / selected logs
+- `.openagent` 的 `transcript.jsonl`、`events.jsonl`、`model-io` 已可投影到 Loki
+- Tempo 已能看到 `interaction -> llm_request -> tool` 的内部调用链基线
+- 标准化 `openagent_duration_ms` / `openagent_token_usage` 已开始发射
 
 OTel 范围限定为：
 
@@ -34,7 +41,10 @@ OTel 范围限定为：
 - 当前 `cache_tokens` 仍是聚合概念，不能区分 cache creation 与 cache read
 - 当前没有统一定义“外部 API 延迟”和“内部延迟”的边界
 - 当前 `runtime` / `session` 没有标准化累计 rollup 口径
-- 当前没有标准化 OTel export path，trace / metric 还不能直接进入标准 observability pipeline
+- 当前 `model-io` 仍主要保留 provider raw usage，不保证天然满足全部 normalized token bucket
+- 当前 provider usage metric 仍严格依赖 provider 真正返回 usage；不会做 fallback 估算
+- 当前 `transcript.jsonl` 仍不承担 tool-started / requires_action / planning 语义
+- 当前 `events.jsonl` 虽已覆盖 turn/tool lifecycle，但 richer join key 仍需继续评估
 
 ## Metric Taxonomy
 
@@ -63,6 +73,8 @@ OTel 范围限定为：
 - `total_tokens = input_tokens + output_tokens`
 - cache 相关字段单独保留，不再使用聚合 `cache_tokens` 作为标准口径
 - 如果 provider 未返回 usage，则允许该次 `token_usage` 缺失，不做推断补值
+- 对 streaming provider，adapter 应主动启用 provider usage 返回能力并完整持久化
+  provider exchange，避免因为请求或记录链路缺失导致 `usage=null`
 - 如果 provider 只返回未拆分 cache 总量，则只保留原始值到 attributes，不映射为规范 bucket
 
 ### Duration
@@ -283,6 +295,7 @@ OTel sink 通过 host/runtime 配置显式开启。
 
 - 在 LLM request 成功路径发出规范化 `token_usage`
 - 在 LLM request 成功和失败路径都产出 request 级 API duration
+- 对支持 streaming 的 provider，在 streaming 终态组装完整 `ModelProviderExchange`
 - 将当前 `llm_request.duration_ms` 归并到统一 schema
 
 `harness/runtime/core/ralph_loop.py` 负责：
@@ -368,6 +381,9 @@ host / runtime assembly 负责：
 - provider 未返回 usage
   - duration 仍正常发出
   - token_usage 不伪造总量
+- streaming provider 请求开启 provider usage 后
+  - `model-io.usage` 非空
+  - `openagent_token_usage` 正常产出
 - 不同模型切换
   - 同一 session 内可按模型拆分汇总
   - session/runtime 总量等于各模型分量求和
@@ -388,6 +404,23 @@ host / runtime assembly 负责：
 - `ProgressUpdate` / `SessionStateSignal`
   - 如被投影为 span event / attributes，不影响 traces / metrics 主路径
   - 不要求下游依赖它们形成稳定 dashboard 契约
+
+## TODO For Next Evaluation
+
+以下缺口当前已确认存在，但本轮先保留为 TODO，下一次再决定是补源数据还是继续靠投影层推断：
+
+- `transcript.jsonl`
+  - 是否补稳定 `tool_name` / `call_id` / `agent_id`
+  - 是否补更稳定的 `turn_id`
+- `events.jsonl`
+  - 是否补 richer `task_id` / `turn_id` 关联键
+  - 是否统一补 `agent_id`
+- `model-io`
+  - 是否补 normalized usage 字段
+  - 是否补 `callsite`
+  - 是否补 `ttft_ms` / request duration
+- `AnthropicMessagesModelAdapter`
+  - 当前仍是 non-streaming；若后续补 streaming，必须同步满足完整 exchange/usage capture 契约
 
 ## Non-Goals
 

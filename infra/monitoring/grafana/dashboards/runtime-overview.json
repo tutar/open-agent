@@ -1,0 +1,181 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "openagent_duration_ms_milliseconds{scope=\"turn\",metric_kind=\"total_duration_ms\"}",
+          "legendFormat": "{{session_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Turn Total Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "openagent_duration_ms_milliseconds{scope=\"turn\",metric_kind=\"total_api_duration_ms\"}",
+          "legendFormat": "{{session_id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "openagent_duration_ms_milliseconds{scope=\"turn\",metric_kind=\"total_internal_duration_ms\"}",
+          "legendFormat": "{{session_id}} internal",
+          "refId": "B"
+        }
+      ],
+      "title": "Turn API vs Internal Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "stacking": "none",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (model, callsite) (increase(openagent_token_usage_total{token_type=\"total_tokens\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{model}} {{callsite}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Token Usage In Selected Range By Model And Callsite",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "openagent_duration_ms_milliseconds{scope=\"llm_request\",metric_kind=\"total_duration_ms\"}",
+          "legendFormat": "{{model}}",
+          "refId": "A"
+        },
+        {
+          "expr": "openagent_duration_ms_milliseconds{scope=\"tool\",metric_kind=\"total_duration_ms\"}",
+          "legendFormat": "{{tool_name}}",
+          "refId": "B"
+        }
+      ],
+      "title": "LLM And Tool Duration",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "openagent",
+    "observability"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "title": "OpenAgent Runtime Overview",
+  "uid": "openagent-runtime-overview",
+  "version": 2
+}

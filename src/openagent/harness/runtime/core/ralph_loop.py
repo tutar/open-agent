@@ -76,6 +76,7 @@ class RalphLoop:
         working_directory = self.harness.ensure_session_workspace(session_handle, session)
         turn_task_id = self._new_turn_task_id(session_handle)
         self.state.task_id = turn_task_id
+        self.state.api_duration_ms = 0.0
         interaction_span = observability.start_span(
             "interaction",
             {"continuation": True, "approved": approved},
@@ -132,6 +133,7 @@ class RalphLoop:
                 working_directory=working_directory,
                 agent_id=session.agent_id,
                 task_id=turn_task_id,
+                parent_span=interaction_span,
             ),
         )
         emitted_events.extend(tool_events)
@@ -516,6 +518,7 @@ class RalphLoop:
                         agent_id=session.agent_id,
                         working_directory=working_directory,
                         task_id=turn_task_id,
+                        parent_span=interaction_span,
                     ),
                 )
                 yield from tool_events

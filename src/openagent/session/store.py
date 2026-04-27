@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from openagent.object_model import RuntimeEvent, RuntimeEventType, SessionHarnessLease
+from openagent.observability import NoOpDataProjectionSink
 from openagent.session.models import (
     ResumeSnapshot,
     SessionCheckpoint,
@@ -26,9 +27,15 @@ from openagent.shared import (
 class FileSessionStore:
     """Durable file-backed session store with agent-owned transcript refs."""
 
-    def __init__(self, root_dir: str | Path) -> None:
+    def __init__(
+        self,
+        root_dir: str | Path,
+        *,
+        data_projection: object | None = None,
+    ) -> None:
         self._root_dir = Path(root_dir)
         self._root_dir.mkdir(parents=True, exist_ok=True)
+        self._data_projection = data_projection or NoOpDataProjectionSink()
 
     @property
     def root_dir(self) -> Path:
@@ -235,9 +242,9 @@ class FileSessionStore:
         transcript_path.parent.mkdir(parents=True, exist_ok=True)
         with transcript_path.open("a", encoding="utf-8") as handle:
             for message in new_messages:
-                handle.write(
-                    json.dumps(self._transcript_entry(session_id, state, message)) + "\n"
-                )
+                entry = self._transcript_entry(session_id, state, message)
+                handle.write(json.dumps(entry) + "\n")
+                self._data_projection.emit_transcript_entry(entry)
 
     def _append_event_suffix(
         self,
@@ -255,6 +262,7 @@ class FileSessionStore:
         with log_path.open("a", encoding="utf-8") as handle:
             for event in new_events:
                 handle.write(json.dumps(event.to_dict()) + "\n")
+                self._data_projection.emit_runtime_event(event)
 
     def _transcript_entry(
         self,

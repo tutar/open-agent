@@ -14,3 +14,4 @@ class TurnState(SerializableModel):
     transition: str = "idle"
     requires_action: bool = False
     task_id: str | None = None
+    api_duration_ms: float = 0.0

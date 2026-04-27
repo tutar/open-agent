@@ -29,6 +29,15 @@
 - session state 单独保存非 transcript 字段
 - runtime event log 继续独立保存运行时事件
 
+当前三份事实源的职责固定为：
+
+- `agent_<role_id|default>/agents/<agent_id>/transcript.jsonl`
+  - `user / assistant / tool-result` 视图
+- `sessions/<session_id>/events.jsonl`
+  - turn / tool 生命周期与 streaming delta
+- `agent_<role_id|default>/agents/<agent_id>/model-io`
+  - provider token usage、reasoning、streaming、request/response 证据
+
 当前默认落盘结构：
 
 - `sessions/<session_id>/state.json`

@@ -19,6 +19,8 @@ def create_file_runtime(
     tools: list[ToolDefinition] | None = None,
     observability: AgentObservability | None = None,
     model_io_root: str | None = None,
+    openagent_root: str | None = None,
+    role_id: str | None = None,
 ) -> SimpleHarness:
     """Create a local file-backed runtime with the builtin tool baseline."""
 
@@ -28,6 +30,8 @@ def create_file_runtime(
         tools=tools,
         observability=observability,
         model_io_root=model_io_root,
+        openagent_root=openagent_root,
+        role_id=role_id,
     )
 
 

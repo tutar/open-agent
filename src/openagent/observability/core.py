@@ -50,7 +50,7 @@ class AgentObservability:
     ) -> SpanHandle:
         handle = SpanHandle(
             trace_id=parent.trace_id if parent is not None else uuid.uuid4().hex,
-            span_id=uuid.uuid4().hex,
+            span_id=uuid.uuid4().hex[:16],
             span_type=span_type,
             start_time=self._now(),
             parent_span_id=parent.span_id if parent is not None else None,
@@ -72,6 +72,8 @@ class AgentObservability:
         input_tokens: int | None = None,
         output_tokens: int | None = None,
         cache_tokens: int | None = None,
+        cache_creation_input_tokens: int | None = None,
+        cache_read_input_tokens: int | None = None,
     ) -> TraceSpan:
         started_at = time.perf_counter()
         if duration_ms is None:
@@ -91,6 +93,8 @@ class AgentObservability:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_tokens=cache_tokens,
+            cache_creation_input_tokens=cache_creation_input_tokens,
+            cache_read_input_tokens=cache_read_input_tokens,
             attributes=dict(span_handle.attributes),
             result=dict(result or {}),
         )

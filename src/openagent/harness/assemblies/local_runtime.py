@@ -22,7 +22,13 @@ from openagent.harness.task import (
     TaskRetentionRuntime,
 )
 from openagent.object_model import JsonObject
-from openagent.observability import AgentObservability
+from openagent.observability import (
+    AgentObservability,
+    CompositeObservabilitySink,
+    create_data_projection_sink_from_env,
+    create_development_sink,
+    create_otlp_observability_sink_from_env,
+)
 from openagent.session import FileSessionStore
 from openagent.shared import (
     DEFAULT_RUNTIME_AGENT_ID,
@@ -50,6 +56,8 @@ def create_file_runtime_assembly(
     role_id: str | None = None,
 ) -> SimpleHarness:
     resolved_openagent_root = _default_openagent_root(openagent_root)
+    resolved_observability = observability or _default_observability()
+    data_projection = create_data_projection_sink_from_env()
     agent_root = resolve_agent_root_from_session_root(session_root, role_id)
     runtime_agent_root = resolve_agent_instance_root(agent_root, DEFAULT_RUNTIME_AGENT_ID)
     task_manager = FileTaskManager(
@@ -70,17 +78,18 @@ def create_file_runtime_assembly(
     )
     harness = SimpleHarness(
         model=model,
-        sessions=FileSessionStore(session_root),
+        sessions=FileSessionStore(session_root, data_projection=data_projection),
         tools=registry,
         executor=SimpleToolExecutor(registry),
         context_governance=ContextGovernance(storage_dir=session_root),
-        observability=observability,
+        observability=resolved_observability,
         model_io_capture=FileModelIoCapture(
             _default_model_io_root(
                 session_root,
                 model_io_root,
                 runtime_agent_root=str(runtime_agent_root),
-            )
+            ),
+            data_projection=data_projection,
         ),
         session_root_dir=session_root,
         openagent_root=resolved_openagent_root,
@@ -159,3 +168,14 @@ def _default_model_io_root(
         return str(os.path.join(resolved_data_root, "model-io"))
     agent_root = resolve_agent_root_from_session_root(session_root)
     return str(resolve_agent_instance_root(agent_root, DEFAULT_RUNTIME_AGENT_ID) / "model-io")
+
+
+def _default_observability() -> AgentObservability:
+    stdout_sink = create_development_sink()
+    otlp_sink = create_otlp_observability_sink_from_env()
+    sinks = [stdout_sink]
+    if otlp_sink is not None:
+        sinks.append(otlp_sink)
+    if len(sinks) == 1:
+        return AgentObservability(sinks)
+    return AgentObservability([CompositeObservabilitySink(sinks)])

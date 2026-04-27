@@ -17,6 +17,7 @@ from openagent.object_model import (
     SerializableModel,
 )
 from openagent.object_model.base import to_json_value
+from openagent.observability import NoOpDataProjectionSink
 from openagent.tools import ToolCall
 
 
@@ -63,6 +64,10 @@ class ModelStreamEvent(SerializableModel):
     assistant_message: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: JsonObject | None = None
+    provider_payload: JsonObject | None = None
+    raw_provider_events: list[JsonObject] = field(default_factory=list)
+    reasoning: JsonValue | None = None
+    transport_metadata: JsonObject = field(default_factory=dict)
 
 
 class ModelProviderAdapter(Protocol):
@@ -215,12 +220,15 @@ class FileModelIoCapture:
     max_string_chars: int = 20000
     write_raw_response: bool = True
     write_stream_deltas: bool = True
+    data_projection: object | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _root_dir: Path = field(init=False, repr=False)
     _records_dir: Path = field(init=False, repr=False)
     _index_path: Path = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.data_projection is None:
+            self.data_projection = NoOpDataProjectionSink()
         self._root_dir = Path(self.root_dir)
         self._records_dir = self._root_dir / "records"
         self._index_path = self._root_dir / "index.jsonl"
@@ -321,12 +329,14 @@ class FileModelIoCapture:
         record_dir.mkdir(parents=True, exist_ok=True)
         record_path = record_dir / f"{record.capture_id}.json"
         record.record_path = str(record_path)
-        payload = json.dumps(record.to_dict(), indent=2, ensure_ascii=False, sort_keys=True)
+        record_payload = record.to_dict()
+        payload = json.dumps(record_payload, indent=2, ensure_ascii=False, sort_keys=True)
         with self._lock:
             record_path.write_text(payload, encoding="utf-8")
             with self._index_path.open("a", encoding="utf-8") as index_file:
-                index_file.write(json.dumps(record.to_dict(), ensure_ascii=False))
+                index_file.write(json.dumps(record_payload, ensure_ascii=False))
                 index_file.write("\n")
+        self.data_projection.emit_model_io_record(record)
 
     def _summarize_response(self, raw_response: JsonObject | None) -> JsonObject | None:
         if raw_response is None:

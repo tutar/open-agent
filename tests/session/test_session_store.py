@@ -4,7 +4,7 @@ from pathlib import Path
 
 from openagent.harness.runtime import ModelTurnRequest, ModelTurnResponse
 from openagent.local import create_file_runtime
-from openagent.object_model import RuntimeEventType
+from openagent.object_model import RuntimeEventType, ToolResult
 from openagent.session import (
     FileSessionStore,
     FileShortTermMemoryStore,
@@ -12,6 +12,7 @@ from openagent.session import (
     SessionMessage,
     WakeRequest,
 )
+from openagent.tools import ToolCall
 
 
 @dataclass(slots=True)
@@ -21,6 +22,39 @@ class ScriptedModel:
     def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
         del request
         return self.responses.pop(0)
+
+
+@dataclass(slots=True)
+class ToolRoundTripModel:
+    def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        if request.messages[-1]["role"] == "user":
+            return ModelTurnResponse(
+                tool_calls=[ToolCall(tool_name="echo", arguments={"text": "hello"})]
+            )
+        return ModelTurnResponse(assistant_message="done")
+
+
+@dataclass(slots=True)
+class EchoTool:
+    name: str = "echo"
+    input_schema: dict[str, object] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.input_schema is None:
+            self.input_schema = {"type": "object"}
+
+    def description(self) -> str:
+        return self.name
+
+    def call(self, arguments: dict[str, object]) -> ToolResult:
+        return ToolResult(tool_name=self.name, success=True, content=[str(arguments)])
+
+    def check_permissions(self, arguments: dict[str, object]) -> str:
+        del arguments
+        return "allow"
+
+    def is_concurrency_safe(self) -> bool:
+        return True
 
 
 def test_in_memory_short_term_memory_store_stabilizes_updates() -> None:
@@ -158,3 +192,21 @@ def test_file_runtime_assigns_session_workspace_under_session_root(tmp_path: Pat
         (tmp_path / "agent_default" / "agents" / "local-agent" / "workspace").resolve()
     )
     assert Path(str(session.metadata["workdir"])).is_dir()
+
+
+def test_tool_events_persist_turn_task_id(tmp_path: Path) -> None:
+    runtime = create_file_runtime(
+        model=ToolRoundTripModel(),
+        session_root=str(tmp_path / "sessions"),
+        tools=[EchoTool()],
+    )
+
+    runtime.run_turn("hello", "sess_tools")
+
+    event_lines = (tmp_path / "sessions" / "sess_tools" / "events.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    tool_events = [json.loads(line) for line in event_lines if "tool_" in line]
+
+    assert tool_events
+    assert all(event["task_id"] for event in tool_events)

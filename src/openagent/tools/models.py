@@ -8,6 +8,7 @@ from enum import StrEnum
 
 from openagent.object_model import JsonObject, RuntimeEvent, SerializableModel
 from openagent.object_model.models import ToolResult
+from openagent.observability import SpanHandle
 
 
 class PermissionDecision(StrEnum):
@@ -106,6 +107,7 @@ class ToolExecutionContext(SerializableModel):
     cancellation_check: Callable[[], bool] | None = None
     agent_id: str | None = None
     task_id: str | None = None
+    parent_span: SpanHandle | None = None
     working_directory: str | None = None
     audit_metadata: JsonObject = field(default_factory=dict)
     result_persistence_dir: str | None = None

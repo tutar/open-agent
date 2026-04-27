@@ -33,6 +33,7 @@ from openagent.observability import (
     RuntimeMetric,
     SpanHandle,
 )
+from openagent.observability.metrics import normalized_duration_metrics
 
 
 def _iso_now() -> str:
@@ -351,6 +352,17 @@ class LocalBackgroundAgentOrchestrator:
                     task_id=task_id,
                 )
             )
+            for metric in normalized_duration_metrics(
+                scope="task",
+                total_duration_ms=duration_ms,
+                total_api_duration_ms=0.0,
+                session_id=record.session_id,
+                task_id=task_id,
+                agent_id=record.agent_id,
+                callsite="background_task.execution",
+                aggregation="terminal",
+            ):
+                self._observability.emit_runtime_metric(metric)
 
     def _finish_task_span(self, task_id: str, *, status: str, payload: JsonObject) -> None:
         started_at = self._task_started_at.get(task_id)

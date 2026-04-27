@@ -145,6 +145,19 @@ class ExchangeBackedModel:
         return self.exchange
 
 
+@dataclass(slots=True)
+class StreamingExchangeBackedModel:
+    chunks: list[ModelStreamEvent]
+
+    def generate(self, request: ModelTurnRequest) -> ModelTurnResponse:
+        del request
+        raise AssertionError("Streaming path should use stream_generate")
+
+    def stream_generate(self, request: ModelTurnRequest) -> Iterator[ModelStreamEvent]:
+        del request
+        yield from self.chunks
+
+
 def test_openai_chat_adapter_builds_tool_payload_and_parses_tool_calls() -> None:
     transport = FakeTransport(
         response_body={
@@ -209,7 +222,7 @@ def test_openai_chat_adapter_builds_tool_payload_and_parses_tool_calls() -> None
 def test_openai_chat_adapter_streams_deltas_and_sets_stream_true() -> None:
     transport = FakeStreamingTransport(
         stream_lines=[
-            'data: {"choices":[{"delta":{"content":"hello "}}]}\n',
+            'data: {"choices":[{"delta":{"content":"hello ","reasoning_content":"step "}}]}\n',
             "\n",
             (
                 'data: {"choices":[{"delta":{"content":"world"}}],'
@@ -238,11 +251,22 @@ def test_openai_chat_adapter_streams_deltas_and_sets_stream_true() -> None:
     assert transport.seen_url == "http://127.0.0.1:8001/v1/chat/completions"
     assert transport.seen_payload is not None
     assert transport.seen_payload["stream"] is True
+    assert transport.seen_payload["stream_options"] == {"include_usage": True}
     assert [event.assistant_delta for event in events[:-1]] == ["hello ", "world"]
     assert events[-1] == ModelStreamEvent(
         assistant_message="hello world",
         tool_calls=[],
         usage={"prompt_tokens": 3, "completion_tokens": 2},
+        provider_payload=transport.seen_payload,
+        raw_provider_events=[
+            {"choices": [{"delta": {"content": "hello ", "reasoning_content": "step "}}]},
+            {
+                "choices": [{"delta": {"content": "world"}}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+            },
+        ],
+        reasoning="step ",
+        transport_metadata={"streaming": True},
     )
 
 
@@ -832,3 +856,66 @@ def test_model_io_capture_persists_request_and_response_records(tmp_path: Path) 
     assert row["record_path"]
     record = json.loads(Path(row["record_path"]).read_text(encoding="utf-8"))
     assert record["capture_id"] == row["capture_id"]
+
+
+def test_streaming_model_io_capture_persists_usage_and_provider_exchange(tmp_path: Path) -> None:
+    model_io_root = tmp_path / "data" / "model-io"
+    harness = SimpleHarness(
+        model=StreamingExchangeBackedModel(
+            chunks=[
+                ModelStreamEvent(assistant_delta="hello "),
+                ModelStreamEvent(
+                    assistant_message="hello world",
+                    usage={"prompt_tokens": 3, "completion_tokens": 2},
+                    provider_payload={
+                        "model": "gpt-test",
+                        "messages": [{"role": "user", "content": "stream"}],
+                        "stream": True,
+                        "stream_options": {"include_usage": True},
+                    },
+                    raw_provider_events=[
+                        {"choices": [{"delta": {"content": "hello "}}]},
+                        {
+                            "choices": [{"delta": {"content": "world"}}],
+                            "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+                        },
+                    ],
+                    reasoning="deliberation",
+                    transport_metadata={"streaming": True},
+                ),
+            ]
+        ),
+        sessions=FileSessionStore(tmp_path / "sessions"),
+        tools=StaticToolRegistry([]),
+        executor=SimpleToolExecutor(StaticToolRegistry([])),
+        short_term_memory_store=InMemoryShortTermMemoryStore(),
+        model_io_capture=FileModelIoCapture(model_io_root),
+        session_root_dir=tmp_path / "agent_default" / "sessions",
+    )
+
+    events, terminal = harness.run_turn("stream", "sess_stream_capture")
+
+    assert terminal.reason == "assistant_message"
+    assert any(event.event_type.value == "assistant_delta" for event in events)
+    rows = [
+        json.loads(line)
+        for line in (model_io_root / "index.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["streaming"] is True
+    assert row["usage"] == {"prompt_tokens": 3, "completion_tokens": 2}
+    assert row["provider_payload"]["stream_options"] == {"include_usage": True}
+    assert row["provider_response_raw"] == {
+        "events": [
+            {"choices": [{"delta": {"content": "hello "}}]},
+            {
+                "choices": [{"delta": {"content": "world"}}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+            },
+        ],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+    }
+    assert row["provider_response_summary"] == row["provider_response_raw"]
+    assert row["reasoning"] == "deliberation"
+    assert row["stream_deltas"] == ["hello "]
