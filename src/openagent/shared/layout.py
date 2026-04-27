@@ -9,6 +9,8 @@ from pathlib import Path
 
 DEFAULT_AGENT_DIRECTORY = "agent_default"
 DEFAULT_RUNTIME_AGENT_ID = "local-agent"
+DEFAULT_ROLE_DIRECTORY = "roles"
+DEFAULT_ROLE_ID = "default"
 
 
 def normalize_openagent_root(root: str | None, *, default: str = ".openagent") -> str:
@@ -25,6 +27,19 @@ def resolve_agent_directory(role_id: str | None) -> str:
 
 def resolve_agent_root(openagent_root: str, role_id: str | None = None) -> str:
     return str(Path(openagent_root).resolve() / resolve_agent_directory(role_id))
+
+
+def resolve_roles_root(openagent_root: str) -> Path:
+    return Path(openagent_root).resolve() / DEFAULT_ROLE_DIRECTORY
+
+
+def resolve_role_root(openagent_root: str, role_id: str | None = None) -> Path:
+    resolved_role_id = (
+        role_id.strip()
+        if isinstance(role_id, str) and role_id.strip()
+        else DEFAULT_ROLE_ID
+    )
+    return resolve_roles_root(openagent_root) / resolved_role_id
 
 
 def resolve_sessions_root(openagent_root: str) -> str:

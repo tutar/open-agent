@@ -205,7 +205,9 @@ def test_host_config_from_env_expands_openagent_root_references(
     assert Path(config.session_root) == (expected_root / "sessions").resolve()
     assert Path(config.binding_root) == (expected_root / "sessions").resolve()
     assert Path(config.data_root) == (expected_root / "data").resolve()
+    assert Path(config.role_root) == (expected_root / "roles").resolve()
     assert Path(config.model_io_root) == (expected_host_root / "local-agent" / "model-io").resolve()
+    assert config.role_id == "default"
 
 
 def test_host_config_from_env_ignores_legacy_root_overrides(

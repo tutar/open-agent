@@ -18,7 +18,7 @@
   - content externalization
   - prompt-cache strategy
 - `instruction_markdown/`
-  - `AGENTS.md` / `RULES.md` loading
+  - role `USER.md` + `AGENTS.md` / `RULES.md` loading
   - include expansion
   - conditional rules
 
@@ -50,6 +50,8 @@
 - startup context 属于 entry plane，不直接塞进 transcript
 - startup context 也不再作为额外的 `role=system` message 进入 OpenAI-compatible
   provider payload；provider-facing request 统一收成单一 system 前缀
+- role `USER.md` 是身份基线，优先于 workspace 层 `AGENTS.md/RULES.md`
+- `ROLE.md` 不直接进入 provider-facing instruction 文本
 
 ## Governance And Editing
 

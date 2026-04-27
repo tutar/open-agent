@@ -19,7 +19,7 @@ class DreamingMarkdownWriter:
 
     def write_phase_report(self, result: DreamingPhaseResult, day: str) -> Path:
         report = self._render_phase_report(result)
-        phase_dir = self.root / "memory" / "dreaming" / result.phase.value
+        phase_dir = self._memory_dir() / "dreaming" / result.phase.value
         phase_dir.mkdir(parents=True, exist_ok=True)
         phase_path = phase_dir / f"{day}.md"
         self._replace_managed_block(phase_path, result.phase, report)
@@ -54,6 +54,12 @@ class DreamingMarkdownWriter:
         if block in existing:
             return
         path.write_text(existing.rstrip() + "\n\n" + block, encoding="utf-8")
+
+    def _memory_dir(self) -> Path:
+        nested = self.root / "memory"
+        if nested.exists():
+            return nested
+        return self.root
 
     def _replace_managed_block(self, path: Path, phase: DreamingPhase, body: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

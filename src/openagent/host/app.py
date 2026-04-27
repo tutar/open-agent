@@ -39,6 +39,8 @@ class OpenAgentHost:
             session_root=self.config.session_root,
             tools=self.tools,
             model_io_root=self.config.model_io_root,
+            openagent_root=self.config.openagent_root,
+            role_id=self.config.role_id,
         )
         self.gateway = create_gateway_for_runtime(
             self.runtime,

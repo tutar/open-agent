@@ -37,6 +37,11 @@
 - `agent_<role_id|default>/<delegated_agent_id>/parent_agent`
 - `agent_<role_id|default>/<parent_agent_id>/subagents`
 
+delegated subagent 现在默认继承 parent agent 的 `role_id`，因此：
+
+- role `USER.md` 会在子 agent 的 instruction assembly 中继续生效
+- role memory 会继续落到同一个 `roles/<role_id>/memory` durable-memory 根
+
 ## Routing
 
 当前实现了两条本地通道：

@@ -15,6 +15,13 @@ from openagent.tools.mcp.errors import (
     McpTransportError,
 )
 from openagent.tools.mcp.extensions import McpSkillAdapter
+from openagent.tools.mcp.integration import (
+    McpPluginManifest,
+    McpRemoteTool,
+    MountedMcpServer,
+    load_mcp_plugin_manifests,
+    mount_role_mcp_tools,
+)
 from openagent.tools.mcp.models import (
     McpAuthConfig,
     McpAuthMetadata,
@@ -69,10 +76,12 @@ __all__ = [
     "McpListPage",
     "McpLogEvent",
     "McpPromptAdapter",
+    "McpPluginManifest",
     "McpPromptDescriptor",
     "McpProtocolClient",
     "McpProtocolError",
     "McpRemoteToolError",
+    "McpRemoteTool",
     "McpResourceAdapter",
     "McpResourceDescriptor",
     "McpResourceNotification",
@@ -88,6 +97,7 @@ __all__ = [
     "McpTaskHandle",
     "McpToolAdapter",
     "McpToolDescriptor",
+    "MountedMcpServer",
     "McpTransport",
     "McpTransportError",
     "McpTransportHandle",
@@ -96,5 +106,7 @@ __all__ = [
     "StdioTransportConfig",
     "StreamableHttpMcpTransport",
     "TransportBackedMcpClient",
+    "load_mcp_plugin_manifests",
+    "mount_role_mcp_tools",
     "parse_www_authenticate",
 ]

@@ -38,12 +38,14 @@ Feishu 是同一个 unified host 上的 chat channel。
 
 - `${OPENAGENT_ROOT}/sessions/<session_id>/`
 - `${OPENAGENT_ROOT}/agent_<role_id|default>/<agent_id>/`
+- `${OPENAGENT_ROOT}/roles/<role_id|default>/`
 - `${OPENAGENT_ROOT}/cards/feishu`
 
 其中：
 
 - session binding 会写进 `${OPENAGENT_ROOT}/sessions/<session_id>/bindings/`
 - session 自己只保存 `transcript.ref`，真实 transcript 属于 agent 实例
+- role 身份资产、`USER.md` 和 role memory 归到 `${OPENAGENT_ROOT}/roles/<role_id|default>/`
 - Feishu reply card ledger 放在 `${OPENAGENT_ROOT}/cards/feishu`
 
 ### 已支持

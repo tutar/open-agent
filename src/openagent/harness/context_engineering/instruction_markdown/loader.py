@@ -24,10 +24,12 @@ class InstructionMarkdownLoader:
         self,
         *,
         workspace_root: str,
+        role_user_path: str | None = None,
         runtime_state: JsonObject | None = None,
     ) -> list[InstructionDocument]:
         candidates = self._candidate_paths(
             workspace_root=workspace_root,
+            role_user_path=role_user_path,
             runtime_state=runtime_state,
         )
         documents: list[InstructionDocument] = []
@@ -81,6 +83,7 @@ class InstructionMarkdownLoader:
         self,
         *,
         workspace_root: str,
+        role_user_path: str | None,
         runtime_state: JsonObject | None,
     ) -> list[Path]:
         root = Path(workspace_root).resolve()
@@ -94,6 +97,8 @@ class InstructionMarkdownLoader:
             seen.add(resolved)
             paths.append(resolved)
 
+        if isinstance(role_user_path, str) and role_user_path.strip():
+            append_if_new(Path(role_user_path))
         append_if_new(Path.home() / ".openagent" / "AGENTS.md")
         append_if_new(root / "AGENTS.md")
         append_if_new(root / "RULES.md")

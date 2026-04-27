@@ -2,6 +2,8 @@
 
 from openagent.shared.layout import (
     DEFAULT_AGENT_DIRECTORY,
+    DEFAULT_ROLE_DIRECTORY,
+    DEFAULT_ROLE_ID,
     DEFAULT_RUNTIME_AGENT_ID,
     ensure_agent_plugins_root,
     ensure_agent_workspace,
@@ -17,6 +19,8 @@ from openagent.shared.layout import (
     resolve_agent_transcript_path,
     resolve_agent_workspace,
     resolve_cards_root,
+    resolve_role_root,
+    resolve_roles_root,
     resolve_session_root,
     resolve_session_workspace,
     resolve_sessions_root,
@@ -29,6 +33,8 @@ from openagent.shared.version import SPEC_VERSION, __version__
 
 __all__ = [
     "DEFAULT_AGENT_DIRECTORY",
+    "DEFAULT_ROLE_DIRECTORY",
+    "DEFAULT_ROLE_ID",
     "DEFAULT_RUNTIME_AGENT_ID",
     "ensure_agent_plugins_root",
     "SPEC_VERSION",
@@ -47,6 +53,8 @@ __all__ = [
     "resolve_agent_root",
     "resolve_agent_root_from_session_root",
     "resolve_cards_root",
+    "resolve_role_root",
+    "resolve_roles_root",
     "resolve_sessions_root",
     "resolve_session_root",
     "resolve_session_workspace",

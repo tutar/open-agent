@@ -38,6 +38,11 @@
 - `agent_<role_id|default>/<agent_id>/model-io`
   - provider token usage、reasoning、streaming、request/response 证据
 
+role-bound durable memory 作为第四条长期事实源，固定落在：
+
+- `roles/<role_id>/memory/`
+  - role durable-memory recall / write-back / dreaming / consolidation 根
+
 当前默认落盘结构：
 
 - `sessions/<session_id>/state.json`

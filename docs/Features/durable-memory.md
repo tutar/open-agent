@@ -36,6 +36,8 @@
 - bounded recall into `ModelTurnRequest.memory_context`
 - same-agent cross-session long-term memory recall baseline
 - restart-safe durable memory recall
+- role-bound durable-memory root under `roles/<role_id>/memory`
+- role memory write-back / dreaming / consolidation via the same durable-memory pipeline
 
 ## 当前不支持
 

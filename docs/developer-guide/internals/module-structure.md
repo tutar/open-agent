@@ -28,6 +28,11 @@
   - payload taxonomy
   - overlay scopes
   - durable store baselines
+- `role/`
+  - role definition loading
+  - role-owned instruction assets
+  - role capability refs
+  - role runtime assembly helpers
 - `harness/`
   - turn runtime
   - model providers
@@ -203,6 +208,7 @@
 - `harness/`
 - `session/`
 - `durable_memory/`
+- `role/`
 - `tools/`
 - `sandbox/`
 - `gateway/`

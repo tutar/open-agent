@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import cast
 
+from openagent.durable_memory import FileMemoryStore
 from openagent.gateway.binding_store import FileSessionBindingStore
 from openagent.gateway.core import Gateway
 from openagent.gateway.interfaces import ChannelAdapter
@@ -29,16 +31,22 @@ from openagent.observability import (
     create_development_sink,
     create_otlp_observability_sink_from_env,
 )
+from openagent.role import load_role_definition
+from openagent.role.runtime import resolve_role_runtime
 from openagent.session import FileSessionStore
 from openagent.shared import (
+    DEFAULT_ROLE_ID,
     DEFAULT_RUNTIME_AGENT_ID,
+    ensure_agent_plugins_root,
     normalize_openagent_root,
     resolve_agent_instance_root,
+    resolve_agent_plugins_root,
     resolve_agent_root_from_session_root,
     resolve_path_env,
 )
 from openagent.tools import (
     SimpleToolExecutor,
+    SkillInvocationBridge,
     StaticToolRegistry,
     ToolDefinition,
     ToolExecutionContext,
@@ -55,11 +63,23 @@ def create_file_runtime_assembly(
     openagent_root: str | None = None,
     role_id: str | None = None,
 ) -> SimpleHarness:
-    resolved_openagent_root = _default_openagent_root(openagent_root)
+    resolved_openagent_root = _default_openagent_root(
+        openagent_root
+    ) or _openagent_root_from_session_root(session_root)
+    resolved_role_id = role_id or DEFAULT_ROLE_ID
+    role_definition = load_role_definition(resolved_openagent_root, resolved_role_id)
     resolved_observability = observability or _default_observability()
     data_projection = create_data_projection_sink_from_env()
-    agent_root = resolve_agent_root_from_session_root(session_root, role_id)
+    agent_root = resolve_agent_root_from_session_root(session_root, resolved_role_id)
     runtime_agent_root = resolve_agent_instance_root(agent_root, DEFAULT_RUNTIME_AGENT_ID)
+    if role_definition.memory is None:
+        raise RuntimeError(f"Role memory binding is missing for role: {resolved_role_id}")
+    ensure_agent_plugins_root(agent_root, DEFAULT_RUNTIME_AGENT_ID)
+    plugins_root = str(resolve_agent_plugins_root(agent_root, DEFAULT_RUNTIME_AGENT_ID))
+    resolved_role_runtime = resolve_role_runtime(
+        role=role_definition,
+        plugins_root=plugins_root,
+    )
     task_manager = FileTaskManager(
         str(runtime_agent_root / "tasks"),
         retention_policy=TaskRetentionPolicy(),
@@ -74,6 +94,8 @@ def create_file_runtime_assembly(
         _resolve_runtime_tools(
             tools=tools,
             agent_handler=multi_agent.as_agent_handler(),
+            skill_bridge=resolved_role_runtime.skill_bridge,
+            extra_tools=resolved_role_runtime.mounted_mcp_tools,
         )
     )
     harness = SimpleHarness(
@@ -82,6 +104,7 @@ def create_file_runtime_assembly(
         tools=registry,
         executor=SimpleToolExecutor(registry),
         context_governance=ContextGovernance(storage_dir=session_root),
+        memory_store=FileMemoryStore(role_definition.memory.records_root),
         observability=resolved_observability,
         model_io_capture=FileModelIoCapture(
             _default_model_io_root(
@@ -94,7 +117,9 @@ def create_file_runtime_assembly(
         session_root_dir=session_root,
         openagent_root=resolved_openagent_root,
         agent_root_dir=agent_root,
-        role_id=role_id,
+        role_id=resolved_role_id,
+        role_definition=role_definition,
+        default_context_providers=[resolved_role_runtime.as_context_provider()],
     )
     multi_agent.configure_workspace_runtime(
         harness.prepare_delegated_agent_workspace,
@@ -124,14 +149,32 @@ def _resolve_runtime_tools(
     agent_handler: (
         Callable[[dict[str, object], ToolExecutionContext | None], JsonObject] | None
     ) = None,
+    *,
+    skill_bridge: SkillInvocationBridge | None = None,
+    extra_tools: list[ToolDefinition] | None = None,
 ) -> list[ToolDefinition]:
+    role_extra_tools = list(extra_tools or [])
     if tools is not None:
-        resolved = list(tools)
+        resolved = list(tools) + role_extra_tools
         if agent_handler is not None and not any(tool.name == "Agent" for tool in resolved):
             resolved.extend(
                 cast(
                     list[ToolDefinition],
-                    create_builtin_toolset(agent_handler=agent_handler),
+                    create_builtin_toolset(
+                        agent_handler=agent_handler,
+                        skill_bridge=skill_bridge,
+                    ),
+                )
+            )
+            deduped: dict[str, ToolDefinition] = {}
+            for tool in resolved:
+                deduped[tool.name] = tool
+            return list(deduped.values())
+        if skill_bridge is not None and not any(tool.name == "Skill" for tool in resolved):
+            resolved.extend(
+                cast(
+                    list[ToolDefinition],
+                    create_builtin_toolset(skill_bridge=skill_bridge),
                 )
             )
             deduped: dict[str, ToolDefinition] = {}
@@ -139,13 +182,16 @@ def _resolve_runtime_tools(
                 deduped[tool.name] = tool
             return list(deduped.values())
         return resolved
-    return cast(
+    builtins = cast(
         list[ToolDefinition],
-        create_builtin_toolset(agent_handler=agent_handler),
+        create_builtin_toolset(agent_handler=agent_handler, skill_bridge=skill_bridge),
     )
+    return [*builtins, *role_extra_tools]
 
 
 def _default_openagent_root(openagent_root: str | None) -> str:
+    if openagent_root is None:
+        return ""
     return normalize_openagent_root(
         openagent_root,
         default=".openagent",
@@ -179,3 +225,13 @@ def _default_observability() -> AgentObservability:
     if len(sinks) == 1:
         return AgentObservability(sinks)
     return AgentObservability([CompositeObservabilitySink(sinks)])
+
+
+def _openagent_root_from_session_root(session_root: str) -> str:
+    session_path = Path(session_root).resolve()
+    if session_path.name == "sessions":
+        parent = session_path.parent
+        if parent.name.startswith("agent_"):
+            return str(parent.parent)
+        return str(parent)
+    return str(session_path.parent)

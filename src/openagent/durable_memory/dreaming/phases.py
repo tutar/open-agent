@@ -235,6 +235,8 @@ class DreamingEngine:
     def _ingest_daily_memory(self, day: str) -> list[ShortTermRecallEntry]:
         memory_dir = self.memory_root / "memory"
         if not memory_dir.exists():
+            memory_dir = self.memory_root
+        if not memory_dir.exists():
             return []
         entries: list[ShortTermRecallEntry] = []
         for path in sorted(memory_dir.glob("*.md")):
@@ -306,6 +308,8 @@ class DreamingEngine:
             return True
         daily_name = entry.source.split(":", 1)[1]
         path = self.memory_root / "memory" / daily_name
+        if not path.exists():
+            path = self.memory_root / daily_name
         if not path.exists():
             return False
         text = path.read_text(encoding="utf-8")

@@ -17,6 +17,7 @@
   - tool-result externalization
   - prompt-cache strategy
 - `instruction_markdown`
+  - role `USER.md`
   - `AGENTS.md` / `RULES.md`
   - include expansion
   - conditional rules
@@ -35,7 +36,16 @@
 - long tool-result externalization
 - prompt-cache stable-prefix / dynamic-suffix baseline
 - prompt-cache break detection
-- instruction markdown loading with hierarchical `AGENTS.md`
+- instruction markdown loading with role `USER.md` + hierarchical `AGENTS.md`
+
+## Role Instruction Layer
+
+- role 的主身份指令入口现在是 `OPENAGENT_ROOT/roles/<role_id>/USER.md`
+- `ROLE.md` 只作为机器可读资源包装器，不直接进入主 instruction assembly
+- 组合顺序保持：
+  - role `USER.md`
+  - workspace / subtree `AGENTS.md`
+  - workspace / subtree `RULES.md`
 
 ## Provider-Facing System Assembly
 

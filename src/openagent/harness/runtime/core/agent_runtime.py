@@ -75,6 +75,7 @@ from openagent.observability.metrics import (
     normalized_duration_metrics,
     normalized_token_usage_metrics,
 )
+from openagent.role import RoleDefinition
 from openagent.session import (
     SessionMessage,
     SessionRecord,
@@ -122,10 +123,12 @@ class SimpleHarness(Harness):
     instruction_markdown_loader: InstructionMarkdownLoader = field(
         default_factory=InstructionMarkdownLoader
     )
+    default_context_providers: list[object] = field(default_factory=list)
     session_root_dir: str | None = None
     openagent_root: str | None = None
     agent_root_dir: str | None = None
     role_id: str | None = None
+    role_definition: RoleDefinition | None = None
     runtime_loop: AgentRuntime = field(init=False, repr=False)
     dreaming_scheduler: DreamingScheduler = field(init=False, repr=False)
     _last_memory_session: SessionRecord | None = field(default=None, init=False, repr=False)
@@ -180,6 +183,7 @@ class SimpleHarness(Harness):
         session_slice: SessionRecord,
         context_providers: list[object],
     ) -> ModelTurnRequest:
+        resolved_context_providers = [*self.default_context_providers, *context_providers]
         compacted = False
         recovered_from_overflow = False
         available_tools = [tool.name for tool in self.tools.list_tools()]
@@ -276,6 +280,7 @@ class SimpleHarness(Harness):
         runtime_state: JsonObject = {
             "session_id": session_slice.session_id,
             "agent_id": session_slice.agent_id,
+            "role_id": self.role_id,
             "target_path": (
                 session_slice.metadata.get("target_path")
                 if isinstance(session_slice.metadata, dict)
@@ -284,19 +289,24 @@ class SimpleHarness(Harness):
         }
         instruction_documents = self.instruction_markdown_loader.load(
             workspace_root=default_workspace_root_from_metadata(session_slice.metadata),
+            role_user_path=(
+                self.role_definition.user_markdown_path
+                if self.role_definition is not None
+                else None
+            ),
             runtime_state=runtime_state,
         )
         system_context = self._instruction_system_context(instruction_documents)
         user_context = self._context_provider_fragments(
-            context_providers=context_providers,
+            context_providers=resolved_context_providers,
             method_name="user_context",
         )
         attachments = self._context_provider_fragments(
-            context_providers=context_providers,
+            context_providers=resolved_context_providers,
             method_name="attachments",
         )
         evidence_refs = self._context_provider_fragments(
-            context_providers=context_providers,
+            context_providers=resolved_context_providers,
             method_name="evidence_refs",
         )
         startup_contexts = [
@@ -308,7 +318,10 @@ class SimpleHarness(Harness):
                 agent_id=session_slice.agent_id,
             )
         ]
-        capability_surface = self._capability_surface_payload(available_tools, context_providers)
+        capability_surface = self._capability_surface_payload(
+            available_tools,
+            resolved_context_providers,
+        )
         assembly_result = self.context_pipeline.assemble(
             ContextAssemblyInput(
                 transcript=messages,
@@ -323,8 +336,14 @@ class SimpleHarness(Harness):
                 request_metadata={
                     "session_id": session_slice.session_id,
                     "agent_id": session_slice.agent_id,
+                    "role_id": self.role_id,
                     "compacted": compacted,
                     "recovered_from_overflow": recovered_from_overflow,
+                    "recommended_models": (
+                        list(self.role_definition.capabilities.recommended_models)
+                        if self.role_definition is not None
+                        else []
+                    ),
                 },
                 startup_contexts=startup_contexts,
             )

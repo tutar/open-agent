@@ -32,6 +32,8 @@
 - `SimpleHarness` 在 `build_model_input(...)` 阶段读取 durable memory
 - runtime 把 recalled durable memory 注入 `ModelTurnRequest.memory_context`
 - post-turn maintenance 可以调度 extract / consolidation，但 durable memory 不得覆盖历史 transcript
+- role-bound runtime 默认把 durable-memory store 绑定到 `roles/<role_id>/memory`
+- 同一条 role memory 链路同时承担 recall、turn-end write-back、dreaming 和 consolidation
 
 当前 durable-memory 的分层语义是：
 
