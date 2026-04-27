@@ -57,3 +57,5 @@
 - [Feishu Host Management Page](./feishu-host-management-page.md)
 - [Agent Evaluation Runtime Foundations](./agent-evaluation-runtime-foundations.md)
 - [Agent Evaluation Platform](./agent-evaluation-platform.md)
+- [Agent Role Management](./agent-role-management.md)
+- [Channel-Managed Agent Lifecycle](./channel-managed-agent-lifecycle.md)
