@@ -37,7 +37,7 @@ Feishu 是同一个 unified host 上的 chat channel。
 默认本地状态根目录现在拆成 session / agent / cards 三层：
 
 - `${OPENAGENT_ROOT}/sessions/<session_id>/`
-- `${OPENAGENT_ROOT}/agent_<role_id|default>/agents/<agent_id>/`
+- `${OPENAGENT_ROOT}/agent_<role_id|default>/<agent_id>/`
 - `${OPENAGENT_ROOT}/cards/feishu`
 
 其中：

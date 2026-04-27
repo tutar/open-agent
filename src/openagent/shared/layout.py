@@ -58,7 +58,7 @@ def resolve_session_workspace(session_root: str, session_id: str) -> str:
 
 def resolve_agent_instance_root(agent_root: str, agent_id: str | None = None) -> Path:
     resolved_agent_id = agent_id or DEFAULT_RUNTIME_AGENT_ID
-    return Path(agent_root).resolve() / "agents" / resolved_agent_id
+    return Path(agent_root).resolve() / resolved_agent_id
 
 
 def resolve_agent_workspace(agent_root: str, agent_id: str | None = None) -> str:
@@ -67,6 +67,10 @@ def resolve_agent_workspace(agent_root: str, agent_id: str | None = None) -> str
 
 def resolve_agent_transcript_path(agent_root: str, agent_id: str | None = None) -> Path:
     return resolve_agent_instance_root(agent_root, agent_id) / "transcript.jsonl"
+
+
+def resolve_agent_plugins_root(agent_root: str, agent_id: str | None = None) -> Path:
+    return resolve_agent_instance_root(agent_root, agent_id) / "plugins"
 
 
 def resolve_subagent_root(agent_root: str, subagent_id: str) -> Path:
@@ -101,6 +105,13 @@ def ensure_agent_workspace(
         else:
             workspace.mkdir(parents=True, exist_ok=True)
     return str(workspace.resolve())
+
+
+def ensure_agent_plugins_root(
+    agent_root: str,
+    agent_id: str | None = None,
+) -> str:
+    return ensure_directory(resolve_agent_plugins_root(agent_root, agent_id))
 
 
 def ensure_subagent_workspace(

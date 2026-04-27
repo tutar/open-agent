@@ -147,7 +147,7 @@ session 不放进 harness 内部，是为了把执行和状态持久化拆开。
   - runtime event log
 - `sessions/<session_id>/transcript.ref`
   - 指向 agent-owned transcript 的路径
-- `agent_<role_id|default>/agents/<agent_id>/transcript.jsonl`
+- `agent_<role_id|default>/<agent_id>/transcript.jsonl`
   - append-only transcript 真正落点
 
 session reload 时会通过 `transcript.ref` 回到 agent transcript，并按 `session_id` 过滤出当前

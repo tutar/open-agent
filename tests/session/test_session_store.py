@@ -189,7 +189,7 @@ def test_file_runtime_assigns_session_workspace_under_session_root(tmp_path: Pat
     session = runtime.sessions.load_session("sess_workspace")
 
     assert session.metadata["workdir"] == str(
-        (tmp_path / "agent_default" / "agents" / "local-agent" / "workspace").resolve()
+        (tmp_path / "agent_default" / "local-agent" / "workspace").resolve()
     )
     assert Path(str(session.metadata["workdir"])).is_dir()
 

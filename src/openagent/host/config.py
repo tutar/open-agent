@@ -32,7 +32,6 @@ DEFAULT_DERIVED_ROOT_FIELDS = {
         Path(
             DEFAULT_OPENAGENT_ROOT,
             DEFAULT_AGENT_DIRECTORY,
-            "agents",
             DEFAULT_RUNTIME_AGENT_ID,
             "model-io",
         )

@@ -33,9 +33,9 @@
 
 当前 delegated worker 的本地目录也改成 agent-instance 布局：
 
-- `agent_<role_id|default>/agents/<delegated_agent_id>/workspace/`
-- `agent_<role_id|default>/agents/<delegated_agent_id>/parent_agent`
-- `agent_<role_id|default>/agents/<parent_agent_id>/subagents`
+- `agent_<role_id|default>/<delegated_agent_id>/workspace/`
+- `agent_<role_id|default>/<delegated_agent_id>/parent_agent`
+- `agent_<role_id|default>/<parent_agent_id>/subagents`
 
 ## Routing
 

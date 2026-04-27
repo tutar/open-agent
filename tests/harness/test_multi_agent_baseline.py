@@ -200,13 +200,12 @@ def test_delegated_subagent_gets_independent_workspace_and_parent_ref(tmp_path: 
         (
             tmp_path
             / "agent_default"
-            / "agents"
             / str(result["agent"]["agent_id"])
             / "parent_agent"
         ).read_text(encoding="utf-8")
     )
     parent_subagents = json.loads(
-        (tmp_path / "agent_default" / "agents" / "local-agent" / "subagents").read_text(
+        (tmp_path / "agent_default" / "local-agent" / "subagents").read_text(
             encoding="utf-8"
         )
     )

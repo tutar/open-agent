@@ -187,7 +187,7 @@ def test_file_runtime_defaults_model_io_root_under_agent_root(tmp_path: Path) ->
     assert runtime.agent_root_dir == str((tmp_path / "agent_default").resolve())
     assert runtime.model_io_capture is not None
     assert Path(runtime.model_io_capture.root_dir) == (
-        tmp_path / "agent_default" / "agents" / "local-agent" / "model-io"
+        tmp_path / "agent_default" / "local-agent" / "model-io"
     ).resolve()
 
 

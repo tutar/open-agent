@@ -205,7 +205,7 @@ def test_local_runtime_exports_streaming_usage_and_model_io(tmp_path, monkeypatc
         for payload in metric_payloads
     )
     index_path = (
-        openagent_root / "agent_default" / "agents" / "local-agent" / "model-io" / "index.jsonl"
+        openagent_root / "agent_default" / "local-agent" / "model-io" / "index.jsonl"
     )
     rows = [json.loads(line) for line in index_path.read_text(encoding="utf-8").splitlines()]
     assert rows[0]["usage"] == {"prompt_tokens": 3, "completion_tokens": 2}

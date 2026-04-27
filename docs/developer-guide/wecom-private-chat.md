@@ -42,7 +42,7 @@ export OPENAGENT_WECOM_PING_INTERVAL_SECONDS=30
 `openagent-host` 会从 `OPENAGENT_ROOT` 推导默认目录：
 
 - `${OPENAGENT_ROOT}/sessions`
-- `${OPENAGENT_ROOT}/agent_<role_id|default>/agents/local-agent/model-io`
+- `${OPENAGENT_ROOT}/agent_<role_id|default>/local-agent/model-io`
 - `${OPENAGENT_ROOT}/sessions/<session_id>/bindings/`
 
 一般不需要再单独配置 `OPENAGENT_SESSION_ROOT` / `OPENAGENT_BINDING_ROOT`。

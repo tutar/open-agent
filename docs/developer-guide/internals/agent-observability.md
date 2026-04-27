@@ -2,7 +2,7 @@
 
 `AgentObservability` 是当前 OpenAgent 中独立于 `RuntimeEvent` 的观测平面。
 
-注意：它现在也独立于 `.openagent/agent_default/agents/local-agent/model-io` 这层模型原始数据沉淀。
+注意：它现在也独立于 `.openagent/agent_default/local-agent/model-io` 这层模型原始数据沉淀。
 
 ## Why It Exists
 
@@ -109,7 +109,7 @@
 当前 observability：
 
 - 不替代 session event log
-- 不替代 `.openagent/agent_default/agents/local-agent/model-io` 模型数据集
+- 不替代 `.openagent/agent_default/local-agent/model-io` 模型数据集
 - 不单独做 durable trace storage
 - 不负责质量评估或 correctness judgement
 
@@ -117,7 +117,7 @@
 
 - 运行时刚才发生了什么
 
-而 `.openagent/agent_default/agents/local-agent/model-io` 回答的是另一件事：
+而 `.openagent/agent_default/local-agent/model-io` 回答的是另一件事：
 
 - 这次到底给模型发了什么，模型原始返回了什么
 

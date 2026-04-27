@@ -46,7 +46,7 @@
 
 ### 当前支持
 
-- file-backed model dataset capture under `.openagent/agent_<role_id|default>/agents/local-agent/model-io`
+- file-backed model dataset capture under `.openagent/agent_<role_id|default>/local-agent/model-io`
 - append-only `index.jsonl`
 - per-call record files under `records/<session_id>/`
 - assembled `ModelTurnRequest` capture

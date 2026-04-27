@@ -33,7 +33,7 @@ def build_host(tmp_path: Path) -> OpenAgentHost:
             session_root=str(tmp_path / "sessions"),
             binding_root=str(tmp_path / "sessions"),
             data_root=str(agent_root / "data"),
-            model_io_root=str(agent_root / "agents" / "local-agent" / "model-io"),
+            model_io_root=str(agent_root / "local-agent" / "model-io"),
             terminal_host="127.0.0.1",
             terminal_port=8765,
         ),
@@ -205,9 +205,7 @@ def test_host_config_from_env_expands_openagent_root_references(
     assert Path(config.session_root) == (expected_root / "sessions").resolve()
     assert Path(config.binding_root) == (expected_root / "sessions").resolve()
     assert Path(config.data_root) == (expected_root / "data").resolve()
-    assert Path(config.model_io_root) == (
-        expected_host_root / "agents" / "local-agent" / "model-io"
-    ).resolve()
+    assert Path(config.model_io_root) == (expected_host_root / "local-agent" / "model-io").resolve()
 
 
 def test_host_config_from_env_ignores_legacy_root_overrides(
@@ -228,9 +226,7 @@ def test_host_config_from_env_ignores_legacy_root_overrides(
     assert Path(config.session_root) == expected_agent_root.parent / "sessions"
     assert Path(config.binding_root) == expected_agent_root.parent / "sessions"
     assert Path(config.data_root) == expected_agent_root.parent / "data"
-    assert Path(config.model_io_root) == (
-        expected_agent_root / "agents" / "local-agent" / "model-io"
-    )
+    assert Path(config.model_io_root) == (expected_agent_root / "local-agent" / "model-io")
 
 
 def test_host_config_direct_init_derives_paths_from_openagent_root(tmp_path: Path) -> None:
@@ -244,9 +240,7 @@ def test_host_config_direct_init_derives_paths_from_openagent_root(tmp_path: Pat
     assert Path(config.session_root) == expected_root / "sessions"
     assert Path(config.binding_root) == expected_root / "sessions"
     assert Path(config.data_root) == expected_root / "data"
-    assert Path(config.model_io_root) == (
-        expected_agent_root / "agents" / "local-agent" / "model-io"
-    )
+    assert Path(config.model_io_root) == (expected_agent_root / "local-agent" / "model-io")
 
 
 def test_host_config_direct_init_preserves_explicit_path_overrides(tmp_path: Path) -> None:
