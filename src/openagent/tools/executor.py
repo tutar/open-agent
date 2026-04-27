@@ -18,6 +18,7 @@ from openagent.object_model import (
     ToolResult,
 )
 from openagent.observability import AgentObservability, ProgressUpdate, RuntimeMetric, SpanHandle
+from openagent.observability.metrics import normalized_duration_metrics
 from openagent.tools.compat import (
     persisted_ref_to_string,
     tool_is_concurrency_safe,
@@ -131,16 +132,13 @@ class SimpleToolExecutor:
                     reason=outcome.reason or "Permission denied by tool policy",
                 )
 
-            started = self._tool_started_event(
-                context.session_id,
-                normalized_call,
-            )
+            started = self._tool_started_event(context, normalized_call)
             self._record_runtime_event(summary, started)
             yield started
 
             if context.cancellation_check is not None and context.cancellation_check():
                 cancelled = self._tool_cancelled_event(
-                    context.session_id,
+                    context,
                     tool_call.tool_name,
                     tool_call.call_id,
                     ToolExecutionAbortReason.USER_INTERRUPTED.value,
@@ -234,7 +232,9 @@ class SimpleToolExecutor:
                     "tool_name": tool_call.tool_name,
                     "concurrency_safe": tool_is_concurrency_safe(tool, tool_call.arguments),
                 },
+                parent=context.parent_span,
                 session_id=context.session_id,
+                task_id=context.task_id,
             )
         try:
             if callable(stream_call):
@@ -251,13 +251,14 @@ class SimpleToolExecutor:
 
             result = tool_call_helper(tool, tool_call, context)
             mapped = tool_map_result(tool, result, tool_call.call_id)
-            event = self._tool_result_event(context.session_id, mapped, tool_call.call_id)
+            event = self._tool_result_event(context, mapped, tool_call.call_id)
             self._record_runtime_event(summary, event)
             yield event
             self._finish_span(
                 span,
                 started_at,
                 context.session_id,
+                context.task_id,
                 tool_call.tool_name,
                 "completed",
             )
@@ -266,13 +267,14 @@ class SimpleToolExecutor:
                 span,
                 started_at,
                 context.session_id,
+                context.task_id,
                 tool_call.tool_name,
                 "requires_action",
             )
             raise
         except ToolCancelledError as exc:
             event = self._tool_cancelled_event(
-                context.session_id,
+                context,
                 tool_call.tool_name,
                 tool_call.call_id,
                 str(exc),
@@ -283,13 +285,14 @@ class SimpleToolExecutor:
                 span,
                 started_at,
                 context.session_id,
+                context.task_id,
                 tool_call.tool_name,
                 "cancelled",
                 str(exc),
             )
         except Exception as exc:
             event = self._tool_failed_event(
-                context.session_id,
+                context,
                 tool_call.tool_name,
                 tool_call.call_id,
                 str(exc),
@@ -300,6 +303,7 @@ class SimpleToolExecutor:
                 span,
                 started_at,
                 context.session_id,
+                context.task_id,
                 tool_call.tool_name,
                 "error",
                 str(exc),
@@ -349,18 +353,14 @@ class SimpleToolExecutor:
                             },
                         )
                     )
-                event = self._tool_progress_event(
-                    context.session_id,
-                    item.progress,
-                    tool_call.call_id,
-                )
+                event = self._tool_progress_event(context, item.progress, tool_call.call_id)
                 self._record_runtime_event(summary, event)
                 yield event
             if item.context_modifier is not None:
                 summary.context_modifiers.append(item.context_modifier)
             if item.result is not None:
                 mapped = tool_map_result(tool, item.result, tool_call.call_id)
-                event = self._tool_result_event(context.session_id, mapped, tool_call.call_id)
+                event = self._tool_result_event(context, mapped, tool_call.call_id)
                 self._record_runtime_event(summary, event)
                 yield event
 
@@ -421,6 +421,7 @@ class SimpleToolExecutor:
         span: SpanHandle | None,
         started_at: float,
         session_id: str,
+        task_id: str | None,
         tool_name: str,
         status: str,
         error: str | None = None,
@@ -434,9 +435,21 @@ class SimpleToolExecutor:
                 value=duration_ms,
                 unit="ms",
                 session_id=session_id,
+                task_id=task_id,
                 attributes={"tool_name": tool_name},
             )
         )
+        for metric in normalized_duration_metrics(
+            scope="tool",
+            total_duration_ms=duration_ms,
+            total_api_duration_ms=0.0,
+            session_id=session_id,
+            task_id=task_id,
+            callsite="turn.tool_execution",
+            aggregation="event",
+            extra_attributes={"tool_name": tool_name},
+        ):
+            self._observability.emit_runtime_metric(metric)
         attributes: JsonObject = {"tool_name": tool_name}
         if error is not None:
             attributes["error"] = error
@@ -449,7 +462,7 @@ class SimpleToolExecutor:
 
     def _tool_progress_event(
         self,
-        session_id: str,
+        context: ToolExecutionContext,
         progress: ToolProgressUpdate,
         call_id: str | None,
     ) -> RuntimeEvent:
@@ -459,26 +472,34 @@ class SimpleToolExecutor:
             event_type=RuntimeEventType.TOOL_PROGRESS,
             event_id=f"tool_progress:{call_id or progress.tool_name}",
             timestamp=datetime.now(UTC).isoformat(),
-            session_id=session_id,
+            session_id=context.session_id,
             payload=payload,
+            agent_id=context.agent_id,
+            task_id=context.task_id,
         )
 
-    def _tool_started_event(self, session_id: str, tool_call: ToolCall) -> RuntimeEvent:
+    def _tool_started_event(
+        self,
+        context: ToolExecutionContext,
+        tool_call: ToolCall,
+    ) -> RuntimeEvent:
         return RuntimeEvent(
             event_type=RuntimeEventType.TOOL_STARTED,
             event_id=f"tool_started:{tool_call.call_id or tool_call.tool_name}",
             timestamp=datetime.now(UTC).isoformat(),
-            session_id=session_id,
+            session_id=context.session_id,
             payload={
                 "tool_name": tool_call.tool_name,
                 "arguments": tool_call.arguments,
                 "tool_use_id": tool_call.call_id,
             },
+            agent_id=context.agent_id,
+            task_id=context.task_id,
         )
 
     def _tool_result_event(
         self,
-        session_id: str,
+        context: ToolExecutionContext,
         result: ToolResult,
         call_id: str | None,
     ) -> RuntimeEvent:
@@ -492,13 +513,15 @@ class SimpleToolExecutor:
             event_type=RuntimeEventType.TOOL_RESULT,
             event_id=f"tool_result:{call_id or result.tool_name}",
             timestamp=datetime.now(UTC).isoformat(),
-            session_id=session_id,
+            session_id=context.session_id,
             payload=payload,
+            agent_id=context.agent_id,
+            task_id=context.task_id,
         )
 
     def _tool_failed_event(
         self,
-        session_id: str,
+        context: ToolExecutionContext,
         tool_name: str,
         call_id: str | None,
         reason: str,
@@ -507,17 +530,19 @@ class SimpleToolExecutor:
             event_type=RuntimeEventType.TOOL_FAILED,
             event_id=f"tool_failed:{call_id or tool_name}",
             timestamp=datetime.now(UTC).isoformat(),
-            session_id=session_id,
+            session_id=context.session_id,
             payload={
                 "tool_name": tool_name,
                 "reason": reason,
                 "tool_use_id": call_id,
             },
+            agent_id=context.agent_id,
+            task_id=context.task_id,
         )
 
     def _tool_cancelled_event(
         self,
-        session_id: str,
+        context: ToolExecutionContext,
         tool_name: str,
         call_id: str | None,
         reason: str,
@@ -526,12 +551,14 @@ class SimpleToolExecutor:
             event_type=RuntimeEventType.TOOL_CANCELLED,
             event_id=f"tool_cancelled:{call_id or tool_name}",
             timestamp=datetime.now(UTC).isoformat(),
-            session_id=session_id,
+            session_id=context.session_id,
             payload={
                 "tool_name": tool_name,
                 "reason": reason,
                 "tool_use_id": call_id,
             },
+            agent_id=context.agent_id,
+            task_id=context.task_id,
         )
 
 

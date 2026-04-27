@@ -1,0 +1,221 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "openagent_duration_ms_milliseconds{session_id=~\"$session_id\",metric_kind=\"total_duration_ms\"}",
+          "legendFormat": "{{scope}} {{task_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Duration By Scope",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "expr": "sum by (token_type, model) (max_over_time(openagent_token_usage{session_id=~\"$session_id\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{token_type}} {{model}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Token Usage By Session",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (token_type, model) (openagent_token_usage_total{session_id=~\"$session_id\"})",
+          "legendFormat": "{{token_type}} {{model}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Token Usage Cumulative Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 3,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "expr": "{exporter=\"OTLP\"} |~ \"\\\\\\\"stream\\\\\\\": ?\\\\\\\"conversation\\\\\\\"\" |~ \"\\\\\\\"session_id\\\\\\\": ?\\\\\\\"$session_id\\\\\\\"\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Conversation Transcript",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 4,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "expr": "{exporter=\"OTLP\"} |~ \"\\\\\\\"stream\\\\\\\": ?\\\\\\\"runtime_event\\\\\\\"\" |~ \"\\\\\\\"session_id\\\\\\\": ?\\\\\\\"$session_id\\\\\\\"\"",
+          "queryType": "range",
+          "refId": "A"
+        },
+        {
+          "expr": "{exporter=\"OTLP\"} |~ \"\\\\\\\"stream\\\\\\\": ?\\\\\\\"model_io\\\\\\\"\" |~ \"\\\\\\\"session_id\\\\\\\": ?\\\\\\\"$session_id\\\\\\\"\"",
+          "queryType": "range",
+          "refId": "B"
+        }
+      ],
+      "title": "Runtime Events And Model I/O",
+      "type": "logs"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "openagent",
+    "observability"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": ".*",
+          "value": ".*"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "includeAll": false,
+        "label": "session_id",
+        "multi": false,
+        "name": "session_id",
+        "options": [],
+        "query": {
+          "query": "label_values(openagent_duration_ms_milliseconds, session_id)",
+          "refId": "PromSessionId"
+        },
+        "refresh": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "title": "OpenAgent Session Drilldown",
+  "uid": "openagent-session-drilldown",
+  "version": 2
+}

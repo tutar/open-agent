@@ -21,12 +21,19 @@ uv sync --dev --extra wechat
 可选环境变量：
 
 ```bash
+export OPENAGENT_ROOT=.openagent
 export OPENAGENT_WECHAT_BASE_URL=https://ilinkai.weixin.qq.com
 export OPENAGENT_WECHAT_CRED_PATH=.openagent/wechat/credentials.json
 export OPENAGENT_WECHAT_ALLOWED_SENDERS=wx_user_1,wx_user_2
-export OPENAGENT_SESSION_ROOT=.openagent/wechat/sessions
-export OPENAGENT_BINDING_ROOT=.openagent/wechat/sessions/bindings
 ```
+
+`openagent-host` 会从 `OPENAGENT_ROOT` 推导默认目录：
+
+- `${OPENAGENT_ROOT}/sessions`
+- `${OPENAGENT_ROOT}/agent_<role_id|default>/agents/local-agent/model-io`
+- `${OPENAGENT_ROOT}/sessions/<session_id>/bindings/`
+
+一般不需要再单独配置 `OPENAGENT_SESSION_ROOT` / `OPENAGENT_BINDING_ROOT`。
 
 `OPENAGENT_WECHAT_ALLOWED_SENDERS` 为空时允许所有私聊联系人驱动当前 agent，适合本地 demo；真实使用时建议配置允许列表。
 
@@ -90,18 +97,18 @@ WeChat private chat
 - `src/openagent/gateway/channels/wechat/host.py`：启动 SDK、去重、allowlist、session binding 和回复分发。
 - `src/openagent/gateway/channels/wechat/dedupe.py`：内存和文件型入站消息去重。
 - `src/openagent/gateway/channels/wechat/assembly.py`：配置、runtime、gateway 和 host 组装。
-- `src/openagent/host/app.py`：统一 host 的 `/channel wechat` 和 `/channel-config wechat ...` 管理入口。
+- `src/openagent/gateway/assemblies/channel_manager.py`：统一 host 的 `/channel wechat` 和 `/channel-config wechat ...` 管理入口，以及 channel config resolve / host startup。
 
 ## Tests
 
 聚焦测试：
 
 ```bash
-uv run pytest tests/test_wechat_gateway.py tests/test_host_management.py -q
+uv run pytest tests/gateway/test_wechat_gateway.py tests/gateway/test_host_management.py -q
 ```
 
 如果本机 `.python-version` 指向未安装的 patch 版本，可以显式指定兼容的 Python 3.11：
 
 ```bash
-uv run --python 3.11.14 pytest tests/test_wechat_gateway.py tests/test_host_management.py -q
+uv run --python 3.11.14 pytest tests/gateway/test_wechat_gateway.py tests/gateway/test_host_management.py -q
 ```

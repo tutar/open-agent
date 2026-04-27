@@ -146,8 +146,12 @@ class TaskRecord(SerializableModel):
     start_time: str
     session_id: str | None = None
     agent_id: str | None = None
+    parent_task_id: str | None = None
     output_ref: str | None = None
+    output_cursor: int | str | None = None
     end_time: str | None = None
+    terminal_state: JsonObject | None = None
+    notified: bool = False
     metadata: JsonObject | None = None
 
     @classmethod
@@ -158,6 +162,13 @@ class TaskRecord(SerializableModel):
         except ValueError:
             status = raw_status
         metadata = data.get("metadata")
+        terminal_state = data.get("terminal_state")
+        raw_output_cursor = data.get("output_cursor")
+        output_cursor: int | str | None
+        if isinstance(raw_output_cursor, (int, str)):
+            output_cursor = raw_output_cursor
+        else:
+            output_cursor = None
         return cls(
             task_id=str(data["task_id"]),
             type=str(data["type"]),
@@ -166,9 +177,43 @@ class TaskRecord(SerializableModel):
             start_time=str(data["start_time"]),
             session_id=str(data["session_id"]) if data.get("session_id") is not None else None,
             agent_id=str(data["agent_id"]) if data.get("agent_id") is not None else None,
+            parent_task_id=(
+                str(data["parent_task_id"]) if data.get("parent_task_id") is not None else None
+            ),
             output_ref=str(data["output_ref"]) if data.get("output_ref") is not None else None,
+            output_cursor=output_cursor,
             end_time=str(data["end_time"]) if data.get("end_time") is not None else None,
+            terminal_state=(
+                dict(terminal_state) if isinstance(terminal_state, dict) else None
+            ),
+            notified=bool(data.get("notified", False)),
             metadata=dict(metadata) if isinstance(metadata, dict) else None,
+        )
+
+
+@dataclass(slots=True)
+class TaskEvent(SerializableModel):
+    task_id: str
+    event_id: str
+    timestamp: str
+    type: str
+    payload: JsonObject
+    terminal_state: JsonObject | None = None
+    error: JsonObject | None = None
+
+    @classmethod
+    def from_dict(cls, data: JsonObject) -> TaskEvent:
+        payload = data.get("payload")
+        terminal_state = data.get("terminal_state")
+        error = data.get("error")
+        return cls(
+            task_id=str(data["task_id"]),
+            event_id=str(data["event_id"]),
+            timestamp=str(data["timestamp"]),
+            type=str(data["type"]),
+            payload=dict(payload) if isinstance(payload, dict) else {},
+            terminal_state=dict(terminal_state) if isinstance(terminal_state, dict) else None,
+            error=dict(error) if isinstance(error, dict) else None,
         )
 
 

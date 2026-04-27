@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -10,7 +11,7 @@ from time import time
 from typing import cast
 from uuid import uuid4
 
-from openagent.object_model import JsonObject
+from openagent.object_model import JsonObject, JsonValue
 
 _STABLE_CARD_STATUSES = {"requires_action", "completed", "failed", "interrupted"}
 
@@ -323,14 +324,26 @@ def render_reply_card(record: FeishuReplyCardRecord) -> JsonObject:
     """Render a Feishu card payload from the current record state."""
 
     status_label = _status_label(record.status)
-    body_sections = [
-        f"**Request**\n{_markdown_text(record.prompt_text) or '_Empty_'}",
-        f"**Status**\n{_markdown_text(record.status_message or status_label)}",
-    ]
+    elements: list[JsonObject] = []
+    _append_markdown_section(
+        elements,
+        "Request",
+        [_inline_markdown_text(record.prompt_text) or "_Empty_"],
+    )
+    _append_markdown_section(
+        elements,
+        "Status",
+        [_inline_markdown_text(record.status_message or status_label)],
+    )
     if record.assistant_message:
-        body_sections.append(f"**Reply**\n{_markdown_text(record.assistant_message)}")
+        _append_markdown_section(
+            elements,
+            "Reply",
+            _split_markdown_blocks(record.assistant_message),
+        )
 
     card: JsonObject = {
+        "schema": "2.0",
         "config": {
             "wide_screen_mode": True,
         },
@@ -341,16 +354,15 @@ def render_reply_card(record: FeishuReplyCardRecord) -> JsonObject:
                 "content": f"OpenAgent · {status_label}",
             },
         },
-        "elements": [
-            {
-                "tag": "markdown",
-                "content": "\n\n".join(body_sections),
-            }
-        ],
+        "body": {
+            "direction": "vertical",
+            "elements": cast(JsonValue, elements),
+        },
     }
     actions = _card_actions(record)
     if actions:
-        elements = cast(list[JsonObject], card["elements"])
+        body = cast(JsonObject, card["body"])
+        elements = cast(list[JsonObject], body["elements"])
         elements.append(cast(JsonObject, {"tag": "action", "actions": actions}))
     return card
 
@@ -398,8 +410,92 @@ def _header_template(status: str) -> str:
 
 
 def _markdown_text(text: str) -> str:
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    normalized = _normalize_markdown_source(text)
+    normalized = re.sub(r"\n{2,}", "\n", normalized)
     return normalized or ""
+
+
+def _normalize_markdown_source(text: str) -> str:
+    normalized = text.replace("\\r\\n", "\n").replace("\\n", "\n")
+    normalized = normalized.replace("\r\n", "\n").replace("\r", "\n").strip()
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized
+
+
+def _inline_markdown_text(text: str) -> str:
+    normalized = _normalize_markdown_source(text)
+    normalized = re.sub(r"\n{2,}", "\n", normalized)
+    return normalized or ""
+
+
+def _split_markdown_blocks(text: str) -> list[str]:
+    normalized = _normalize_markdown_source(text)
+    if not normalized:
+        return []
+
+    blocks: list[str] = []
+    current_lines: list[str] = []
+    in_fence = False
+    current_kind: str | None = None
+
+    def flush() -> None:
+        nonlocal current_lines, current_kind
+        if current_lines:
+            blocks.append("\n".join(current_lines).strip())
+            current_lines = []
+            current_kind = None
+
+    for raw_line in normalized.split("\n"):
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if current_kind not in {None, "fence"}:
+                flush()
+            current_lines.append(line)
+            current_kind = "fence"
+            in_fence = not in_fence
+            if not in_fence:
+                flush()
+            continue
+        if in_fence:
+            current_lines.append(line)
+            continue
+        if not stripped:
+            flush()
+            continue
+
+        line_kind = _markdown_line_kind(stripped)
+        if line_kind in {"heading", "table"}:
+            if current_kind not in {None, line_kind}:
+                flush()
+        elif current_kind in {"heading", "table"} and line_kind != current_kind:
+            flush()
+
+        current_lines.append(line)
+        current_kind = line_kind
+
+    flush()
+    return [block for block in blocks if block]
+
+
+def _markdown_line_kind(stripped: str) -> str:
+    if stripped.startswith("#"):
+        return "heading"
+    if stripped.startswith("|"):
+        return "table"
+    if re.match(r"^[-*+]\\s", stripped) or re.match(r"^\\d+\\.\\s", stripped):
+        return "list"
+    return "paragraph"
+
+
+def _append_markdown_section(
+    elements: list[JsonObject],
+    title: str,
+    body_blocks: list[str],
+) -> None:
+    elements.append({"tag": "markdown", "content": f"**{title}**"})
+    for block in body_blocks:
+        elements.append({"tag": "markdown", "content": block})
 
 
 def _int_value(value: object, *, default: int) -> int:

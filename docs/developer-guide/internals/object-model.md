@@ -22,6 +22,7 @@
 - `RequiresAction`
 - `ToolResult`
 - `TaskRecord`
+- `TaskEvent`
 - `SchemaEnvelope`
 
 配套枚举包括：
@@ -65,12 +66,24 @@
 
 ## Current Limitation
 
+当前 task 相关对象已经扩到可以支撑本地 task runtime：
+
+- `TaskRecord`
+  - `parent_task_id`
+  - `output_ref`
+  - `output_cursor`
+  - `terminal_state`
+  - `notified`
+- `TaskEvent`
+  - `started / progress / completed / failed / killed`
+  - payload / terminal_state / error
+
 当前 object model 还没有做更强的 schema evolution 策略。
 
 例如：
 
 - 没有显式版本迁移器
 - 没有更严格的 event payload schema 注册
-- 没有更细的 cursor / restore marker object
+- task output slice 和 retention policy 仍主要放在 `harness/task/`，没有进一步提升为公共 object model
 
 所以它现在更偏向“稳定 baseline”，还不是最终成熟模型层。

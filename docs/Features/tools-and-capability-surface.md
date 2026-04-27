@@ -39,11 +39,15 @@
   - builtin web backend environment variables can be read from the process
     environment or a project-root `.env` file
   - GitHub blob URL normalization for Firecrawl-backed `WebFetch`
+  - backend transport/search failures are returned as failed `ToolResult` payloads so a turn can
+    continue and explain the upstream problem instead of immediately hard-failing the whole turn
 - review command baseline via `CommandKind.REVIEW`
 - tool provenance / visibility metadata
 - MCP tool / prompt / skill adaptation seam
 - runtime 默认注入 builtin tool baseline；host 默认 demo tools 只是额外叠加
-- builtin file / shell tools 默认作用于当前工作目录，或显式 `OPENAGENT_WORKSPACE_ROOT`
+- builtin file / shell tools 默认作用于当前 session/subagent 的 workspace
+- builtin file / shell tools 只在显式 `ToolExecutionContext.working_directory` 下执行，不再存在全局 workspace fallback
+- `Bash` 在自己 workspace 内默认允许执行，但不能删除或替换 workspace 根目录本身；越界访问仍需授权
 - externalized tool results are exposed back to the model as internal references with previews, not raw workspace file paths
 
 ### 当前不支持

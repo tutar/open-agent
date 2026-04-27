@@ -428,7 +428,9 @@ function renderBridgeEvent(
 			...current,
 			pendingApproval: false,
 		}));
-		pushLine(`system> turn failed ${JSON.stringify(message.payload)}`);
+		const payload = message.payload as {summary?: string; reason?: string};
+		const failure = payload.summary ?? payload.reason ?? JSON.stringify(message.payload);
+		pushLine(`system> turn failed: ${failure}`);
 	}
 }
 

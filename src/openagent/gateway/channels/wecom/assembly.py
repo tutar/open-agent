@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from openagent.gateway.binding_store import FileSessionBindingStore
 from openagent.gateway.core import Gateway
 from openagent.gateway.session_adapter import InProcessSessionAdapter
-from openagent.harness import ModelProviderAdapter, SimpleHarness
 from openagent.harness.assemblies import create_file_runtime_assembly
+from openagent.harness.runtime.core.agent_runtime import SimpleHarness
+from openagent.harness.runtime.io import ModelProviderAdapter
 from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
+from openagent.shared import (
+    normalize_openagent_root,
+    resolve_agent_root,
+    resolve_path_env,
+    resolve_sessions_root,
+)
 from openagent.tools import ToolDefinition
 
 from .adapter import WeComChannelAdapter
@@ -30,10 +37,11 @@ class WeComAppConfig:
     secret: str
     ws_url: str = "wss://openws.work.weixin.qq.com"
     ping_interval_seconds: float = 30.0
-    session_root: str = str(Path(".openagent") / "wecom" / "sessions")
-    binding_root: str = str(Path(".openagent") / "wecom" / "sessions" / "bindings")
+    openagent_root: str = str(Path(".openagent"))
+    agent_root: str = str(Path(".openagent") / "agent_default")
+    session_root: str = str(Path(".openagent") / "sessions")
+    binding_root: str = str(Path(".openagent") / "sessions")
     allowed_users: tuple[str, ...] = ()
-    workspace_root: str = field(default_factory=os.getcwd)
 
     @classmethod
     def from_env(cls) -> WeComAppConfig:
@@ -43,24 +51,28 @@ class WeComAppConfig:
             raise RuntimeError("OPENAGENT_WECOM_BOT_ID is required")
         if not secret:
             raise RuntimeError("OPENAGENT_WECOM_SECRET is required")
-        session_root = os.getenv(
+        openagent_root = normalize_openagent_root(os.getenv("OPENAGENT_ROOT"))
+        role_id = os.getenv("OPENAGENT_ROLE_ID")
+        agent_root = resolve_agent_root(openagent_root, role_id)
+        session_root = resolve_path_env(
             "OPENAGENT_SESSION_ROOT",
-            str(Path(".openagent") / "wecom" / "sessions"),
-        )
-        binding_root = os.getenv(
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
+        binding_root = resolve_path_env(
             "OPENAGENT_BINDING_ROOT",
-            str(Path(session_root) / "bindings"),
-        )
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
         ping_interval = float(os.getenv("OPENAGENT_WECOM_PING_INTERVAL_SECONDS", "30"))
         return cls(
             bot_id=bot_id,
             secret=secret,
+            openagent_root=openagent_root,
+            agent_root=agent_root,
             ws_url=os.getenv("OPENAGENT_WECOM_WS_URL", "wss://openws.work.weixin.qq.com"),
             ping_interval_seconds=ping_interval,
             session_root=session_root,
             binding_root=binding_root,
             allowed_users=_parse_allowed_users(os.getenv("OPENAGENT_WECOM_ALLOWED_USERS", "")),
-            workspace_root=os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd()),
         )
 
 
@@ -69,14 +81,12 @@ def create_wecom_runtime(
     session_root: str,
     tools: list[ToolDefinition] | None = None,
     observability: AgentObservability | None = None,
-    workspace_root: str | None = None,
 ) -> SimpleHarness:
     return create_file_runtime_assembly(
         model=model,
         session_root=session_root,
         tools=tools,
         observability=observability,
-        workspace_root=workspace_root,
     )
 
 
@@ -89,7 +99,6 @@ def create_wecom_gateway(
         model=model,
         session_root=config.session_root,
         tools=tools,
-        workspace_root=config.workspace_root,
     )
     gateway = Gateway(
         InProcessSessionAdapter(runtime),

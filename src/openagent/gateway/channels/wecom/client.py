@@ -239,7 +239,7 @@ class WeComAiBotClient:
             )
 
     async def _connect_forever(self) -> None:
-        import aiohttp
+        import aiohttp  # type: ignore[import-not-found]
 
         delay = self.reconnect_base_seconds
         while not self._stop.is_set():

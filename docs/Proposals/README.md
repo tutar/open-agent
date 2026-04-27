@@ -50,6 +50,7 @@
 - [Session And Memory Enhancements](./session-and-memory-enhancements.md)
 - [Tools And Web Backends Follow-ups](./tools-and-web-backends-followups.md)
 - [MCP Runtime Expansion](./mcp-runtime-expansion.md)
+- [Observability Metrics Expansion](./observability-metrics-expansion.md)
 - [Sandbox Contract Expansion](./sandbox-contract-expansion.md)
 - [Conformance Expansion](./conformance-expansion.md)
 - [Feishu Cards And Streaming Replies](./feishu-cards-and-streaming-replies.md)

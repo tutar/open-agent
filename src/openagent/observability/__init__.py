@@ -10,6 +10,14 @@ from openagent.observability.models import (
     SpanHandle,
     TraceSpan,
 )
+from openagent.observability.otlp import (
+    DataProjectionSink,
+    NoOpDataProjectionSink,
+    OtelObservabilitySink,
+    OtlpHttpConfig,
+    create_data_projection_sink_from_env,
+    create_otlp_observability_sink_from_env,
+)
 from openagent.observability.sinks import (
     CompositeObservabilitySink,
     InMemoryObservabilitySink,
@@ -21,15 +29,21 @@ from openagent.observability.sinks import (
 __all__ = [
     "AgentObservability",
     "CompositeObservabilitySink",
+    "DataProjectionSink",
     "ExternalObservabilityEvent",
     "InMemoryObservabilitySink",
+    "NoOpDataProjectionSink",
     "NoOpObservabilitySink",
     "ObservabilitySink",
+    "OtelObservabilitySink",
+    "OtlpHttpConfig",
     "ProgressUpdate",
     "RuntimeMetric",
     "SessionStateSignal",
     "SpanHandle",
     "StdoutObservabilitySink",
     "TraceSpan",
+    "create_data_projection_sink_from_env",
     "create_development_sink",
+    "create_otlp_observability_sink_from_env",
 ]

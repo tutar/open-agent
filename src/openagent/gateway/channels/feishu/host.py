@@ -24,6 +24,7 @@ from .cards import (
     apply_runtime_event_to_card,
     make_initial_card_record,
     mark_card_action_running,
+    render_reply_card,
 )
 from .dedupe import FileFeishuInboundDedupeStore, InMemoryFeishuInboundDedupeStore
 
@@ -229,7 +230,22 @@ class FeishuLongConnectionHost:
             user_id=self._card_open_id(raw_card),
             conversation_id=record.conversation_id,
         )
-        egress = self.gateway.process_control_message(channel_identity, control_payload)
+        try:
+            egress = self.gateway.process_control_message(
+                channel_identity,
+                control_payload,
+                session_id_override=record.session_id,
+            )
+        except Exception as exc:
+            with self._card_lock:
+                record.status = "failed"
+                record.status_message = str(exc)
+                record.latest_card = render_reply_card(record)
+                record.dirty = True
+                self._sync_card_delivery(record)
+                if self.card_delivery_store is not None:
+                    self.card_delivery_store.upsert(record)
+            raise
         self._dispatch_egress(egress, card_record=record, completion_message_id=None)
         return {"toast": {"type": "info", "content": "Action received."}}
 

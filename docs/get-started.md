@@ -2,7 +2,7 @@
 
 `openagent` 现在按统一 host 模型运行：
 
-- Python host 负责拉起唯一的 `Gateway + runtime + session/memory`
+- Python host 负责拉起唯一的 `Gateway + runtime + session + durable_memory`
 - `terminal`、`feishu`、`wechat` 和 `wecom` 都只是这个 host 上的 channel
 - `--channel ...` 只表示启动时预加载哪些 channel
 - 未预加载的 channel 可以在运行中通过 `/channel <name>` 加载
@@ -42,7 +42,9 @@ mypy .
 最小启动方式：
 
 ```bash
-export OPENAGENT_WORKSPACE_ROOT=$PWD
+export OPENAGENT_PROVIDER=openai
+export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
+export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 uv run openagent-host
 ```
 
@@ -57,9 +59,9 @@ openagent-host
 - host 会启动 `terminal` channel 对应的本地 TUI transport
 - 不预加载任何外部 channel
 - `terminal` channel 会在 TUI 首次连接时自动加载
-- 如果没有配置真实模型，会自动回退到 demo model
-- host 会打印 `openagent-host> model=...`，可直接确认当前是否真的接上了真实模型
-- 每次模型调用默认都会沉淀到 `.openagent/data/model-io`
+- host 必须在启动前配置真实模型；缺少 `OPENAGENT_MODEL` 或 `OPENAGENT_BASE_URL` 会直接报错并提示配置方式
+- host 会打印 `openagent-host> model=...`，可直接确认当前接上的 provider/model
+- 每次模型调用默认都会沉淀到 `.openagent/agent_default/agents/local-agent/model-io`
 
 ## Quickstart 2: Connect The Terminal TUI
 
@@ -104,8 +106,7 @@ OpenAI-compatible:
 ```bash
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
-export OPENAGENT_MODEL=gpt-4.1
-export OPENAGENT_WORKSPACE_ROOT=$PWD
+export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
 uv run openagent-host
 ```
 
@@ -113,7 +114,7 @@ uv run openagent-host
 
 - terminal TUI 的逐步追加显示
 - Feishu reply card 的增量更新
-- `.openagent/data/model-io` capture 中的 `streaming: true`
+- `.openagent/agent_default/agents/local-agent/model-io` capture 中的 `streaming: true`
 
 注意：Feishu reply card 为了避免远程卡片更新过慢，会把很短时间窗口内的多个 delta 合并后再刷新同一张卡片。因此视觉上仍是流式，但不会严格一 token 一刷新；TUI 则继续按更实时的逐 delta 显示。
 
@@ -123,7 +124,6 @@ Anthropic-compatible:
 export OPENAGENT_PROVIDER=anthropic
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_MODEL=claude-sonnet-4-5
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host
 ```
 
@@ -136,7 +136,7 @@ uv run openagent-host
 模型输入输出数据默认会落到：
 
 ```text
-.openagent/data/model-io/
+.openagent/agent_default/agents/local-agent/model-io/
 ```
 
 这里会同时写：
@@ -146,8 +146,42 @@ uv run openagent-host
 
 如果你要改位置，可以在启动 host 前设置：
 
-- `OPENAGENT_DATA_ROOT`
-- `OPENAGENT_MODEL_IO_ROOT`
+- `OPENAGENT_ROOT`
+- `OPENAGENT_ROLE_ID`
+
+`openagent-host` 会从这两个值推导：
+
+- agent root: `${OPENAGENT_ROOT}/agent_<role_id|default>`
+- session root: `${OPENAGENT_ROOT}/sessions`
+- binding root: `${OPENAGENT_ROOT}/sessions`
+- data root: `${OPENAGENT_ROOT}/data`
+- model-io root: `${OPENAGENT_ROOT}/agent_<role_id|default>/agents/local-agent/model-io`
+- Feishu card root: `${OPENAGENT_ROOT}/cards/feishu`
+
+其中 session / transcript / agent 的边界现在是：
+
+- session state: `${OPENAGENT_ROOT}/sessions/<session_id>/state.json`
+- session events: `${OPENAGENT_ROOT}/sessions/<session_id>/events.jsonl`
+- transcript ref: `${OPENAGENT_ROOT}/sessions/<session_id>/transcript.ref`
+- real transcript: `${OPENAGENT_ROOT}/agent_<role_id|default>/agents/<agent_id>/transcript.jsonl`
+
+OPENAGENT_ROOT/
+├── agent_<role_id|default>/       # role agents
+│   ├── agents/                     
+│   │   └──<agent_id>/             # role agent 实例
+│   │      ├── transcript.jsonl    # agent transcript append only 
+│   │      ├── workspace/          # agent 工作目录
+│   │      ├── parent_agent        # 记录父agent元信息
+│   │      └── subagents           # 记录其subagents元信息
+│   ├──plugins                     # role agent 所属的plugins
+│   ├──USER.md                     # role的定义
+│   └── memory/                     # role Durable memory，存MEMORY.md，TOPIC.md
+├── sessions/                     # 整体与共享文档
+│   └── <session_id>
+│        ├── bingdings/         # 现有的绑定相关信息，以及session对应transcript的路径位置
+│        ├── .....
+
+直接在 Python 里创建 `OpenAgentHostConfig(openagent_root=...)` 时，以上默认目录也会按同样规则自动推导；只有显式传入的各个 `*_root` 才会覆盖这些默认值。
 
 ## Optional: Use Firecrawl For Web Tools
 
@@ -208,8 +242,7 @@ export OPENAGENT_FEISHU_APP_ID=cli_xxx
 export OPENAGENT_FEISHU_APP_SECRET=xxx
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8001
-export OPENAGENT_MODEL=gpt-4.1
-export OPENAGENT_WORKSPACE_ROOT=$PWD
+export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
 uv run openagent-host --channel feishu
 ```
 
@@ -257,7 +290,6 @@ uv sync --extra wechat
 
 ```bash
 export OPENAGENT_WECHAT_ALLOWED_SENDERS=wx_user_1,wx_user_2
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host --channel wechat
 ```
 
@@ -298,7 +330,6 @@ export OPENAGENT_WECOM_ALLOWED_USERS=userid_1,userid_2
 export OPENAGENT_PROVIDER=openai
 export OPENAGENT_BASE_URL=http://127.0.0.1:8080
 export OPENAGENT_MODEL=Qwen3.5-9B-Q4_K_M.gguf
-export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run --extra wecom openagent-host --channel wecom
 ```
 

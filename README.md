@@ -1,16 +1,17 @@
 # OpenAgent
 
-OpenAgent is a local-first Python agent project organized around `agent-spec`.
+OpenAgent is a local-first Python agent project.
 
 It focuses on a unified Python host, multi-channel interaction, builtin tools, durable local state, and a codebase that stays close to the spec’s module boundaries without introducing unnecessary distributed complexity.
 
 ## Highlights
 
-- Unified host model: one Python host owns `Gateway + runtime + session/memory`, while `terminal` and `feishu` attach as channels
+- Unified host model: one Python host owns `Gateway + runtime + session + durable_memory`, while `terminal` and `feishu` attach as channels
 - Local-first agent runtime: file-backed sessions, durable memory, model I/O capture, and restart-safe local workflows
 - Rich capability surface: builtin tools, policy-aware executor, skills, commands, and MCP compatibility
+- Local multi-agent baseline: delegated worker identity, background delegation, viewed transcript, and task notification routing
 - Real integrations: terminal TUI, Feishu channel, Firecrawl-backed `WebFetch / WebSearch`
-- Spec-aligned architecture: harness, session, tools, sandbox, orchestration, and object model remain explicit
+- Explicit architecture: harness, session, durable memory, tools, sandbox, and object model remain explicit
 
 ## Quick Start
 
@@ -19,6 +20,10 @@ Run these commands from the repository root.
 Start the host:
 
 ```bash
+export OPENAGENT_ROOT=.openagent
+export OPENAGENT_PROVIDER=openai
+export OPENAGENT_MODEL=unsloth/Qwen3.5-9B-GGUF
+export OPENAGENT_BASE_URL=http://127.0.0.1:8001
 export OPENAGENT_WORKSPACE_ROOT=$PWD
 uv run openagent-host
 ```
@@ -40,10 +45,14 @@ OpenAgent runs as a single Python host process. The host owns the runtime, gatew
 At a high level:
 
 - `harness`: turn runtime, provider integration, context assembly
-- `session`: event log, replay, short-term memory, durable state linkage
+- `harness/multi_agent`: delegated worker identity, routing, viewed transcript
+- `session`: event log, replay, short-term memory, durable state
+- `durable_memory`: layered durable recall, direct write / extract / dream consolidation, taxonomy-aware long-term memory
 - `tools`: builtin tools, executor, policy, skills, MCP, command surfaces
 - `gateway`: channel normalization, session binding, egress projection
-- `sandbox` and `orchestration`: local execution boundaries and background task baseline
+- `observability`: trace spans, progress, runtime metrics, session-state signals
+- `sandbox`: local execution boundaries
+- `harness/task`: local background task and verifier baseline
 
 ## Why It Stands Out
 
@@ -68,12 +77,9 @@ Current shipped baseline includes:
 - unified host + gateway runtime
 - terminal TUI and Feishu channel
 - builtin tool baseline with pluggable web backends
+- local multi-agent delegation baseline
 - session, short-term memory, durable memory, and replay
 - model I/O capture and observability baseline
-- skills, commands, MCP, and local sandbox/orchestration baseline
+- skills, commands, MCP, and local sandbox/task baseline
 
 Planned and discussion-stage features are tracked under [docs/Proposals](./docs/Proposals/README.md).
-
-## Built On `agent-spec`
-
-OpenAgent uses `agent-spec` as its architectural reference point, but stays intentionally scoped to local-first host scenarios instead of introducing cloud/distributed machinery by default.

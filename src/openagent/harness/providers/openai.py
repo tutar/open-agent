@@ -7,16 +7,16 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
-from openagent.harness.models import (
-    ModelProviderExchange,
-    ModelStreamEvent,
-    ModelTurnRequest,
-    ModelTurnResponse,
-)
 from openagent.harness.providers.base import (
     HttpTransport,
     ProviderError,
     UrllibHttpTransport,
+)
+from openagent.harness.runtime.io import (
+    ModelProviderExchange,
+    ModelStreamEvent,
+    ModelTurnRequest,
+    ModelTurnResponse,
 )
 from openagent.object_model import JsonObject, JsonValue
 from openagent.tools import ToolCall
@@ -61,6 +61,8 @@ class OpenAIChatCompletionsModelAdapter:
         tool_call_parts: dict[int, JsonObject] = {}
         aggregated_message = ""
         usage: JsonObject | None = None
+        raw_provider_events: list[JsonObject] = []
+        reasoning_fragments: list[JsonValue] = []
         for event in self._iter_sse_events(
             self.transport.post_json_stream(
                 self._endpoint_url(),
@@ -69,6 +71,10 @@ class OpenAIChatCompletionsModelAdapter:
                 self.timeout_seconds,
             )
         ):
+            raw_provider_events.append(dict(event))
+            reasoning = self._extract_stream_reasoning(event)
+            if reasoning is not None:
+                reasoning_fragments.append(reasoning)
             choices = event.get("choices")
             if isinstance(choices, list):
                 for raw_choice in choices:
@@ -92,6 +98,10 @@ class OpenAIChatCompletionsModelAdapter:
             assistant_message=aggregated_message or None,
             tool_calls=self._finalize_stream_tool_calls(tool_call_parts),
             usage=usage,
+            provider_payload=dict(payload),
+            raw_provider_events=raw_provider_events,
+            reasoning=self._merge_stream_reasoning(reasoning_fragments),
+            transport_metadata={"streaming": True},
         )
 
     def _endpoint_url(self) -> str:
@@ -111,6 +121,7 @@ class OpenAIChatCompletionsModelAdapter:
         }
         if stream:
             payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
         if self.temperature is not None:
             payload["temperature"] = self.temperature
         if self.max_tokens is not None:
@@ -207,36 +218,79 @@ class OpenAIChatCompletionsModelAdapter:
             )
         return tool_calls
 
+    def _extract_stream_reasoning(self, event: JsonObject) -> JsonValue | None:
+        containers: list[JsonObject] = [event]
+        choices = event.get("choices")
+        if isinstance(choices, list):
+            for choice in choices:
+                if not isinstance(choice, dict):
+                    continue
+                containers.append(choice)
+                delta = choice.get("delta")
+                if isinstance(delta, dict):
+                    containers.append(delta)
+        for container in containers:
+            for key in ("reasoning", "reasoning_content", "thinking"):
+                value = container.get(key)
+                if value is not None:
+                    return cast(JsonValue, value)
+            content = container.get("content")
+            if isinstance(content, list):
+                reasoning_blocks = [
+                    item
+                    for item in content
+                    if isinstance(item, dict) and str(item.get("type", "")).startswith("reason")
+                ]
+                if reasoning_blocks:
+                    return cast(JsonValue, reasoning_blocks)
+        return None
+
+    def _merge_stream_reasoning(self, fragments: list[JsonValue]) -> JsonValue | None:
+        if not fragments:
+            return None
+        if all(isinstance(fragment, str) for fragment in fragments):
+            return cast(JsonValue, "".join(cast(list[str], fragments)))
+        merged: list[JsonValue] = []
+        for fragment in fragments:
+            if isinstance(fragment, list):
+                merged.extend(cast(list[JsonValue], fragment))
+            else:
+                merged.append(fragment)
+        return cast(JsonValue, merged)
+
     def _messages_payload(self, request: ModelTurnRequest) -> list[JsonObject]:
-        messages = [self._message_payload(message) for message in request.messages]
+        system_fragments: list[str] = []
         if request.system_prompt:
+            system_fragments.append(request.system_prompt)
+        if isinstance(request.short_term_memory, dict):
+            summary = str(request.short_term_memory.get("summary", "")).strip()
+            if summary:
+                system_fragments.append(f"Session continuity summary: {summary}")
+        for memory in request.memory_context:
+            memory_summary = str(memory.get("summary", memory.get("content", "")))
+            if memory_summary:
+                system_fragments.append(f"Relevant memory: {memory_summary}")
+        messages: list[JsonObject] = []
+        for message in request.messages:
+            role = str(message.get("role", "user"))
+            if role == "system":
+                content = str(message.get("content", "")).strip()
+                if content:
+                    system_fragments.append(content)
+                continue
+            messages.append(self._message_payload(message))
+        if system_fragments:
             messages.insert(
                 0,
                 {
                     "role": "system",
-                    "content": request.system_prompt,
+                    "content": "\n\n".join(
+                        fragment.strip() for fragment in system_fragments if fragment.strip()
+                    ),
                 },
             )
-        if isinstance(request.short_term_memory, dict):
-            summary = str(request.short_term_memory.get("summary", "")).strip()
-            if summary:
-                messages.insert(
-                    1 if request.system_prompt else 0,
-                    {
-                        "role": "system",
-                        "content": f"Session continuity summary: {summary}",
-                    },
-                )
-        for memory in request.memory_context:
-            memory_summary = str(memory.get("summary", memory.get("content", "")))
-            if memory_summary:
-                messages.insert(
-                    1 if request.system_prompt else 0,
-                    {
-                        "role": "system",
-                        "content": f"Relevant memory: {memory_summary}",
-                    },
-                )
+        if not any(str(message.get("role", "")) == "user" for message in messages):
+            raise ProviderError("model request is missing a user message after context compaction")
         return messages
 
     def _message_payload(self, message: JsonObject) -> JsonObject:

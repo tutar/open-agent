@@ -39,13 +39,13 @@ Status: partially completed
 - OpenAI-compatible provider 已支持真实 streaming，请求会发送 `stream=true`
 - terminal TUI 与 Feishu reply card 都已消费 `assistant_delta`
 - Feishu reply card 为避免远程卡片更新过慢，已改为短时间窗口聚合 delta，再刷新同一张卡；终态会强制尾包 flush
-
-### 当前遗留
-
 - Feishu 卡片中的 markdown 显示仍不稳定，尤其是：
   - `###` 这类标题语法
   - 粗体标题
   - pipe table 表格
+
+### 当前遗留
+
 - 当前已经把 reply 正文拆成独立 markdown 区块，避免和 `Request / Status / Reply` 标签混在同一个大 markdown 串里；但真实飞书客户端中的最终渲染仍未达到预期
 - 这说明剩余问题更接近飞书消息卡 markdown 组件本身的支持边界、或当前卡片 schema/组件选型仍不足，而不是“没有使用 markdown tag”
 - `/channel` 与 `/channel-config` 仍未迁到独立的 host management page

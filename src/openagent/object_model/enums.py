@@ -10,6 +10,7 @@ class RuntimeEventType(StrEnum):
     ASSISTANT_DELTA = "assistant_delta"
     ASSISTANT_MESSAGE = "assistant_message"
     TASK_CREATED = "task_created"
+    TASK_STARTED = "task_started"
     TASK_PROGRESS = "task_progress"
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
@@ -26,7 +27,11 @@ class RuntimeEventType(StrEnum):
 
 
 class TerminalStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
     COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    KILLED = "killed"
     STOPPED = "stopped"
     BLOCKED = "blocked"
     FAILED = "failed"

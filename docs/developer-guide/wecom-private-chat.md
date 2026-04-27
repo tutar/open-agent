@@ -33,12 +33,19 @@ export OPENAGENT_MODEL=Qwen3.5-9B-Q4_K_M.gguf
 可选：
 
 ```bash
+export OPENAGENT_ROOT=.openagent
 export OPENAGENT_WECOM_WS_URL=wss://openws.work.weixin.qq.com
 export OPENAGENT_WECOM_ALLOWED_USERS=userid_1,userid_2
 export OPENAGENT_WECOM_PING_INTERVAL_SECONDS=30
-export OPENAGENT_SESSION_ROOT=.openagent/wecom/sessions
-export OPENAGENT_BINDING_ROOT=.openagent/wecom/sessions/bindings
 ```
+
+`openagent-host` 会从 `OPENAGENT_ROOT` 推导默认目录：
+
+- `${OPENAGENT_ROOT}/sessions`
+- `${OPENAGENT_ROOT}/agent_<role_id|default>/agents/local-agent/model-io`
+- `${OPENAGENT_ROOT}/sessions/<session_id>/bindings/`
+
+一般不需要再单独配置 `OPENAGENT_SESSION_ROOT` / `OPENAGENT_BINDING_ROOT`。
 
 `OPENAGENT_WECOM_ALLOWED_USERS` 为空时允许所有私聊用户驱动当前 agent。真实使用时建议配置允许列表。
 
@@ -176,18 +183,18 @@ WeCom private chat
 - `src/openagent/gateway/channels/wecom/host.py`：启动 client、去重、allowlist、session binding 和回复分发。
 - `src/openagent/gateway/channels/wecom/dedupe.py`：内存和文件型入站消息去重。
 - `src/openagent/gateway/channels/wecom/assembly.py`：配置、runtime、gateway 和 host 组装。
-- `src/openagent/host/app.py`：统一 host 的 `/channel wecom` 和 `/channel-config wecom ...` 管理入口。
+- `src/openagent/gateway/assemblies/channel_manager.py`：统一 host 的 `/channel wecom` 和 `/channel-config wecom ...` 管理入口，以及 channel config resolve / host startup。
 
 ## Tests
 
 聚焦测试：
 
 ```bash
-uv run pytest tests/test_wecom_gateway.py tests/test_host_management.py -q
+uv run pytest tests/gateway/test_wecom_gateway.py tests/gateway/test_host_management.py -q
 ```
 
 如果本机 `.python-version` 指向未安装的 patch 版本，可以显式指定兼容的 Python 3.11：
 
 ```bash
-uv run --python 3.11.14 pytest tests/test_wecom_gateway.py tests/test_host_management.py -q
+uv run --python 3.11.14 pytest tests/gateway/test_wecom_gateway.py tests/gateway/test_host_management.py -q
 ```

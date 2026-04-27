@@ -24,6 +24,25 @@ pytest -q tests -m 'not feishu_e2e and not feishu_group_e2e'
 - 没有新增 lint / type error
 - 非真实网络测试保持稳定
 
+如果你要直接跑“当前环境下能执行的全量回归”，推荐用这一条：
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  OPENAGENT_RUN_FEISHU_E2E=1 \
+  OPENAGENT_RUN_FEISHU_GROUP_E2E=1 \
+  OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
+  OPENAGENT_FEISHU_E2E_GROUP_ID=oc_3b0779b193e78de1052091fae2c272d8 \
+  ./.venv/bin/python -m pytest -q tests -rs
+```
+
+说明：
+
+- 这条会包含 terminal client 和真实 Feishu 私聊 / 群聊 E2E
+- 当前仍可能 `skip` 的只有：
+  - 首条私聊 slash 命令的真实 E2E
+  - Firecrawl / Tavily / Brave 的 live smoke
+- 那几条需要额外外部前置条件，不属于默认本地基线
+
 ## 2. Terminal TUI Baseline
 
 如果本次改动涉及 `frontend/terminal-tui`，再执行：
@@ -53,7 +72,18 @@ export OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_xxx
 执行：
 
 ```bash
-pytest -q tests/test_feishu_e2e.py -m feishu_e2e
+pytest -q tests/e2e/test_feishu_e2e.py -m feishu_e2e
+```
+
+如果你当前 shell 里配置了代理，建议直接用：
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  OPENAGENT_RUN_FEISHU_E2E=1 \
+  OPENAGENT_FEISHU_APP_ID=cli_xxx \
+  OPENAGENT_FEISHU_APP_SECRET=xxx \
+  OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_xxx \
+  ./.venv/bin/python -m pytest -q tests/e2e/test_feishu_e2e.py -k 'not feishu_group_e2e'
 ```
 
 预期：
@@ -81,7 +111,18 @@ export OPENAGENT_FEISHU_E2E_BOT_NAME=openagent
 执行：
 
 ```bash
-pytest -q tests/test_feishu_e2e.py -m feishu_group_e2e
+pytest -q tests/e2e/test_feishu_e2e.py -m feishu_group_e2e
+```
+
+当前项目里实际常用命令可以直接写成：
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  OPENAGENT_RUN_FEISHU_E2E=1 \
+  OPENAGENT_RUN_FEISHU_GROUP_E2E=1 \
+  OPENAGENT_FEISHU_E2E_P2P_CHAT_ID=oc_b92f525093e8d758add36d57272ec6a1 \
+  OPENAGENT_FEISHU_E2E_GROUP_ID=oc_3b0779b193e78de1052091fae2c272d8 \
+  ./.venv/bin/python -m pytest -q tests/e2e/test_feishu_e2e.py -k 'feishu_group_e2e'
 ```
 
 预期：

@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from openagent.gateway.binding_store import FileSessionBindingStore
 from openagent.gateway.core import Gateway
 from openagent.gateway.session_adapter import InProcessSessionAdapter
-from openagent.harness import ModelProviderAdapter, SimpleHarness
 from openagent.harness.assemblies import create_file_runtime_assembly
 from openagent.harness.providers import load_model_from_env
+from openagent.harness.runtime.core.agent_runtime import SimpleHarness
+from openagent.harness.runtime.io import ModelProviderAdapter
 from openagent.object_model import JsonObject
 from openagent.observability import AgentObservability
+from openagent.shared import (
+    normalize_openagent_root,
+    resolve_cards_root,
+    resolve_agent_root,
+    resolve_path_env,
+    resolve_sessions_root,
+)
 from openagent.tools import ToolDefinition
 
 from .adapter import FeishuChannelAdapter
@@ -31,12 +39,13 @@ class FeishuAppConfig:
 
     app_id: str
     app_secret: str
-    session_root: str
-    binding_root: str
-    workspace_root: str = field(default_factory=os.getcwd)
+    openagent_root: str = str(Path(".openagent"))
+    agent_root: str = str(Path(".openagent") / "agent_default")
+    session_root: str = str(Path(".openagent") / "sessions")
+    binding_root: str = str(Path(".openagent") / "sessions")
     lock_root: str = str(Path("/tmp") / "openagent-feishu-locks")
     mention_required_in_group: bool = True
-    card_state_root: str = str(Path(".openagent") / "feishu" / "cards")
+    card_state_root: str = str(Path(".openagent") / "cards" / "feishu")
 
     @classmethod
     def from_env(cls) -> FeishuAppConfig:
@@ -49,30 +58,33 @@ class FeishuAppConfig:
         if not app_secret:
             raise RuntimeError("OPENAGENT_FEISHU_APP_SECRET is required")
 
-        session_root = os.getenv(
+        openagent_root = normalize_openagent_root(os.getenv("OPENAGENT_ROOT"))
+        role_id = os.getenv("OPENAGENT_ROLE_ID")
+        agent_root = resolve_agent_root(openagent_root, role_id)
+        session_root = resolve_path_env(
             "OPENAGENT_SESSION_ROOT",
-            str(Path(".openagent") / "feishu" / "sessions"),
-        )
-        binding_root = os.getenv(
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
+        binding_root = resolve_path_env(
             "OPENAGENT_BINDING_ROOT",
-            str(Path(session_root) / "bindings"),
-        )
-        workspace_root = os.getenv("OPENAGENT_WORKSPACE_ROOT", os.getcwd())
-        lock_root = os.getenv(
+            resolve_sessions_root(openagent_root),
+        ) or resolve_sessions_root(openagent_root)
+        lock_root = resolve_path_env(
             "OPENAGENT_FEISHU_LOCK_ROOT",
             str(Path("/tmp") / "openagent-feishu-locks"),
-        )
+        ) or str(Path("/tmp") / "openagent-feishu-locks")
         mention_required = os.getenv("OPENAGENT_FEISHU_GROUP_AT_ONLY", "true").lower() != "false"
-        card_state_root = os.getenv(
+        card_state_root = resolve_path_env(
             "OPENAGENT_FEISHU_CARD_STATE_ROOT",
-            str(Path(session_root) / "cards"),
-        )
+            resolve_cards_root(openagent_root, "feishu"),
+        ) or resolve_cards_root(openagent_root, "feishu")
         return cls(
             app_id=app_id,
             app_secret=app_secret,
+            openagent_root=openagent_root,
+            agent_root=agent_root,
             session_root=session_root,
             binding_root=binding_root,
-            workspace_root=workspace_root,
             lock_root=lock_root,
             mention_required_in_group=mention_required,
             card_state_root=card_state_root,
@@ -84,7 +96,6 @@ def create_feishu_runtime(
     session_root: str,
     tools: list[ToolDefinition] | None = None,
     observability: AgentObservability | None = None,
-    workspace_root: str | None = None,
     model_io_root: str | None = None,
 ) -> SimpleHarness:
     """Create a file-backed runtime suitable for Feishu sessions."""
@@ -94,7 +105,6 @@ def create_feishu_runtime(
         session_root=session_root,
         tools=tools,
         observability=observability,
-        workspace_root=workspace_root,
         model_io_root=model_io_root,
     )
 
@@ -110,7 +120,6 @@ def create_feishu_gateway(
         model=model,
         session_root=config.session_root,
         tools=tools,
-        workspace_root=config.workspace_root,
     )
     gateway = Gateway(
         InProcessSessionAdapter(runtime),

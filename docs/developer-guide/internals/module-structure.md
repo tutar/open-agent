@@ -17,18 +17,28 @@
   - canonical objects
   - runtime events
   - shared records and payloads
+- `capability_surface/`
+  - shared capability surface
+  - capability projection
+  - cross-domain capability exposure seam
+- `durable_memory/`
+  - bounded recall
+  - resident index / manifest layering
+  - consolidation
+  - payload taxonomy
+  - overlay scopes
+  - durable store baselines
 - `harness/`
   - turn runtime
   - model providers
   - context assembly
-  - sub-agent coordination
+  - multi-agent coordination
   - task lifecycle
 - `session/`
   - transcript
   - event log
   - checkpoint / cursor / resume
   - short-term memory
-  - `session.memory` linkage
 - `tools/`
   - builtin tools
   - commands
@@ -44,48 +54,89 @@
   - frontend / channel integration boundary
   - bindings
   - projection
+  - channel-oriented assembly helpers
 - `observability/`
-  - tracing
-  - metrics
-  - progress / signal projection
+  - observability facade
+  - normalized observability models
+  - sink interface
+  - local/dev sinks
 - `host/`
   - host app
   - startup surface
   - host-local config and transport wiring
+- `shared/`
+  - shared versioning
+  - cross-cutting constants or helpers that do not belong to a domain package
+- `cli.py`
+  - top-level CLI entrypoint
+- `local.py`
+  - top-level local runtime facade
 
 ## Harness Structure
 
 `harness/` 是 OpenAgent 的核心运行时目录，目标上应按这些子主题组织：
 
 - `runtime/`
-  - turn loop
-  - terminal / failure state
-  - retry / timeout control
+  - `core/`
+    - agent runtime facade
+    - turn loop
+    - terminal / failure state
+    - retry / timeout control
+    - runtime event pipeline
+  - `io.py`
+    - model turn request / response
+    - provider exchange
+    - model I/O capture records
+  - `projection/`
+    - runtime-to-observability projection
+    - runtime-visible state projection
+  - `post_turn/`
+    - turn terminal 后处理
+    - memory / continuity maintenance
+  - `hooks/`
+    - runtime lifecycle hook plane
 - `providers/`
   - provider adapters
   - streaming integration
-  - provider exchange capture
-- `context/`
-  - bootstrap prompts
-  - context governance
-  - prompt cache
-  - tool-result externalization
+  - provider transport
+- `context_engineering/`
+  - `entry/`
+    - bootstrap prompts
+    - startup / turn-zero context
+  - `assembly/`
+    - structured context planes
+    - attachments / evidence / capability exposure
+  - `governance/`
+    - context governance
+    - context editing
+    - prompt cache strategy
+  - `instruction_markdown/`
+    - AGENTS / RULES loading
+    - include expansion
+    - conditional rules
 - `assemblies/`
   - local runtime assembly
   - runtime wiring helpers
-- `tasks/`
-  - task manager
+- `task/`
+  - task registry / implementation registry
   - background task lifecycle
+  - verifier task runtime
   - task persistence / handles / events
-- `subagents/`
-  - sub-agent coordination
-  - verifier / reflection / delegated execution flows
+  - output cursor / output slice
+  - terminal notification / retention / eviction
+- `multi_agent/`
+  - delegated worker identity
+  - task-notification routing
+  - direct-view input routing
+  - viewed transcript projection
+  - local delegation facade
 
 这里的关键边界是：
 
-- task 和 sub-agent 编排都属于 `harness`
-- `orchestration` 不是目标顶层模块
-- 后续与 task 有关的代码应优先向 `harness/tasks/` 收敛
+- task 和 multi-agent 编排都属于 `harness`
+- 后续与 task 有关的代码应优先向 `harness/task/` 收敛
+- delegated worker routing/projection 应优先向 `harness/multi_agent/` 收敛
+- `runtime/` 是 harness 的主子域，但 provider、context、task 仍保持平级目录
 
 ## Stable Top-Level Boundaries
 
@@ -95,14 +146,31 @@
 
 - 负责 frontend / channel 接入
 - 负责 binding、inbound normalization、egress projection
+- channel-specific config resolve / host startup 应优先放在 `gateway/assemblies/`
 - 目录上继续保留顶层，不要求强行并进 `harness/`
 - 但职责判断上应始终视为 runtime 的接入边界，而不是独立业务域
 
 ### `observability/`
 
-- 负责 tracing、progress、metrics、session/task signal
-- 当前同时被 harness、tools、gateway、task 路径复用
+- 负责 observability facade、normalized models、sink interface、local/dev sinks
+- 当前主要承载：
+  - trace span emission
+  - progress projection
+  - runtime metric emission
+  - session-state signal emission
+- 当前同时被 `harness/runtime/projection/`、tools、gateway、task 路径复用
 - 作为 shared seam 保留顶层更合理
+
+### `capability_surface/`
+
+- 负责 capability descriptors、origin metadata、projection helpers
+- 当前被 tools、context engineering、gateway-facing exposure 共同使用
+- 保持顶层 shared seam 更符合当前代码边界
+
+### `shared/`
+
+- 放真正轻量的 shared helpers
+- 当前主要是版本信息，不应扩张成新的领域实现目录
 
 ### `host/`
 
@@ -116,15 +184,16 @@
 - `local.py`
   - 顶层 facade
   - 真实装配逻辑应继续放在 `harness/assemblies/`
-- `context_governance.py`
-  - compatibility re-export
-  - 真实实现应继续放在 `harness/context/`
-- `host/service.py`
-  - compatibility export
-  - 真实 host 实现应在 `host/` 子模块中维护
+- `cli.py`
+  - 顶层 CLI 入口
+  - 不视为业务子域
 - `gateway/assemblies/feishu.py`
   - compatibility export
   - Feishu-specific assembly 应继续在 channel 子包旁维护
+- `gateway/assemblies/channel_manager.py`
+  - host-facing channel registry / startup helper
+  - 负责 channel spec、config resolve、host startup
+  - 不属于 `Gateway` core 本身
 
 ## Current Codebase Status
 
@@ -133,19 +202,42 @@
 - `object_model/`
 - `harness/`
 - `session/`
+- `durable_memory/`
 - `tools/`
 - `sandbox/`
 - `gateway/`
 - `observability/`
 - `host/`
+- `capability_surface/`
+- `shared/`
 
-当前仍需要在后续迁移中继续收口的是：
+当前 `harness/multi_agent/` 已经覆盖本地 baseline：
 
-- `src/openagent/orchestration/`
-  - 代码目前仍存在
-  - 但目标结构里不再作为顶层目录保留
-  - task manager / background task / task handle / task events 未来应迁到 `harness/tasks/`
-  - 与 sub-agent 编排相关的逻辑未来应迁到 `harness/subagents/`
+- delegated subagent invocation
+- background delegation
+- task-notification routing
+- direct-view input
+- viewed transcript projection
+
+teammate execution 仍然不在当前实现范围内。
+
+当前 `harness/task/` 已经不再只是 background helper：
+
+- `TaskRegistry` 是 task state 的单一事实来源
+- `TaskImplementationRegistry` 负责按 task/type 分发 `await / kill / read_output / read_events`
+- background task 与 verifier task 共用同一套 task lifecycle
+- task 输出通过 `output_ref + output_cursor` 暴露增量读取语义
+- terminal notification、chat/session observer 持有、retention / eviction 都在这个子域内收口
+
+当前 `harness/runtime/` 已经收口为主运行时目录：
+
+- `core/`
+- `io.py`
+- `projection/`
+- `post_turn/`
+- `hooks/`
+
+旧的顶层 runtime 文件不再作为正式结构保留。
 
 `terminal` channel 当前也已经统一收口为：
 
@@ -179,7 +271,7 @@
 - turn runtime
 - providers
 - context
-- sub-agent coordination
+- multi-agent coordination
 - task lifecycle
 
 都属于 `harness` 的职责范围。
@@ -201,6 +293,9 @@
 - 优先避免打破 `openagent.__init__` 和已公开导出
 - 真正变的是内部归属和实现路径
 
+如果某个子域已经被正式收进 `harness/runtime/`，则不要再新增顶层 `harness/*.py`
+形式的同类入口。
+
 ## Recent Follow-Through
 
 这些调整已经按上面的结构原则落地：
@@ -215,10 +310,17 @@
 - 已从单文件拆成 shared package
 - 继续保留顶层导入语义，但内部职责已经分开
 
-### `context_governance`
+### `context_engineering`
 
-- 已归位到 `harness/context/`
-- 顶层 `context_governance.py` 只保留兼容 re-export
+- 已归位到 `harness/context_engineering/`
+- startup context、bootstrap prompt、assembly、governance、instruction markdown 都在同一子域内维护
+
+### `harness/runtime`
+
+- `SimpleHarness`、`RalphLoop`、runtime state、runtime I/O capture 已收进
+  `harness/runtime/`
+- runtime 相关符号不再从根包 `openagent` 或 `openagent.harness` 直接导出
+- 正式路径应走 `openagent.harness.runtime`
 
 ## Recommended Reading Order
 

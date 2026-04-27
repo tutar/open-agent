@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from openagent.harness import SimpleHarness
+from openagent.harness.runtime.core.agent_runtime import SimpleHarness
 from openagent.object_model import HarnessInstance, RuntimeEvent
 from openagent.session import SessionCheckpoint
 
@@ -42,7 +42,8 @@ class InProcessSessionAdapter:
         session = self._runtime.sessions.load_session(session_id)
         if getattr(session, "agent_id", None) is None:
             session.agent_id = self._agent_id
-            self._runtime.sessions.save_session(session_id, session)
+        self._runtime.ensure_session_workspace(session_id, session)
+        self._runtime.sessions.save_session(session_id, session)
         self._runtime.sessions.acquire_lease(
             session_id,
             harness_instance.harness_instance_id,
