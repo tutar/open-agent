@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import builtins
 import json
+import tempfile
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 from typing import cast
 
+from openagent.durable_memory.dreaming import DreamingConfig, DreamingEngine
 from openagent.durable_memory.models import (
     AutoMemoryRuntimeConfig,
     DirectMemoryWriteRequest,
@@ -34,7 +36,7 @@ from openagent.durable_memory.operations import (
     select_recall_candidates,
 )
 from openagent.durable_memory.runtime import AutoMemoryRuntime
-from openagent.object_model import JsonValue
+from openagent.object_model import JsonObject, JsonValue
 from openagent.session.models import SessionMessage
 
 
@@ -47,9 +49,11 @@ class InMemoryMemoryStore:
         self._records: dict[str, MemoryRecord] = {}
         self._counter = 0
         self._recall_handles: dict[str, MemoryRecallHandle] = {}
-        self._jobs: dict[str, tuple[str, list[SessionMessage], str]] = {}
+        self._jobs: dict[str, tuple[str, list[SessionMessage], str, JsonObject | None]] = {}
         self._pending_jobs: dict[str, Future[MemoryConsolidationResult]] = {}
+        self._completed_jobs: dict[str, MemoryConsolidationResult] = {}
         self._executor = ThreadPoolExecutor(max_workers=2)
+        self._dreaming_root = Path(tempfile.mkdtemp(prefix="openagent-dreaming-"))
 
     def is_enabled(self) -> bool:
         return self.runtime.is_enabled()
@@ -221,12 +225,17 @@ class InMemoryMemoryStore:
         session_id: str,
         transcript_slice: builtins.list[SessionMessage],
         agent_id: str | None = None,
+        write_path: DurableWritePath | str | None = None,
+        dreaming_config: DreamingConfig | JsonObject | None = None,
     ) -> MemoryConsolidationJob:
+        resolved_write_path = DurableWritePath.EXTRACT
+        if write_path is not None:
+            resolved_write_path = DurableWritePath(str(write_path))
         job = MemoryConsolidationJob(
             job_id=f"memory_job_{len(self._jobs) + 1}",
             session_id=session_id,
             transcript_size=len(transcript_slice),
-            write_path=DurableWritePath.EXTRACT,
+            write_path=resolved_write_path,
         )
         snapshot = [
             SessionMessage(
@@ -236,7 +245,12 @@ class InMemoryMemoryStore:
             )
             for item in transcript_slice
         ]
-        self._jobs[job.job_id] = (session_id, snapshot, agent_id or "")
+        serialized_config: JsonObject | None = None
+        if isinstance(dreaming_config, DreamingConfig):
+            serialized_config = dreaming_config.to_dict()
+        elif isinstance(dreaming_config, dict):
+            serialized_config = dreaming_config
+        self._jobs[job.job_id] = (session_id, snapshot, agent_id or "", serialized_config)
         self._pending_jobs[job.job_id] = self._executor.submit(self.run, job)
         return job
 
@@ -245,6 +259,9 @@ class InMemoryMemoryStore:
         job_id: str,
         timeout_seconds: float | None = None,
     ) -> MemoryConsolidationResult:
+        completed = self._completed_jobs.get(job_id)
+        if completed is not None:
+            return completed
         future = self._pending_jobs[job_id]
         return future.result(timeout=timeout_seconds)
 
@@ -292,38 +309,18 @@ class InMemoryMemoryStore:
         if request.force_failure:
             raise RuntimeError("dream consolidation failed")
         transcript = [SessionMessage.from_dict(item) for item in request.transcript_slice]
-        extracted = self.extract(
-            transcript,
-            existing_memory_context=list(snapshot.values()),
+        engine = DreamingEngine(
+            memory_root=self._dreaming_memory_root(),
+            config=self._dreaming_config_from_request(request),
+        )
+        sweep_result = engine.run_sweep(
             session_id=request.session_id,
+            transcript_slice=transcript,
+            existing_records=list(snapshot.values()),
             agent_id=request.agent_id,
         )
         consolidated: list[MemoryRecord] = []
-        skipped_refs: list[str] = []
-        for record in extracted:
-            duplicate = next(
-                (
-                    existing
-                    for existing in snapshot.values()
-                    if existing.title == record.title and existing.scope == record.scope
-                ),
-                None,
-            )
-            if duplicate is not None:
-                merged_metadata = dict(duplicate.metadata)
-                merged_metadata["write_path"] = DurableWritePath.DREAM.value
-                updated = self.update_memory(
-                    duplicate.memory_id,
-                    {
-                        "summary": record.summary,
-                        "content": record.content,
-                        "updated_at": datetime.now(UTC).isoformat(),
-                        "metadata": merged_metadata,
-                    },
-                )
-                consolidated.append(updated)
-                skipped_refs.append(duplicate.memory_id)
-                continue
+        for record in sweep_result.promoted_records:
             metadata = dict(record.metadata)
             metadata["write_path"] = DurableWritePath.DREAM.value
             dream_record = MemoryRecord.from_dict({**record.to_dict(), "metadata": metadata})
@@ -332,17 +329,20 @@ class InMemoryMemoryStore:
         return DreamConsolidationResult(
             session_id=request.session_id,
             consolidated=consolidated,
-            skipped_refs=skipped_refs,
+            skipped_refs=sweep_result.skipped_refs,
         )
 
     def run(self, consolidation_job: MemoryConsolidationJob) -> MemoryConsolidationResult:
-        session_id, transcript_slice, agent_id = self._jobs[consolidation_job.job_id]
+        session_id, transcript_slice, agent_id, dreaming_config = self._jobs[
+            consolidation_job.job_id
+        ]
         if consolidation_job.write_path is DurableWritePath.DREAM:
             dream_result = self.dream(
                 DreamConsolidationRequest.from_session_messages(
                     session_id=session_id,
                     transcript_slice=transcript_slice,
                     agent_id=agent_id or None,
+                    dreaming_config=dreaming_config,
                 )
             )
             result = MemoryConsolidationResult(
@@ -353,8 +353,21 @@ class InMemoryMemoryStore:
             )
         else:
             result = self.consolidate(session_id, transcript_slice, agent_id=agent_id or None)
+        self._completed_jobs[consolidation_job.job_id] = result
         self._pending_jobs.pop(consolidation_job.job_id, None)
         return result
+
+    def _dreaming_config_from_request(
+        self,
+        request: DreamConsolidationRequest,
+    ) -> DreamingConfig:
+        if request.dreaming_config is None:
+            return DreamingConfig(enabled=True, write_markdown=False, dream_diary_enabled=False)
+        config = DreamingConfig.from_dict(request.dreaming_config)
+        return DreamingConfig.from_dict({**config.to_dict(), "enabled": True})
+
+    def _dreaming_memory_root(self) -> Path:
+        return self._dreaming_root
 
     def _find_duplicate(self, record: MemoryRecord) -> MemoryRecord | None:
         return next(
@@ -460,6 +473,9 @@ class FileMemoryStore(InMemoryMemoryStore):
             self._write_record(record)
         self._write_skipped_records(result.skipped_refs)
         return result
+
+    def _dreaming_memory_root(self) -> Path:
+        return self._root.parent
 
     def _record_path(self, memory_id: str) -> Path:
         return self._root / f"{memory_id}.json"

@@ -27,6 +27,12 @@
   - dream
 - transcript-to-durable-memory extraction baseline
 - background consolidation job baseline
+- OpenClaw-style dreaming memory:
+  - Light / REM / Deep phase sweep
+  - `memory/.dreams/` machine state
+  - phase reports under `DREAMS.md` and `memory/dreaming/<phase>/YYYY-MM-DD.md`
+  - optional `MEMORY.md` promotion artifact
+  - deterministic Dream Diary entries that are explicitly not promotion sources
 - bounded recall into `ModelTurnRequest.memory_context`
 - same-agent cross-session long-term memory recall baseline
 - restart-safe durable memory recall
@@ -36,3 +42,4 @@
 - richer ranking and manifest selection policy
 - richer extraction heuristics beyond the local baseline
 - a fuller team runtime around the `team` overlay
+- external cron/daemon integration for dreaming beyond the runtime-local scheduler

@@ -10,7 +10,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import cast
 
-from openagent.durable_memory import MemoryStore
+from openagent.durable_memory import DurableWritePath, MemoryConsolidationJob, MemoryStore
+from openagent.durable_memory.dreaming import DreamingConfig, DreamingScheduler
 from openagent.harness.context_engineering import (
     BootstrapPromptAssembler,
     ContextAssemblyInput,
@@ -111,7 +112,9 @@ class SimpleHarness(Harness):
     last_context_report: ContextReport | None = None
     memory_store: MemoryStore | None = None
     short_term_memory_store: ShortTermMemoryStore | None = None
+    dreaming_config: DreamingConfig = field(default_factory=DreamingConfig)
     last_memory_consolidation_job_id: str | None = None
+    last_dreaming_job_id: str | None = None
     observability: AgentObservability | None = None
     model_io_capture: ModelIoCapture = field(default_factory=NoOpModelIoCapture)
     bootstrap_prompts: BootstrapPromptAssembler = field(default_factory=BootstrapPromptAssembler)
@@ -124,6 +127,8 @@ class SimpleHarness(Harness):
     agent_root_dir: str | None = None
     role_id: str | None = None
     runtime_loop: AgentRuntime = field(init=False, repr=False)
+    dreaming_scheduler: DreamingScheduler = field(init=False, repr=False)
+    _last_memory_session: SessionRecord | None = field(default=None, init=False, repr=False)
     hook_runtime: HookRuntime = field(default_factory=HookRuntime)
     post_turn_registry: PostTurnRegistry = field(default_factory=PostTurnRegistry)
     projection: RuntimeObservabilityProjection = field(init=False, repr=False)
@@ -137,6 +142,7 @@ class SimpleHarness(Harness):
 
         self.projection = RuntimeObservabilityProjection(self.observability)
         self.post_turn_registry.register(MemoryMaintenanceProcessor())
+        self.dreaming_scheduler = DreamingScheduler(self.dreaming_config)
         self.runtime_loop = RalphLoop(self)
 
     def run_turn_stream(
@@ -421,6 +427,7 @@ class SimpleHarness(Harness):
         return SessionMessage(role=role, content=content)
 
     def schedule_memory_maintenance(self, session: SessionRecord) -> None:
+        self._last_memory_session = session
         if self.short_term_memory_store is not None:
             current_memory = self.short_term_memory_store.load(session.session_id)
             update = self.short_term_memory_store.update(
@@ -437,6 +444,27 @@ class SimpleHarness(Harness):
                 agent_id=session.agent_id,
             )
             self.last_memory_consolidation_job_id = job.job_id
+
+    def maybe_schedule_dreaming(self) -> MemoryConsolidationJob | None:
+        session = self._last_memory_session
+        if (
+            session is None
+            or self.memory_store is None
+            or not self.memory_store.is_enabled()
+            or not session.messages
+            or not self.dreaming_scheduler.should_run()
+        ):
+            return None
+        job = self.memory_store.schedule(
+            session.session_id,
+            list(session.messages),
+            agent_id=session.agent_id,
+            write_path=DurableWritePath.DREAM,
+            dreaming_config=self.dreaming_config,
+        )
+        self.dreaming_scheduler.mark_scheduled()
+        self.last_dreaming_job_id = job.job_id
+        return job
 
     def stabilize_short_term_memory(
         self,

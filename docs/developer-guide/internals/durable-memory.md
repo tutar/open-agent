@@ -20,6 +20,11 @@
 - payload taxonomy 与 overlay scope 两条独立轴
 - `AutoMemoryRuntimeConfig` / `AutoMemoryRuntime`
 - `direct_write / extract / dream` 三条写路径
+- OpenClaw-style dreaming pipeline:
+  - `durable_memory/dreaming/models.py` 定义 dreaming config、phase、short-term recall entry 与 promotion candidate
+  - `durable_memory/dreaming/state.py` 维护 `memory/.dreams/short-term-recall.json`、`phase-signals.json`、checkpoint 与 lock
+  - `durable_memory/dreaming/phases.py` 运行 Light / REM / Deep 阶段
+  - `durable_memory/dreaming/markdown.py` 维护 `DREAMS.md`、`MEMORY.md` 与 `memory/dreaming/<phase>/YYYY-MM-DD.md`
 
 当前 runtime 的关系是：
 
@@ -39,3 +44,15 @@
 1. direct write
 2. turn-end extract
 3. dream/background consolidation
+
+`dream` 现在是阶段化的后台巩固路径。Light 阶段整理近期 session/daily
+signals 并记录 reinforcement；REM 阶段抽取主题和反思信号；Deep 阶段按
+frequency、relevance、query diversity、recency、consolidation、conceptual
+richness 加权打分，通过阈值后把同一批 promotion candidates 写入
+`MemoryStore`。`MemoryStore` 仍然是 runtime recall 的 canonical 来源；
+Markdown 产物用于审计、迁移和人读 UI，不作为召回的唯一事实来源。
+
+默认的 runtime dreaming config 是 disabled。普通 post-turn maintenance 继续执行
+轻量 extract / short-term memory update；完整 dreaming sweep 只通过显式
+`dream(...)`、`write_path=DREAM` 的 scheduled job，或 harness 的
+`maybe_schedule_dreaming()` 时间门控入口触发。

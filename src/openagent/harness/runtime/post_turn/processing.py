@@ -15,6 +15,9 @@ class MemoryMaintenanceRuntime(Protocol):
     def stabilize_short_term_memory(self, session: SessionRecord) -> None:
         """Persist the latest short-term memory snapshot for the session."""
 
+    def maybe_schedule_dreaming(self) -> object | None:
+        """Schedule runtime-local dreaming maintenance if its gate allows it."""
+
 
 @dataclass(slots=True)
 class PostTurnContext:
@@ -58,3 +61,4 @@ class MemoryMaintenanceProcessor:
         runtime = context.runtime
         runtime.schedule_memory_maintenance(context.session)
         runtime.stabilize_short_term_memory(context.session)
+        runtime.maybe_schedule_dreaming()

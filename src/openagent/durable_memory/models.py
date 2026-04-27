@@ -253,6 +253,7 @@ class DreamConsolidationRequest(SerializableModel):
     transcript_slice: list[JsonObject] = field(default_factory=list)
     agent_id: str | None = None
     force_failure: bool = False
+    dreaming_config: JsonObject | None = None
 
     @classmethod
     def from_session_messages(
@@ -261,6 +262,7 @@ class DreamConsolidationRequest(SerializableModel):
         transcript_slice: Sequence[object],
         agent_id: str | None = None,
         force_failure: bool = False,
+        dreaming_config: object | None = None,
     ) -> DreamConsolidationRequest:
         serialized = cast(
             list[JsonObject],
@@ -269,11 +271,17 @@ class DreamConsolidationRequest(SerializableModel):
                 for message in transcript_slice
             ],
         )
+        serialized_config = (
+            cast(JsonObject, dreaming_config.to_dict())
+            if hasattr(dreaming_config, "to_dict")
+            else cast(JsonObject | None, dreaming_config)
+        )
         return cls(
             session_id=session_id,
             transcript_slice=serialized,
             agent_id=agent_id,
             force_failure=force_failure,
+            dreaming_config=serialized_config,
         )
 
 

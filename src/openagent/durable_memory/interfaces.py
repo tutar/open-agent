@@ -78,6 +78,8 @@ class MemoryConsolidator(Protocol):
         session_id: str,
         transcript_slice: builtins.list[SessionMessage],
         agent_id: str | None = None,
+        write_path: object | None = None,
+        dreaming_config: object | None = None,
     ) -> MemoryConsolidationJob:
         """Schedule a durable memory extraction/consolidation job."""
 
