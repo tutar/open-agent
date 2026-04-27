@@ -57,10 +57,11 @@ Feishu 是同一个 unified host 上的 chat channel。
 - 每个 user turn 一张 reply card
 - reply card 优先通过 CardKit 流式更新；若租户权限或平台能力不足，会自动降级为对同一张消息卡片做 patch 更新：
   - running
-  - requires_action
   - completed
   - failed
   - interrupted
+- `requires_action` 的审批能力必须依赖 CardKit；当前不再允许把带审批按钮的卡片降级到 message patch 路径
+- 若普通运行态卡片曾因 streaming 设置失败而退回 patch，后续审批态仍会在已解析出的 `card_id` 上直接走 CardKit 更新，不会因为 streaming fallback 把审批态一并降级掉
 - reply card 现在按 Card JSON 2.0 结构输出：`schema: "2.0"` + `body.elements`
 - reply card 会消费 `assistant_delta`，在同一张卡片上增量追加回复内容
 - reply 正文会按 Markdown block 拆成多个 card element，而不是把整段回复塞进单个文本块；这样可以减少段落空行在飞书里的展示异常

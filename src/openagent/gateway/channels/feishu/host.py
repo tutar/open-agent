@@ -30,6 +30,9 @@ from .dedupe import FileFeishuInboundDedupeStore, InMemoryFeishuInboundDedupeSto
 
 FEISHU_REACTION_IN_PROGRESS = "OneSecond"
 FEISHU_REACTION_COMPLETED = "DONE"
+_APPROVAL_CARDKIT_REQUIRED_ERROR = (
+    "Feishu approval card requires CardKit; patch fallback is unsupported"
+)
 
 
 @dataclass(slots=True)
@@ -480,6 +483,13 @@ class FeishuLongConnectionHost:
                     record.cardkit_supported = True
                     record.mark_delivery_success(card_id=card_id)
                 except Exception as exc:
+                    if self._requires_cardkit_approval(record) and self._should_fallback_to_message_patch(
+                        exc
+                    ):
+                        record.cardkit_supported = False
+                        record.card_id = None
+                        record.streaming_active = False
+                        raise RuntimeError(_APPROVAL_CARDKIT_REQUIRED_ERROR) from exc
                     if not self._should_fallback_to_message_patch(exc):
                         raise
                     record.cardkit_supported = False
@@ -492,7 +502,16 @@ class FeishuLongConnectionHost:
                         flush=True,
                     )
 
-            if record.cardkit_supported is False:
+            approval_synced = False
+            if self._requires_cardkit_approval(record) and record.card_id is not None:
+                self._sync_approval_card_via_cardkit(record)
+                approval_synced = True
+
+            if approval_synced:
+                pass
+            elif record.cardkit_supported is False:
+                if self._requires_cardkit_approval(record):
+                    raise RuntimeError(_APPROVAL_CARDKIT_REQUIRED_ERROR)
                 if record.reply_message_id is None:
                     raise RuntimeError("reply card is missing message_id for patch fallback")
                 print(
@@ -526,6 +545,12 @@ class FeishuLongConnectionHost:
                         sequence=record.next_stream_sequence(),
                     )
                 except Exception as exc:
+                    if self._requires_cardkit_approval(record) and self._should_fallback_to_message_patch(
+                        exc
+                    ):
+                        record.cardkit_supported = False
+                        record.streaming_active = False
+                        raise RuntimeError(_APPROVAL_CARDKIT_REQUIRED_ERROR) from exc
                     if not self._should_fallback_to_message_patch(exc):
                         raise
                     record.cardkit_supported = False
@@ -592,6 +617,30 @@ class FeishuLongConnectionHost:
             )
             return False
 
+    def _sync_approval_card_via_cardkit(self, record: FeishuReplyCardRecord) -> None:
+        if record.card_id is None:
+            raise RuntimeError("reply card is missing card_id for approval delivery")
+        print(
+            "feishu-host> syncing reply card"
+            f" request_message_id={record.request_message_id}"
+            f" status={record.status} mode=cardkit",
+            flush=True,
+        )
+        self.client.stream_update_card(
+            record.card_id,
+            record.latest_card,
+            uuid=record.ensure_stream_uuid(),
+            sequence=record.next_stream_sequence(),
+        )
+        record.cardkit_supported = True
+        if record.streaming_active:
+            self.client.disable_card_stream(
+                record.card_id,
+                uuid=record.ensure_stream_uuid(),
+                sequence=record.next_stream_sequence(),
+            )
+            record.streaming_active = False
+
     def _should_flush_card(self, record: FeishuReplyCardRecord, event_type: str) -> bool:
         if record.reply_message_id is None or record.delivery_pending:
             return True
@@ -613,10 +662,26 @@ class FeishuLongConnectionHost:
             or "code=200740" in message
         )
 
+    def _requires_cardkit_approval(self, record: FeishuReplyCardRecord) -> bool:
+        return record.status == "requires_action"
+
+    def _should_suspend_card_retry(self, record: FeishuReplyCardRecord) -> bool:
+        return self._requires_cardkit_approval(record) and (
+            record.last_error == _APPROVAL_CARDKIT_REQUIRED_ERROR
+        )
+
     def _retry_pending_cards(self, conversation_id: str | None = None) -> None:
         if self.card_delivery_store is None:
             return
         for record in self.card_delivery_store.list_pending(conversation_id=conversation_id):
+            if self._should_suspend_card_retry(record):
+                print(
+                    "feishu-host> approval card retry suspended"
+                    f" request_message_id={record.request_message_id}"
+                    f" reason={record.last_error}",
+                    flush=True,
+                )
+                continue
             print(
                 "feishu-host> retrying pending reply card"
                 f" request_message_id={record.request_message_id}"

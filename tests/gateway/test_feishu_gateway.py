@@ -167,6 +167,7 @@ class FakeFeishuClient:
         self.started = False
         self.handler: Callable[[dict[str, object]], dict[str, object] | None] | None = None
         self.fail_card_sync_attempts = 0
+        self.fail_enable_stream_attempts = 0
         self.resolve_card_error: Exception | None = None
 
     def start(self, event_handler: Callable[[dict[str, object]], dict[str, object] | None]) -> None:
@@ -208,6 +209,9 @@ class FakeFeishuClient:
         return card_id
 
     def enable_card_stream(self, card_id: str, *, uuid: str, sequence: int) -> None:
+        if self.fail_enable_stream_attempts > 0:
+            self.fail_enable_stream_attempts -= 1
+            raise RuntimeError("Feishu enable_card_stream failed: code=200740 msg=unsupported")
         if self.fail_card_sync_attempts > 0:
             self.fail_card_sync_attempts -= 1
             raise RuntimeError("temporary card stream settings failure")
@@ -1222,6 +1226,111 @@ def test_feishu_host_falls_back_to_message_patch_when_cardkit_scope_is_missing(
     assert client.updated_cards
     assert client.updated_cards[-1]["message_id"] == persisted.reply_message_id
     assert client.updated_cards[-1]["patched"] is True
+
+
+def test_feishu_host_requires_action_does_not_patch_fallback_without_cardkit(
+    tmp_path: Path,
+) -> None:
+    client = FakeFeishuClient()
+    client.resolve_card_error = RuntimeError(
+        "Feishu resolve_card_id failed: code=99991672 msg=Access denied. "
+        "One of the following scopes is required: [cardkit:card:read]."
+    )
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(
+        config=config,
+        model=ToolThenReplyModel(),
+        tools=[DemoTool(name="admin", permission=PermissionDecision.ASK)],
+    )
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    store = FileFeishuCardDeliveryStore(str(tmp_path / "delivery.json"))
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+        card_delivery_store=store,
+    )
+
+    host.handle_event(make_text_event("admin rotate", message_id="om_requires_cardkit"))
+    host.retry_pending_cards()
+
+    persisted = store.get_by_request_message_id("om_requires_cardkit")
+    assert persisted is not None
+    assert persisted.status == "requires_action"
+    assert persisted.delivery_pending is True
+    assert persisted.last_error == "Feishu approval card requires CardKit; patch fallback is unsupported"
+    assert persisted.reply_message_id is not None
+    assert client.sent_cards != []
+    assert client.updated_cards
+    patched_titles = [
+        item["card"]["header"]["title"]["content"]
+        for item in client.updated_cards
+        if item.get("patched") is True
+    ]
+    assert patched_titles
+    assert all(title == "OpenAgent · Running" for title in patched_titles)
+    assert client.stream_settings == []
+
+
+def test_feishu_host_requires_action_recovers_from_streaming_fallback_with_cardkit(
+    tmp_path: Path,
+) -> None:
+    client = FakeFeishuClient()
+    client.fail_enable_stream_attempts = 1
+    config = FeishuAppConfig(
+        app_id="app",
+        app_secret="secret",
+        session_root=str(tmp_path / "sessions"),
+        binding_root=str(tmp_path / "bindings"),
+    )
+    gateway, _ = create_feishu_gateway(
+        config=config,
+        model=ToolThenReplyModel(),
+        tools=[DemoTool(name="admin", permission=PermissionDecision.ASK)],
+    )
+    adapter = gateway.get_channel_adapter("feishu")
+    assert isinstance(adapter, FeishuChannelAdapter)
+    adapter.client = client
+    store = FileFeishuCardDeliveryStore(str(tmp_path / "delivery.json"))
+    host = FeishuLongConnectionHost(
+        gateway=gateway,
+        adapter=adapter,
+        client=client,
+        dedupe_store=InMemoryFeishuInboundDedupeStore(),
+        card_delivery_store=store,
+    )
+
+    host.handle_event(make_text_event("admin rotate", message_id="om_requires_stream_retry"))
+
+    persisted = store.get_by_request_message_id("om_requires_stream_retry")
+    assert persisted is not None
+    assert persisted.status == "requires_action"
+    assert persisted.delivery_pending is False
+    assert persisted.last_error is None
+    assert persisted.card_id is not None
+    assert persisted.cardkit_supported is True
+    assert client.updated_cards
+    patched_titles = [
+        item["card"]["header"]["title"]["content"]
+        for item in client.updated_cards
+        if item.get("patched") is True
+    ]
+    assert patched_titles
+    assert all(title == "OpenAgent · Running" for title in patched_titles)
+    assert any(
+        item.get("card", {}).get("header", {}).get("title", {}).get("content")
+        == "OpenAgent · Needs Approval"
+        and item.get("patched") is not True
+        for item in client.updated_cards
+    )
 
 
 def test_feishu_host_updates_reply_card_for_assistant_deltas(tmp_path: Path) -> None:
