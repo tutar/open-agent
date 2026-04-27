@@ -57,6 +57,20 @@ def test_channel_command_lists_loaded_available_and_usage(tmp_path: Path) -> Non
     assert "/channel-config wecom allowed_users <comma-separated>" in usage
 
 
+def test_host_default_tools_leave_agent_injection_to_runtime(tmp_path: Path) -> None:
+    host = build_host(tmp_path)
+
+    tool_names = [tool.name for tool in host.tools]
+    runtime_tool_names = [tool.name for tool in host.runtime.tools.list_tools()]
+
+    assert "Agent" not in tool_names
+    assert "Agent" in runtime_tool_names
+    assert not (tmp_path / "sessions" / "tasks").exists()
+    assert not (tmp_path / "sessions" / "events").exists()
+    assert not (tmp_path / "sessions" / "outputs").exists()
+    assert not (tmp_path / "sessions" / "observers").exists()
+
+
 def test_channel_feishu_reports_missing_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -54,6 +54,8 @@
 
 默认 local runtime 现在会注入 builtin `Agent` tool。
 
+这层默认注入由 runtime assembly 负责，不由 host 重复装配。
+
 它会把调用转成 `DelegatedAgentInvocation`，并根据 `run_in_background` 选择：
 
 - 前台同步 delegated result

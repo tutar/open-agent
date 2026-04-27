@@ -12,15 +12,8 @@ from openagent.gateway import (
 )
 from openagent.gateway.assemblies.channel_manager import ChannelHostManager
 from openagent.gateway.channels.tui import _TerminalConnectionHandler, _ThreadingTCPServer
-from openagent.harness.multi_agent import LocalMultiAgentRuntime, TaskNotificationRouter
 from openagent.harness.providers import ProviderConfigurationError, load_model_from_env
 from openagent.harness.runtime.io import ModelProviderAdapter
-from openagent.harness.task import (
-    FileTaskManager,
-    LocalBackgroundAgentOrchestrator,
-    TaskRetentionPolicy,
-    TaskRetentionRuntime,
-)
 from openagent.host.config import OpenAgentHostConfig
 from openagent.local import create_file_runtime, create_gateway_for_runtime
 from openagent.object_model import JsonObject, JsonValue
@@ -180,23 +173,7 @@ class OpenAgentHost:
         self._terminal_thread.start()
 
     def _default_tools(self) -> list[ToolDefinition]:
-        task_manager = FileTaskManager(
-            self.config.session_root,
-            retention_policy=TaskRetentionPolicy(),
-        )
-        multi_agent = LocalMultiAgentRuntime(
-            task_manager=task_manager,
-            background_orchestrator=LocalBackgroundAgentOrchestrator(task_manager),
-            retention=TaskRetentionRuntime(task_manager, TaskRetentionPolicy()),
-            notification_router=TaskNotificationRouter(),
-        )
-        tools = cast(
-            list[ToolDefinition],
-            create_builtin_toolset(
-                agent_handler=multi_agent.as_agent_handler(),
-            ),
-        )
-        return tools
+        return cast(list[ToolDefinition], create_builtin_toolset())
 
     def _load_channel_from_command(self, channel_name: str) -> JsonObject:
         channel = channel_name.strip().lower()
