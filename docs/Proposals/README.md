@@ -55,3 +55,5 @@
 - [Conformance Expansion](./conformance-expansion.md)
 - [Feishu Cards And Streaming Replies](./feishu-cards-and-streaming-replies.md)
 - [Feishu Host Management Page](./feishu-host-management-page.md)
+- [Agent Evaluation Runtime Foundations](./agent-evaluation-runtime-foundations.md)
+- [Agent Evaluation Platform](./agent-evaluation-platform.md)
