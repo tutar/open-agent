@@ -83,10 +83,9 @@ loop 语义。
 
 当前 context engineering 还会额外维护独立的 bootstrap prompt：
 
-- `OpenAgent` identity / role
-- local-first operating mode
-- workspace root
-- tool usage contract
+- cacheable static sections for intro, system rules, task execution, action safety,
+  tool usage, tone, and output efficiency
+- dynamic sections for workspace root and available runtime capabilities
 
 这层 prompt 和 transcript、short-term memory、durable memory recall 分开建模，不再由 provider adapter 临时拼接。
 

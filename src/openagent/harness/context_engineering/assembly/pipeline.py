@@ -51,11 +51,19 @@ def _startup_context_fragment(item: JsonObject) -> str | None:
 class ContextAssemblyPipeline:
     def assemble(self, assembly_input: ContextAssemblyInput) -> ContextAssemblyResult:
         sections = assembly_input.bootstrap_prompt_sections
-        section_text = [
-            str(section.get("text", ""))
-            for section in sections
-            if isinstance(section, dict) and section.get("text")
-        ]
+        static_section_text: list[str] = []
+        dynamic_section_text: list[str] = []
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            text = str(section.get("text", ""))
+            if not text:
+                continue
+            if bool(section.get("dynamic")):
+                dynamic_section_text.append(text)
+            else:
+                static_section_text.append(text)
+        section_text = [*static_section_text, *dynamic_section_text]
         startup_fragments = [
             fragment
             for item in assembly_input.startup_contexts
@@ -77,8 +85,8 @@ class ContextAssemblyPipeline:
             if isinstance(item, dict) and _payload_content(item)
         ]
         prompt_blocks: JsonObject = {
-            "static_blocks": cast_json_list(section_text),
-            "dynamic_blocks": [],
+            "static_blocks": cast_json_list(static_section_text),
+            "dynamic_blocks": cast_json_list(dynamic_section_text),
             "attribution_prefix": "OpenAgent bootstrap prompt",
         }
         return ContextAssemblyResult(

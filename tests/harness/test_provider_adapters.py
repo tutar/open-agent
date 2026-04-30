@@ -6,6 +6,7 @@ from urllib.error import HTTPError
 
 import pytest
 
+from openagent.harness.context_engineering import BootstrapPromptAssembler
 from openagent.harness.context_engineering.instruction_markdown.loader import (
     InstructionMarkdownLoader,
 )
@@ -713,20 +714,52 @@ def test_harness_build_model_input_includes_bootstrap_prompt_sections(tmp_path: 
     request = harness.build_model_input(session, [])
 
     assert request.system_prompt is not None
-    assert "OpenAgent" in request.system_prompt
+    assert "You are an interactive agent named OpenAgent" in request.system_prompt
+    assert "# System" in request.system_prompt
+    assert "# Using your tools" in request.system_prompt
     assert f"Workspace root: {tmp_path.resolve()}" in request.system_prompt
     section_names = [section["name"] for section in request.prompt_sections]
     assert section_names == [
-        "default_behavior",
-        "agent_identity",
-        "operating_mode",
+        "intro",
+        "system",
+        "doing_tasks",
+        "actions_with_care",
+        "using_your_tools",
+        "tone_and_style",
+        "output_efficiency",
         "workspace_context",
-        "tool_usage_contract",
         "environment_summary",
     ]
     assert request.prompt_blocks is not None
+    assert len(request.prompt_blocks["static_blocks"]) == 7
+    assert all("Workspace root:" not in block for block in request.prompt_blocks["static_blocks"])
+    assert len(request.prompt_blocks["dynamic_blocks"]) == 2
+    assert any(
+        f"Workspace root: {tmp_path.resolve()}" in block
+        for block in request.prompt_blocks["dynamic_blocks"]
+    )
     assert [item["kind"] for item in request.startup_contexts] == ["session_start", "turn_zero"]
     assert all(message["role"] != "system" for message in request.messages)
+
+
+def test_bootstrap_prompt_assembler_split_static_dynamic_separates_sections() -> None:
+    assembler = BootstrapPromptAssembler()
+    sections = assembler.build_default_prompt(
+        runtime_capabilities=["Read", "Edit", "Bash", "AskUserQuestion"],
+        model_view={"workspace_root": "/tmp/demo"},
+    )
+
+    blocks = assembler.split_static_dynamic(sections)
+
+    assert blocks.attribution_prefix == "OpenAgent bootstrap prompt"
+    assert len(blocks.static_blocks) == 7
+    assert len(blocks.dynamic_blocks) == 2
+    assert any("# Doing tasks" in block for block in blocks.static_blocks)
+    assert any("Workspace root: /tmp/demo" in block for block in blocks.dynamic_blocks)
+    assert any(
+        "Available runtime capabilities: Read, Edit, Bash, AskUserQuestion" in block
+        for block in blocks.dynamic_blocks
+    )
 
 
 def test_harness_build_model_input_includes_short_term_memory(tmp_path: Path) -> None:

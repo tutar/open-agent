@@ -25,6 +25,8 @@
 ## 当前支持
 
 - section-based bootstrap prompt assembly
+- cacheable static bootstrap sections for intro, system rules, task execution, action safety, tool usage, tone, and output efficiency
+- dynamic bootstrap sections for workspace-specific and runtime capability-specific context
 - startup context lifecycle
 - context assembly pipeline
 - system / user / attachment / evidence planes
@@ -57,6 +59,20 @@
   - short-term memory summary
   - durable-memory recall summary
   - other system-level context
+
+当前 bootstrap prompt 默认按 section 装配：
+
+- static, cacheable sections
+  - intro
+  - system
+  - doing tasks
+  - actions with care
+  - using your tools
+  - tone and style
+  - output efficiency
+- dynamic sections
+  - workspace context
+  - environment summary
 
 这样可以避免本地 chat template 因多条 `role=system` message 报
 `System message must be at the beginning`
