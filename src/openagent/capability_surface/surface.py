@@ -15,6 +15,7 @@ from openagent.capability_surface.projection import (
     project_descriptors_for_host,
 )
 from openagent.object_model import JsonObject
+from openagent.tools.compat import tool_description
 from openagent.tools import Command, SkillDefinition, ToolDefinition
 
 
@@ -33,7 +34,7 @@ class CapabilitySurface:
                     capability_id=tool.name,
                     capability_type="tool",
                     display_name=tool.name,
-                    description=tool.description(),
+                    description=tool_description(tool),
                     invocation_mode="tool",
                     origin=origin.to_dict(),
                     metadata={

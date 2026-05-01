@@ -116,6 +116,32 @@ executor 解决“怎么执行这些 tool”。
 - `AskUserQuestion`
 - optional `Agent / Skill` bridge
 
+这些 builtin tools 现在按 tool 独立目录维护，直接位于 `src/openagent/tools/` 下，
+例如 `FileReadTool/`、`FileWriteTool/`、`BashTool/`。聚合入口仍然保留，但真实实现
+不再集中在单一 `builtin.py` 文件。
+
+每个 builtin tool 目录还应自带自己的 `prompt.py`：
+
+- `prompt.py` 维护该 tool 的 `TOOL_NAME` 和 model-visible `DESCRIPTION`
+- tool 类本身从本目录 `prompt.py` 取 name / description
+- `harness/bootstrap_prompts.py` 不直接依赖 per-tool descriptions，只通过
+  `tools/tool_constants.py` 这类根层 facade 取稳定 tool-name constants
+
+其中 core local file / shell tools 现在有更明确的行为约束：
+
+- `Read`
+  - 支持按行偏移和按行数量读取
+  - 返回带行号的稳定文本视图，便于后续定位和编辑
+- `Edit`
+  - 默认要求 `old` 精确匹配一次
+  - 多处命中时必须显式使用 `replace_all`
+- `Glob / Grep`
+  - 支持限定搜索子目录
+  - 支持结果数量上限
+- `Bash`
+  - 支持显式 `timeout_ms`
+  - 继续保持 workspace-bound permission 语义，而不是无边界 shell
+
 其中 `WebFetch / WebSearch` 现在已经和具体实现解耦：
 
 - `WebFetch` 保持“按 URL 定向获取内容”的语义

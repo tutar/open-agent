@@ -6,6 +6,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from openagent.object_model import JsonObject, SerializableModel
+from openagent.tools.tool_constants import (
+    AGENT_TOOL_NAME,
+    ASK_USER_QUESTION_TOOL_NAME,
+    BASH_TOOL_NAME,
+    EDIT_TOOL_NAME,
+    GLOB_TOOL_NAME,
+    GREP_TOOL_NAME,
+    READ_TOOL_NAME,
+    SKILL_TOOL_NAME,
+    WEB_FETCH_TOOL_NAME,
+    WEB_SEARCH_TOOL_NAME,
+    WRITE_TOOL_NAME,
+)
 
 
 @dataclass(slots=True)
@@ -190,7 +203,7 @@ class BootstrapPromptAssembler:
     def _actions_section(self) -> str:
         return (
             """\
-            # Executing actions with care
+# Executing actions with care
 
 Carefully consider the reversibility and blast radius of actions. Generally you can freely take local, reversible actions like editing files or running tests. But for actions that are hard to reverse, affect shared systems beyond your local environment, or could otherwise be risky or destructive, check with the user before proceeding. The cost of pausing to confirm is low, while the cost of an unwanted action (lost work, unintended messages sent, deleted branches) can be very high. For actions like these, consider the context, the action, and user instructions, and by default transparently communicate the action and ask for confirmation before proceeding. This default can be changed by user instructions - if explicitly asked to operate more autonomously, then you may proceed without confirmation, but still attend to the risks and consequences when taking actions. A user approving an action (like a git push) once does NOT mean that they approve it in all contexts, so unless actions are authorized in advance in durable instructions like CLAUDE.md files, always confirm first. Authorization stands for the scope specified, not beyond. Match the scope of your actions to what was actually requested.
 
@@ -205,32 +218,20 @@ When you encounter an obstacle, do not use destructive actions as a shortcut to 
 
     def _using_your_tools_section(self, runtime_capabilities: list[str]) -> str:
         tools = {name.lower() for name in runtime_capabilities}
-        items = [
-            "Use the available tools rather than pretending work was performed. If a tool is "
-            "needed, call it.",
-            "Use Read to inspect individual files. Use Glob and Grep to discover files and "
-            "search the workspace before making edits.",
-            "Use Edit for targeted changes to existing files. Use Write only when creating a "
-            "new file or replacing a file wholesale is the clearest option.",
-            "Use Bash for commands, scripts, builds, and verification steps. Prefer focused "
-            "commands that directly answer the question in front of you.",
-            "When a task requires current external information or a concrete page, use "
-            "WebSearch or WebFetch instead of relying on memory.",
-            "If you do not understand what the user wants, or a blocked tool decision leaves "
-            "you genuinely stuck, use AskUserQuestion to request clarification.",
-            "Always provide complete required arguments. Never emit an empty tool call or omit "
-            "required fields.",
+        providedToolSubitems = [
+            f"To read files use {READ_TOOL_NAME} instead of cat, head, tail, or sed",
+            f"To edit files use {EDIT_TOOL_NAME} instead of sed or awk",
+            f"To create files use {WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection",
+            f"To search for files use {GLOB_TOOL_NAME} instead of find or ls",
+            f"To search the content of files, use {GREP_TOOL_NAME} instead of grep or rg",
+            f"Reserve using the {BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the {BASH_TOOL_NAME} tool for these if it is absolutely necessary.",
         ]
-        if "agent" in tools:
-            items.append(
-                "Use Agent when delegation materially helps the task. Delegate well-scoped "
-                "subtasks and avoid unnecessary parallelism."
-            )
-        if "skill" in tools:
-            items.append(
-                "Use Skill only for discovered, supported skills. Do not invent skill names or "
-                "assume a skill exists without evidence."
-            )
+
+        items = []
+        items.append(f"Do NOT use the {BASH_TOOL_NAME} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:")
+        items.extend(providedToolSubitems)
+        items.append("You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.")
+
         return self._section("Using your tools", items)
 
     def _tone_and_style_section(self) -> str:

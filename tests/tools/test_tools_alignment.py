@@ -4,16 +4,24 @@ import openagent
 from openagent.local import create_file_runtime
 from openagent.object_model import RuntimeEventType
 from openagent.tools import (
+    AGENT_TOOL_NAME,
+    ASK_USER_QUESTION_TOOL_NAME,
+    BASH_TOOL_NAME,
     AskUserQuestionTool,
     BashTool,
     CommandKind,
     CommandVisibility,
     DenialTrackingState,
+    EDIT_TOOL_NAME,
+    GLOB_TOOL_NAME,
+    GREP_TOOL_NAME,
     PermissionDecision,
     RequiresActionError,
+    READ_TOOL_NAME,
     ReviewCommand,
     ReviewCommandKind,
     RuleBasedToolPolicyEngine,
+    SKILL_TOOL_NAME,
     SimpleToolExecutor,
     StaticToolRegistry,
     ToolCall,
@@ -21,12 +29,27 @@ from openagent.tools import (
     ToolExecutionFailedError,
     ToolPolicyRule,
     ToolSource,
+    WEB_FETCH_TOOL_NAME,
+    WEB_SEARCH_TOOL_NAME,
     WebFetchTool,
     WebSearchTool,
+    ReadTool,
+    WRITE_TOOL_NAME,
     WriteTool,
     create_builtin_commands,
     create_builtin_toolset,
 )
+from openagent.tools.AgentTool import DESCRIPTION as AGENT_DESCRIPTION
+from openagent.tools.AskUserQuestionTool import DESCRIPTION as ASK_USER_QUESTION_DESCRIPTION
+from openagent.tools.BashTool import DESCRIPTION as BASH_DESCRIPTION
+from openagent.tools.FileEditTool import DESCRIPTION as EDIT_DESCRIPTION
+from openagent.tools.FileReadTool import DESCRIPTION as READ_DESCRIPTION
+from openagent.tools.FileWriteTool import DESCRIPTION as WRITE_DESCRIPTION
+from openagent.tools.GlobTool import DESCRIPTION as GLOB_DESCRIPTION
+from openagent.tools.GrepTool import DESCRIPTION as GREP_DESCRIPTION
+from openagent.tools.SkillTool import DESCRIPTION as SKILL_DESCRIPTION
+from openagent.tools.WebFetchTool import DESCRIPTION as WEB_FETCH_DESCRIPTION
+from openagent.tools.WebSearchTool import DESCRIPTION as WEB_SEARCH_DESCRIPTION
 
 
 class AliasTool:
@@ -128,10 +151,73 @@ def test_builtin_file_tools_roundtrip(tmp_path: Path) -> None:
     grep_result = tools["Grep"].call({"pattern": "gamma"}, context)
 
     assert write_result.content == [str((tmp_path / "notes.txt").resolve())]
-    assert read_result.content == ["alpha\nbeta\n"]
+    assert read_result.content == ["1\talpha\n2\tbeta"]
+    assert read_result.structured_content is not None
+    assert read_result.structured_content["returned_lines"] == 2
     assert edit_result.content == [str((tmp_path / "notes.txt").resolve())]
     assert glob_result.content == ["notes.txt"]
     assert grep_result.content == ["notes.txt:2:gamma"]
+
+
+def test_read_tool_supports_offset_and_limit(tmp_path: Path) -> None:
+    path = tmp_path / "notes.txt"
+    path.write_text("a\nb\nc\nd\n", encoding="utf-8")
+    tool = ReadTool(str(tmp_path))
+    context = ToolExecutionContext(session_id="sess_read_slice", working_directory=str(tmp_path))
+
+    result = tool.call({"path": "notes.txt", "offset": 2, "limit": 2}, context)
+
+    assert result.content == ["2\tb\n3\tc"]
+    assert result.structured_content is not None
+    assert result.structured_content["offset"] == 2
+    assert result.structured_content["limit"] == 2
+    assert result.structured_content["truncated"] is True
+
+
+def test_edit_tool_requires_specific_match_or_replace_all(tmp_path: Path) -> None:
+    path = tmp_path / "notes.txt"
+    path.write_text("alpha\nbeta\nbeta\n", encoding="utf-8")
+    tools = {tool.name: tool for tool in create_builtin_toolset(root=str(tmp_path))}
+    context = ToolExecutionContext(session_id="sess_edit", working_directory=str(tmp_path))
+
+    try:
+        tools["Edit"].call({"path": "notes.txt", "old": "beta", "new": "gamma"}, context)
+    except ValueError as exc:
+        assert "matched multiple locations" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for ambiguous edit")
+
+    result = tools["Edit"].call(
+        {"path": "notes.txt", "old": "beta", "new": "gamma", "replace_all": True},
+        context,
+    )
+
+    assert result.structured_content is not None
+    assert result.structured_content["replacements"] == 2
+    assert path.read_text(encoding="utf-8") == "alpha\ngamma\ngamma\n"
+
+
+def test_glob_and_grep_support_scoped_search_and_limits(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "src" / "a.py").write_text("match\nignore\n", encoding="utf-8")
+    (tmp_path / "src" / "b.py").write_text("match\nmatch\n", encoding="utf-8")
+    (tmp_path / "docs" / "readme.md").write_text("match\n", encoding="utf-8")
+    tools = {tool.name: tool for tool in create_builtin_toolset(root=str(tmp_path))}
+    context = ToolExecutionContext(session_id="sess_search", working_directory=str(tmp_path))
+
+    glob_result = tools["Glob"].call({"pattern": "*.py", "path": "src", "limit": 1}, context)
+    grep_result = tools["Grep"].call(
+        {"pattern": "match", "path": "src", "glob": "*.py", "limit": 2},
+        context,
+    )
+
+    assert glob_result.content == ["src/a.py"]
+    assert glob_result.structured_content is not None
+    assert glob_result.structured_content["count"] == 1
+    assert grep_result.content == ["src/a.py:1:match", "src/b.py:1:match"]
+    assert grep_result.structured_content is not None
+    assert grep_result.structured_content["truncated"] is True
 
 
 def test_builtin_tools_validate_required_arguments() -> None:
@@ -152,6 +238,34 @@ def test_builtin_tools_validate_required_arguments() -> None:
         ("Glob", {}, "missing required field pattern"),
         ("WebFetch", {}, "missing required field url"),
         ("WebSearch", {}, "missing required field query"),
+    ]
+
+    for tool_name, arguments, reason in cases:
+        try:
+            executor.execute([ToolCall(tool_name=tool_name, arguments=arguments)], context)
+        except ToolExecutionFailedError as exc:
+            assert exc.tool_name == tool_name
+            assert exc.reason == reason
+        else:
+            raise AssertionError(f"Expected ToolExecutionFailedError for {tool_name}")
+
+
+def test_builtin_tools_validate_optional_argument_types() -> None:
+    executor = SimpleToolExecutor(
+        StaticToolRegistry(
+            [
+                ReadTool("."),
+                BashTool("."),
+                next(tool for tool in create_builtin_toolset() if tool.name == "Edit"),
+            ]
+        )
+    )
+    context = ToolExecutionContext(session_id="sess_optional_types", working_directory=".")
+
+    cases = [
+        ("Read", {"path": "README.md", "offset": "1"}, "offset must be an integer"),
+        ("Edit", {"path": "x", "old": "", "new": "y"}, "old must be a non-empty string"),
+        ("Bash", {"command": "pwd", "timeout_ms": 0}, "timeout_ms must be >= 1"),
     ]
 
     for tool_name, arguments, reason in cases:
@@ -191,6 +305,50 @@ def test_builtin_tools_expose_complete_json_schema() -> None:
         assert field_schema["description"]
         assert isinstance(field_schema["examples"], list)
         assert field_name in schema["required"]
+
+    assert "offset" in toolset["Read"].input_schema["properties"]
+    assert "replace_all" in toolset["Edit"].input_schema["properties"]
+    assert "path" in toolset["Glob"].input_schema["properties"]
+    assert "glob" in toolset["Grep"].input_schema["properties"]
+    assert "timeout_ms" in toolset["Bash"].input_schema["properties"]
+
+
+def test_builtin_tool_name_constants_and_prompt_descriptions_align() -> None:
+    toolset = {tool.name: tool for tool in create_builtin_toolset(agent_handler=lambda *_: {})}
+    expected = {
+        READ_TOOL_NAME: READ_DESCRIPTION,
+        WRITE_TOOL_NAME: WRITE_DESCRIPTION,
+        EDIT_TOOL_NAME: EDIT_DESCRIPTION,
+        GLOB_TOOL_NAME: GLOB_DESCRIPTION,
+        GREP_TOOL_NAME: GREP_DESCRIPTION,
+        BASH_TOOL_NAME: BASH_DESCRIPTION,
+        WEB_FETCH_TOOL_NAME: WEB_FETCH_DESCRIPTION,
+        WEB_SEARCH_TOOL_NAME: WEB_SEARCH_DESCRIPTION,
+        ASK_USER_QUESTION_TOOL_NAME: ASK_USER_QUESTION_DESCRIPTION,
+        AGENT_TOOL_NAME: AGENT_DESCRIPTION,
+    }
+
+    for tool_name, description in expected.items():
+        assert tool_name in toolset
+        assert toolset[tool_name].name == tool_name
+        assert toolset[tool_name].description() == description
+
+
+def test_skill_tool_name_constant_and_prompt_description_align() -> None:
+    class FakeSkillBridge:
+        def invoke_skill(
+            self,
+            skill_id: str,
+            args: dict[str, object],
+            runtime_context: dict[str, object],
+        ) -> str:
+            del args, runtime_context
+            return skill_id
+
+    skill_tool = openagent.SkillTool(FakeSkillBridge())
+
+    assert skill_tool.name == SKILL_TOOL_NAME
+    assert skill_tool.description() == SKILL_DESCRIPTION
 
 
 def test_agent_tool_schema_and_background_flag() -> None:
@@ -238,6 +396,18 @@ def test_bash_tool_reports_non_zero_exit(tmp_path: Path) -> None:
         assert str(exc) == "nope"
     else:
         raise AssertionError("Expected RuntimeError for non-zero bash command")
+
+
+def test_bash_tool_enforces_timeout(tmp_path: Path) -> None:
+    tool = BashTool(str(tmp_path))
+    context = ToolExecutionContext(session_id="sess_bash_timeout", working_directory=str(tmp_path))
+
+    try:
+        tool.call({"command": "python -c 'import time; time.sleep(0.05)'", "timeout_ms": 1}, context)
+    except RuntimeError as exc:
+        assert str(exc) == "command timed out after 1ms"
+    else:
+        raise AssertionError("Expected RuntimeError for command timeout")
 
 
 def test_builtin_tools_prefer_execution_context_workdir(tmp_path: Path) -> None:
@@ -351,5 +521,7 @@ def test_builtin_file_tools_require_explicit_working_directory(tmp_path: Path) -
 
 def test_openagent_root_reexports_tools_surface() -> None:
     assert openagent.WebSearchTool.__name__ == "WebSearchTool"
+    assert openagent.FileReadTool.__name__ == "FileReadTool"
+    assert openagent.ReadTool is openagent.FileReadTool
     assert openagent.ReviewCommandKind.VERIFICATION.value == "verification"
     assert callable(openagent.create_builtin_toolset)

@@ -32,12 +32,21 @@ from openagent.harness.runtime import (
 from openagent.object_model import JsonObject, ToolResult
 from openagent.session import FileSessionStore, InMemoryShortTermMemoryStore
 from openagent.tools import (
+    ASK_USER_QUESTION_TOOL_NAME,
+    BASH_TOOL_NAME,
     BashTool,
+    EDIT_TOOL_NAME,
+    GLOB_TOOL_NAME,
+    GREP_TOOL_NAME,
     GlobTool,
+    READ_TOOL_NAME,
     SimpleToolExecutor,
     StaticToolRegistry,
     ToolCall,
+    WEB_FETCH_TOOL_NAME,
+    WEB_SEARCH_TOOL_NAME,
     WebSearchTool,
+    WRITE_TOOL_NAME,
 )
 
 
@@ -593,10 +602,14 @@ def test_openai_chat_adapter_emits_complete_builtin_tool_schema() -> None:
         for item in tools_payload
         if isinstance(item, dict) and isinstance(item.get("function"), dict)
     }
+    glob_description = by_name["Glob"]["description"]
     glob_parameters = by_name["Glob"]["parameters"]
     bash_parameters = by_name["Bash"]["parameters"]
     search_parameters = by_name["WebSearch"]["parameters"]
 
+    assert "open-ended search" in glob_description
+    assert "Agent tool instead" in glob_description
+    assert "main agent does not fill its context window" in glob_description
     assert glob_parameters["properties"]["pattern"]["description"]
     assert glob_parameters["properties"]["pattern"]["examples"] == ["*", "*.py", "src/**/*.py"]
     assert glob_parameters["additionalProperties"] is False
@@ -717,6 +730,28 @@ def test_harness_build_model_input_includes_bootstrap_prompt_sections(tmp_path: 
     assert "You are an interactive agent named OpenAgent" in request.system_prompt
     assert "# System" in request.system_prompt
     assert "# Using your tools" in request.system_prompt
+    assert (
+        f"Use {READ_TOOL_NAME} to inspect individual files. "
+        f"Use {GLOB_TOOL_NAME} and {GREP_TOOL_NAME} to discover files and search the "
+        "workspace before making edits."
+    ) in request.system_prompt
+    assert (
+        f"Use {EDIT_TOOL_NAME} for targeted changes to existing files. "
+        f"Use {WRITE_TOOL_NAME} only when creating a new file or replacing a file "
+        "wholesale is the clearest option."
+    ) in request.system_prompt
+    assert (
+        f"Use {BASH_TOOL_NAME} for commands, scripts, builds, and verification steps. "
+        "Prefer focused commands that directly answer the question in front of you."
+    ) in request.system_prompt
+    assert (
+        f"When a task requires current external information or a concrete page, use "
+        f"{WEB_SEARCH_TOOL_NAME} or {WEB_FETCH_TOOL_NAME} instead of relying on memory."
+    ) in request.system_prompt
+    assert (
+        "If you do not understand what the user wants, or a blocked tool decision leaves "
+        f"you genuinely stuck, use {ASK_USER_QUESTION_TOOL_NAME} to request clarification."
+    ) in request.system_prompt
     assert f"Workspace root: {tmp_path.resolve()}" in request.system_prompt
     section_names = [section["name"] for section in request.prompt_sections]
     assert section_names == [

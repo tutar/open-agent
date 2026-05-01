@@ -29,6 +29,7 @@ from openagent.tools import (
     Command,
     CommandKind,
     CommandVisibility,
+    GlobTool,
     ReviewCommand,
     ReviewCommandKind,
     SkillDefinition,
@@ -605,7 +606,12 @@ def test_prompt_cache_strategy_equivalence_baseline() -> None:
 
 def test_capability_surface_projects_unified_entries() -> None:
     surface = CapabilitySurface(
-        tools=[],
+        tools=[
+            (
+                GlobTool("."),
+                CapabilityOrigin(origin_type=CapabilityOriginType.BUILTIN),
+            )
+        ],
         commands=[
             (
                 Command(
@@ -659,11 +665,18 @@ def test_capability_surface_projects_unified_entries() -> None:
     command_surface = terminal_projected["command_surface"]
     assert isinstance(command_surface, list)
     assert len(command_surface) == 3
-    assert terminal_projected["capability_count"] == 3
-    assert feishu_projected["capability_count"] == 2
-    assert cloud_projected["capability_count"] == 2
+    assert terminal_projected["capability_count"] == 4
+    assert feishu_projected["capability_count"] == 3
+    assert cloud_projected["capability_count"] == 3
     assert len(model_only) == 2
     assert [entry.entry_id for entry in model_only] == ["cmd.review", "skill.summarize"]
+    glob_descriptor = next(
+        descriptor
+        for descriptor in terminal_projected["capabilities"]
+        if descriptor["capability_id"] == "Glob"
+    )
+    assert "open-ended search" in glob_descriptor["description"]
+    assert "Agent tool instead" in glob_descriptor["description"]
     skill_descriptor = next(
         descriptor
         for descriptor in terminal_projected["capabilities"]

@@ -30,6 +30,14 @@
   - `WebFetch / WebSearch`
   - `AskUserQuestion`
   - optional `Agent / Skill` bridge
+  - builtin 实现按 tool 独立目录维护，便于单独演进与维护
+  - per-tool `prompt.py` is the source of truth for model-visible `DESCRIPTION`
+  - harness bootstrap prompt only consumes root-level tool-name constants, not per-tool descriptions
+- core local builtin tools now expose richer execution semantics
+  - `Read` supports line-based partial reads with numbered output
+  - `Edit` supports strict single-match editing plus `replace_all`
+  - `Glob` and `Grep` support scoped search with result limits
+  - `Bash` supports explicit `timeout_ms` and stronger workspace-bound behavior
 - pluggable web backends for builtin web tools
   - default stdlib URL fetch backend
   - default placeholder search backend

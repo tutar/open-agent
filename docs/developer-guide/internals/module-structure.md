@@ -51,6 +51,7 @@
   - mcp
   - executor / policy
   - web backends
+  - tool-name facade constants shared with harness
 - `sandbox/`
   - execution boundary
   - environment boundary
@@ -288,6 +289,17 @@ teammate execution 仍然不在当前实现范围内。
 - skills
 - mcp
 - web backends
+
+builtin tools 在 `tools/` 下默认按 tool 独立目录维护，例如：
+
+- `tools/FileReadTool/`
+- `tools/FileWriteTool/`
+- `tools/FileEditTool/`
+- `tools/GlobTool/`
+- `tools/GrepTool/`
+- `tools/BashTool/`
+
+共享 helper 可以放在 `tools/` 根层，但新的 builtin 实现不应继续回收到单一聚合文件里。
 
 都应继续被视为 `tools` 的稳定子面，而不是外溢成新的顶层目录。
 

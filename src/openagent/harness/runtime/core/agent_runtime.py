@@ -98,6 +98,7 @@ from openagent.tools import (
     ToolExecutor,
     ToolRegistry,
 )
+from openagent.tools.compat import tool_description
 
 
 @dataclass(slots=True)
@@ -258,7 +259,7 @@ class SimpleHarness(Harness):
         tool_definitions: list[JsonObject] = [
             {
                 "name": tool.name,
-                "description": tool.description(),
+                "description": tool_description(tool),
                 "input_schema": tool.input_schema,
             }
             for tool in self.tools.list_tools()
