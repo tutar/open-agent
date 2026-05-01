@@ -81,6 +81,7 @@ from openagent.session import (
     SessionRecord,
     SessionStatus,
     SessionStore,
+    session_message_text,
 )
 from openagent.session.short_term_memory import ShortTermMemoryStore, ShortTermSessionMemory
 from openagent.shared import (
@@ -249,7 +250,7 @@ class SimpleHarness(Harness):
             and self.memory_store.is_enabled()
             and session_slice.messages
         ):
-            latest_query = session_slice.messages[-1].content
+            latest_query = session_message_text(session_slice.messages[-1])
             recall_result = self.memory_store.recall(
                 session_slice.session_id,
                 latest_query,
@@ -443,7 +444,7 @@ class SimpleHarness(Harness):
         )
         return workspace
 
-    def _new_session_message(self, role: str, content: str) -> SessionMessage:
+    def _new_session_message(self, role: str, content: JsonValue) -> SessionMessage:
         return SessionMessage(role=role, content=content)
 
     def schedule_memory_maintenance(self, session: SessionRecord) -> None:
@@ -977,14 +978,20 @@ class SimpleHarness(Harness):
         for result in tool_results:
             if self.context_governance is not None:
                 result = self.context_governance.externalize_tool_result(result)
-                message_content = self.context_governance.tool_result_message_content(result)
+                message_content = self.context_governance.tool_result_transcript_content(result)
             else:
-                message_content = f"{result.tool_name}: {result.content}"
+                message_content = result.content
             session.messages.append(
                 SessionMessage(
                     role="tool",
                     content=message_content,
-                    metadata=dict(result.metadata or {}),
+                    metadata={
+                        **dict(result.metadata or {}),
+                        "tool_name": result.tool_name,
+                        "success": result.success,
+                        "truncated": bool(result.truncated) if result.truncated is not None else False,
+                        "persisted_ref": result.persisted_ref,
+                    },
                 )
             )
 

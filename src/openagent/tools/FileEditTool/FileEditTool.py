@@ -69,7 +69,13 @@ class FileEditTool(BuiltinToolBase):
         return ToolResult(
             tool_name=self.name,
             success=True,
-            content=cast(list[JsonValue], [str(path)]),
+            content=cast(
+                list[JsonValue],
+                [
+                    f"Edited {path.name} with {occurrences if replace_all else 1} replacement"
+                    f"{'' if (replace_all and occurrences == 1) or (not replace_all) else 's'}"
+                ],
+            ),
             structured_content={
                 "path": str(path),
                 "replacements": occurrences if replace_all else 1,

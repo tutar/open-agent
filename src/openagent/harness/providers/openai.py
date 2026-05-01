@@ -12,6 +12,7 @@ from openagent.harness.providers.base import (
     ProviderError,
     UrllibHttpTransport,
 )
+from openagent.harness.providers.tool_results import tool_result_content_to_text
 from openagent.harness.runtime.io import (
     ModelProviderExchange,
     ModelStreamEvent,
@@ -295,19 +296,19 @@ class OpenAIChatCompletionsModelAdapter:
 
     def _message_payload(self, message: JsonObject) -> JsonObject:
         role = str(message.get("role", "user"))
-        content = str(message.get("content", ""))
+        content = message.get("content", "")
         metadata = message.get("metadata")
         metadata_dict = dict(metadata) if isinstance(metadata, dict) else {}
         if role == "tool":
             payload: JsonObject = {
                 "role": "tool",
-                "content": content,
+                "content": tool_result_content_to_text(cast(JsonValue, content)),
             }
             tool_call_id = metadata_dict.get("tool_use_id")
             if tool_call_id is not None:
                 payload["tool_call_id"] = str(tool_call_id)
             return payload
-        return {"role": role, "content": content}
+        return {"role": role, "content": str(content)}
 
     def _parse_response(self, body: JsonObject) -> ModelTurnResponse:
         choices = body.get("choices")

@@ -29,7 +29,15 @@ from openagent.harness.runtime import (
     ModelTurnResponse,
     SimpleHarness,
 )
-from openagent.object_model import JsonObject, RuntimeEventType, ToolResult
+from openagent.object_model import (
+    JsonObject,
+    RuntimeEventType,
+    ToolResult,
+    image_block,
+    render_tool_result_content,
+    text_block,
+    tool_reference_block,
+)
 from openagent.session import FileSessionStore, InMemoryShortTermMemoryStore
 from openagent.tools import (
     ASK_USER_QUESTION_TOOL_NAME,
@@ -898,12 +906,12 @@ def test_harness_build_model_input_includes_short_term_memory(tmp_path: Path) ->
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "prepare_workspace", "assert_result"),
     [
-        (
-            READ_TOOL_NAME,
-            {"path": "notes.txt"},
-            lambda root: (root / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8"),
-            lambda payload: payload["content"] == ["1\talpha\n2\tbeta"],
-        ),
+            (
+                READ_TOOL_NAME,
+                {"path": "notes.txt"},
+                lambda root: (root / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8"),
+                lambda payload: render_tool_result_content(payload["content"]) == "1\talpha\n2\tbeta",
+            ),
         (
             WRITE_TOOL_NAME,
             {"path": "nested/out.txt", "content": "hello\n"},
@@ -916,31 +924,34 @@ def test_harness_build_model_input_includes_short_term_memory(tmp_path: Path) ->
             lambda root: (root / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8"),
             lambda payload: payload["structured_content"]["replacements"] == 1,
         ),
-        (
-            GLOB_TOOL_NAME,
-            {"pattern": "*.py", "path": "src"},
-            lambda root: (
-                (root / "src").mkdir(),
-                (root / "src" / "main.py").write_text("print('x')\n", encoding="utf-8"),
+            (
+                GLOB_TOOL_NAME,
+                {"pattern": "*.py", "path": "src"},
+                lambda root: (
+                    (root / "src").mkdir(),
+                    (root / "src" / "main.py").write_text("print('x')\n", encoding="utf-8"),
+                ),
+                lambda payload: render_tool_result_content(payload["content"])
+                == "Found 1 matching files\nsrc/main.py",
             ),
-            lambda payload: payload["content"] == ["src/main.py"],
-        ),
-        (
-            GREP_TOOL_NAME,
-            {"pattern": "needle", "path": "src"},
-            lambda root: (
-                (root / "src").mkdir(),
-                (root / "src" / "main.py").write_text("needle\n", encoding="utf-8"),
+            (
+                GREP_TOOL_NAME,
+                {"pattern": "needle", "path": "src"},
+                lambda root: (
+                    (root / "src").mkdir(),
+                    (root / "src" / "main.py").write_text("needle\n", encoding="utf-8"),
+                ),
+                lambda payload: render_tool_result_content(payload["content"])
+                == "Found 1 matching files\nsrc/main.py",
             ),
-            lambda payload: payload["content"] == ["src/main.py:1:needle"],
-        ),
-        (
-            BASH_TOOL_NAME,
-            {"command": "pwd"},
-            lambda root: None,
-            lambda payload: payload["content"] == [str(Path(payload["structured_content"]["cwd"]))],
-        ),
-    ],
+            (
+                BASH_TOOL_NAME,
+                {"command": "pwd"},
+                lambda root: None,
+                lambda payload: render_tool_result_content(payload["content"])
+                == str(Path(payload["structured_content"]["cwd"])),
+            ),
+        ],
 )
 def test_harness_roundtrips_core_local_tool_calls(
     tmp_path: Path,
@@ -1004,6 +1015,90 @@ def test_tool_results_preserve_tool_use_id_in_session_messages(tmp_path: Path) -
 
     assert len(tool_messages) == 1
     assert tool_messages[0].metadata["tool_use_id"] == "toolu_1"
+    assert isinstance(tool_messages[0].content, list)
+
+
+def test_openai_adapter_downgrades_structured_tool_result_to_text() -> None:
+    transport = FakeTransport(response_body={"choices": [{"message": {"content": "ok"}}]})
+    adapter = OpenAIChatCompletionsModelAdapter(
+        model="gpt-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+
+    adapter.generate(
+        ModelTurnRequest(
+            session_id="sess_tool_result_stringify",
+            messages=[
+                {"role": "user", "content": "search"},
+                {
+                    "role": "tool",
+                    "content": [
+                        text_block("Found 1 matching files"),
+                        tool_reference_block(ref="src/main.py", title="src/main.py", preview="src/main.py"),
+                    ],
+                    "metadata": {"tool_use_id": "toolu_prev"},
+                },
+            ],
+        )
+    )
+
+    assert transport.seen_payload is not None
+    messages_payload = transport.seen_payload["messages"]
+    assert isinstance(messages_payload, list)
+    assert messages_payload[-1] == {
+        "role": "tool",
+        "content": "Found 1 matching files\nsrc/main.py",
+        "tool_call_id": "toolu_prev",
+    }
+
+
+def test_anthropic_adapter_preserves_text_and_image_tool_result_blocks() -> None:
+    transport = FakeTransport(response_body={"content": [{"type": "text", "text": "ok"}]})
+    adapter = AnthropicMessagesModelAdapter(
+        model="claude-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+
+    adapter.generate(
+        ModelTurnRequest(
+            session_id="sess_tool_result_blocks",
+            messages=[
+                {"role": "user", "content": "show image"},
+                {
+                    "role": "tool",
+                    "content": [
+                        text_block("Rendered preview"),
+                        image_block(
+                            media_type="image/png",
+                            data="ZmFrZQ==",
+                            alt_text="bash output image",
+                        ),
+                    ],
+                    "metadata": {"tool_use_id": "toolu_prev"},
+                },
+            ],
+        )
+    )
+
+    assert transport.seen_payload is not None
+    messages_payload = transport.seen_payload["messages"]
+    assert isinstance(messages_payload, list)
+    payload = messages_payload[-1]
+    assert payload["role"] == "user"
+    tool_result = payload["content"][0]
+    assert tool_result["type"] == "tool_result"
+    assert tool_result["tool_use_id"] == "toolu_prev"
+    assert tool_result["content"][0] == {"type": "text", "text": "Rendered preview"}
+    assert tool_result["content"][1] == {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "ZmFrZQ==",
+        },
+    }
 
 
 def test_instruction_markdown_loader_merges_home_workspace_and_target_hierarchy(

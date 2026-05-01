@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import cast
 
-from openagent.object_model import JsonValue, ToolResult
+from openagent.object_model import JsonValue, ToolResult, text_block, tool_reference_block
 from openagent.tools.GrepTool.prompt import DESCRIPTION, GREP_TOOL_NAME
 from openagent.tools.models import ToolExecutionContext
 from openagent.tools.tool_base import BuiltinToolBase
@@ -194,10 +194,11 @@ class GrepTool(BuiltinToolBase):
         results, truncated = self._apply_window(raw_results, head_limit, offset, output_mode)
         if output_mode in {"files_with_matches", "count"}:
             results = sorted(results)
+        result_content = self._result_content_for_mode(output_mode, results)
         return ToolResult(
             tool_name=self.name,
             success=True,
-            content=cast(list[JsonValue], results),
+            content=cast(list[JsonValue], result_content),
             structured_content={
                 "mode": output_mode,
                 "search_root": relative_target,
@@ -323,3 +324,20 @@ class GrepTool(BuiltinToolBase):
         if line.startswith("./"):
             return line[2:]
         return line
+
+    def _result_content_for_mode(
+        self,
+        output_mode: str,
+        results: list[str],
+    ) -> list[JsonValue]:
+        if not results:
+            return [text_block("No matches found")]
+        if output_mode == "files_with_matches":
+            return [
+                text_block(f"Found {len(results)} matching files"),
+                *[
+                    tool_reference_block(ref=item, title=item, preview=item, ref_kind="file")
+                    for item in results
+                ],
+            ]
+        return [text_block(item) for item in results]

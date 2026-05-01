@@ -37,7 +37,7 @@ from openagent.durable_memory.operations import (
 )
 from openagent.durable_memory.runtime import AutoMemoryRuntime
 from openagent.object_model import JsonObject, JsonValue
-from openagent.session.models import SessionMessage
+from openagent.session.models import SessionMessage, session_message_text
 
 
 class InMemoryMemoryStore:
@@ -393,7 +393,7 @@ class InMemoryMemoryStore:
         return any(pattern in joined for pattern in excluded_patterns)
 
     def _infer_overlay(self, transcript_slice: builtins.list[SessionMessage]) -> MemoryOverlay:
-        joined = " ".join(message.content.lower() for message in transcript_slice)
+        joined = " ".join(session_message_text(message).lower() for message in transcript_slice)
         if "team" in joined:
             return MemoryOverlay.TEAM
         if "preference" in joined or "i like" in joined:
@@ -408,7 +408,7 @@ class InMemoryMemoryStore:
         self,
         transcript_slice: builtins.list[SessionMessage],
     ) -> MemoryPayloadType:
-        joined = " ".join(message.content.lower() for message in transcript_slice)
+        joined = " ".join(session_message_text(message).lower() for message in transcript_slice)
         if "prefer" in joined or "i like" in joined or "my favorite" in joined:
             return MemoryPayloadType.USER
         if "should" in joined or "always use" in joined or "workflow" in joined:

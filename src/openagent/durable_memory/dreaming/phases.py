@@ -25,7 +25,7 @@ from openagent.durable_memory.models import (
     MemoryRecord,
 )
 from openagent.object_model import JsonObject
-from openagent.session.models import SessionMessage
+from openagent.session.models import SessionMessage, session_message_text
 
 
 class DreamingEngine:
@@ -218,7 +218,7 @@ class DreamingEngine:
         for message in transcript_slice:
             if message.role not in {"user", "assistant"}:
                 continue
-            text = self._sanitize_text(message.content)
+            text = self._sanitize_text(session_message_text(message))
             if not text or self._is_low_signal(text):
                 continue
             entries.append(

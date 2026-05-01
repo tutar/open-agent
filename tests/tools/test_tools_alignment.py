@@ -3,7 +3,7 @@ from pathlib import Path
 
 import openagent
 from openagent.local import create_file_runtime
-from openagent.object_model import RuntimeEventType
+from openagent.object_model import RuntimeEventType, render_tool_result_content
 from openagent.tools import (
     AGENT_TOOL_NAME,
     ASK_USER_QUESTION_TOOL_NAME,
@@ -152,13 +152,13 @@ def test_builtin_file_tools_roundtrip(tmp_path: Path) -> None:
     glob_result = tools["Glob"].call({"pattern": "*.txt"}, context)
     grep_result = tools["Grep"].call({"pattern": "gamma", "output_mode": "content"}, context)
 
-    assert write_result.content == [str((tmp_path / "notes.txt").resolve())]
-    assert read_result.content == ["1\talpha\n2\tbeta"]
+    assert write_result.content == ["Created notes.txt"]
+    assert read_result.content == [{"type": "text", "text": "1\talpha\n2\tbeta"}]
     assert read_result.structured_content is not None
     assert read_result.structured_content["returned_lines"] == 2
-    assert edit_result.content == [str((tmp_path / "notes.txt").resolve())]
-    assert glob_result.content == ["notes.txt"]
-    assert grep_result.content == ["notes.txt:2:gamma"]
+    assert edit_result.content == ["Edited notes.txt with 1 replacement"]
+    assert render_tool_result_content(glob_result.content) == "Found 1 matching files\nnotes.txt"
+    assert grep_result.content == [{"type": "text", "text": "notes.txt:2:gamma"}]
 
 
 def test_read_tool_supports_offset_and_limit(tmp_path: Path) -> None:
@@ -261,10 +261,13 @@ def test_glob_and_grep_support_scoped_search_and_limits(tmp_path: Path) -> None:
         context,
     )
 
-    assert glob_result.content == ["src/a.py"]
+    assert render_tool_result_content(glob_result.content) == "Found 1 matching files\nsrc/a.py"
     assert glob_result.structured_content is not None
     assert glob_result.structured_content["count"] == 1
-    assert grep_result.content == ["src/a.py:1:match", "src/b.py:1:match"]
+    assert grep_result.content == [
+        {"type": "text", "text": "src/a.py:1:match"},
+        {"type": "text", "text": "src/b.py:1:match"},
+    ]
     assert grep_result.structured_content is not None
     assert grep_result.structured_content["truncated"] is True
 
@@ -279,7 +282,7 @@ def test_glob_returns_sorted_matches_and_ignores_directories(tmp_path: Path) -> 
 
     result = tool.call({"pattern": "*.py", "path": "src", "limit": 10}, context)
 
-    assert result.content == ["src/a.py", "src/z.py"]
+    assert render_tool_result_content(result.content) == "Found 2 matching files\nsrc/a.py\nsrc/z.py"
 
 
 def test_grep_skips_binary_files_and_reports_empty_results(tmp_path: Path) -> None:
@@ -292,11 +295,11 @@ def test_grep_skips_binary_files_and_reports_empty_results(tmp_path: Path) -> No
     missing = tool.call({"pattern": "gamma", "path": "src", "output_mode": "content"}, context)
     found = tool.call({"pattern": "alpha", "path": "src", "output_mode": "content"}, context)
 
-    assert missing.content == []
+    assert missing.content == [{"type": "text", "text": "No matches found"}]
     assert missing.structured_content is not None
     assert missing.structured_content["count"] == 0
     assert missing.structured_content["truncated"] is False
-    assert found.content == ["src/text.txt:1:alpha"]
+    assert found.content == [{"type": "text", "text": "src/text.txt:1:alpha"}]
 
 
 def test_grep_supports_ripgrep_output_modes_and_filters(tmp_path: Path) -> None:
@@ -325,11 +328,11 @@ def test_grep_supports_ripgrep_output_modes_and_filters(tmp_path: Path) -> None:
         context,
     )
 
-    assert files_result.content == ["src/a.py"]
+    assert render_tool_result_content(files_result.content) == "Found 1 matching files\nsrc/a.py"
     assert files_result.structured_content is not None
     assert files_result.structured_content["mode"] == "files_with_matches"
-    assert count_result.content == ["src/a.py:2"]
-    assert content_result.content == ["src/b.txt:1:error lower"]
+    assert count_result.content == [{"type": "text", "text": "src/a.py:2"}]
+    assert content_result.content == [{"type": "text", "text": "src/b.txt:1:error lower"}]
 
 
 def test_grep_supports_multiline_and_offset_windows(tmp_path: Path) -> None:
@@ -354,7 +357,7 @@ def test_grep_supports_multiline_and_offset_windows(tmp_path: Path) -> None:
         context,
     )
 
-    assert result.content == ["middle", "END"]
+    assert result.content == [{"type": "text", "text": "middle"}, {"type": "text", "text": "END"}]
     assert result.structured_content is not None
     assert result.structured_content["applied_offset"] == 1
     assert result.structured_content["truncated"] is True
@@ -552,7 +555,23 @@ def test_bash_tool_executes_successfully(tmp_path: Path) -> None:
     result = tool.call({"command": "pwd"}, context)
 
     assert result.success is True
-    assert result.content == [str(tmp_path)]
+    assert result.content == [{"type": "text", "text": str(tmp_path)}]
+
+
+def test_bash_tool_emits_image_block_for_data_uri_output(tmp_path: Path) -> None:
+    tool = BashTool(str(tmp_path))
+    context = ToolExecutionContext(session_id="sess_bash_image", working_directory=str(tmp_path))
+
+    result = tool.call({"command": "printf 'data:image/png;base64,ZmFrZQ=='"}, context)
+
+    assert result.content == [
+        {
+            "type": "image",
+            "media_type": "image/png",
+            "data": "ZmFrZQ==",
+            "alt_text": "bash output image",
+        }
+    ]
 
 
 def test_bash_tool_reports_non_zero_exit(tmp_path: Path) -> None:

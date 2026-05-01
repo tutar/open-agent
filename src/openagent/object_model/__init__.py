@@ -17,6 +17,17 @@ from openagent.object_model.models import (
     TerminalState,
     ToolResult,
 )
+from openagent.object_model.tool_result_blocks import (
+    IMAGE_BLOCK_TYPE,
+    TEXT_BLOCK_TYPE,
+    TOOL_REFERENCE_BLOCK_TYPE,
+    has_non_textual_tool_result_content,
+    image_block,
+    normalize_tool_result_content,
+    render_tool_result_content,
+    text_block,
+    tool_reference_block,
+)
 
 __all__ = [
     "AgentLongTermMemoryRef",
@@ -36,5 +47,14 @@ __all__ = [
     "TaskRecord",
     "TerminalStatus",
     "TerminalState",
+    "TEXT_BLOCK_TYPE",
+    "IMAGE_BLOCK_TYPE",
+    "TOOL_REFERENCE_BLOCK_TYPE",
     "ToolResult",
+    "has_non_textual_tool_result_content",
+    "image_block",
+    "normalize_tool_result_content",
+    "render_tool_result_content",
+    "text_block",
+    "tool_reference_block",
 ]

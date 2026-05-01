@@ -50,7 +50,12 @@ class FileWriteTool(BuiltinToolBase):
         return ToolResult(
             tool_name=self.name,
             success=True,
-            content=cast(list[JsonValue], [str(path)]),
+            content=cast(
+                list[JsonValue],
+                [
+                    f"{'Updated' if existed else 'Created'} {arguments['path']}"
+                ],
+            ),
             structured_content={
                 "path": str(path),
                 "operation": "update" if existed else "create",

@@ -210,7 +210,7 @@ class FileSessionStore:
             role = raw.get("role")
             content = raw.get("content")
             metadata = raw.get("metadata")
-            if not isinstance(role, str) or not isinstance(content, str):
+            if not isinstance(role, str):
                 continue
             messages.append(
                 SessionMessage(

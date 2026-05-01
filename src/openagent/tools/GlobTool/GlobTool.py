@@ -6,7 +6,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import cast
 
-from openagent.object_model import JsonValue, ToolResult
+from openagent.object_model import JsonValue, ToolResult, text_block, tool_reference_block
 from openagent.tools.GlobTool.prompt import DESCRIPTION, GLOB_TOOL_NAME
 from openagent.tools.models import ToolExecutionContext
 from openagent.tools.tool_base import BuiltinToolBase
@@ -81,10 +81,23 @@ class GlobTool(BuiltinToolBase):
                 matches.append(relative)
             if len(matches) >= limit:
                 break
+        if matches:
+            result_content = cast(
+                list[JsonValue],
+                [
+                    text_block(f"Found {len(matches)} matching files"),
+                    *[
+                        tool_reference_block(ref=match, title=match, preview=match, ref_kind="file")
+                        for match in matches
+                    ],
+                ],
+            )
+        else:
+            result_content = cast(list[JsonValue], [text_block("No files found")])
         return ToolResult(
             tool_name=self.name,
             success=True,
-            content=cast(list[JsonValue], matches),
+            content=result_content,
             structured_content={
                 "search_root": str(search_root.relative_to(root)) if search_root != root else ".",
                 "limit": limit,

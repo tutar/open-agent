@@ -10,6 +10,7 @@ from openagent.session.models import (
     SessionMessage,
     SessionRecord,
     WakeRequest,
+    session_message_text,
 )
 from openagent.session.short_term_memory import (
     FileShortTermMemoryStore,
@@ -36,4 +37,5 @@ __all__ = [
     "ShortTermMemoryUpdateResult",
     "ShortTermSessionMemory",
     "WakeRequest",
+    "session_message_text",
 ]

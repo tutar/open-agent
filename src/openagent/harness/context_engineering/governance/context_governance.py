@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from openagent.harness.context_engineering.governance.context_editing import (
     externalize_tool_result,
     tool_result_message_content,
+    tool_result_transcript_content,
 )
 from openagent.harness.context_engineering.governance.models import (
     CompactResult,
@@ -26,8 +27,8 @@ from openagent.harness.context_engineering.governance.prompt_cache_strategy impo
     provider_cache_key,
     snapshot_prompt_cache,
 )
-from openagent.object_model import ToolResult
-from openagent.session import SessionMessage
+from openagent.object_model import JsonValue, ToolResult
+from openagent.session import SessionMessage, session_message_text
 
 
 @dataclass(slots=True)
@@ -42,6 +43,9 @@ class ContextGovernance:
     storage_dir: str | None = None
     reserve_output_tokens: int = 256
     minimum_continuation_tokens: int = 128
+
+    def _message_text(self, message: SessionMessage) -> str:
+        return session_message_text(message)
 
     def _retain_recent_messages(
         self,
@@ -100,11 +104,12 @@ class ContextGovernance:
         ]
         other_tokens = self.estimate_tokens(other_messages, [])
         available_user_tokens = max(1, self.max_tokens - other_tokens)
-        if max(1, len(latest_user.content) // 4) <= available_user_tokens:
+        latest_user_text = self._message_text(latest_user)
+        if max(1, len(latest_user_text) // 4) <= available_user_tokens:
             return kept
         max_chars = max(1, available_user_tokens * 4)
         suffix = "..."
-        truncated_content = latest_user.content[:max_chars]
+        truncated_content = latest_user_text[:max_chars]
         if len(truncated_content) > len(suffix):
             truncated_content = truncated_content[: max_chars - len(suffix)] + suffix
         kept[latest_user_index] = SessionMessage(
@@ -129,12 +134,14 @@ class ContextGovernance:
             warning_threshold_reached=estimated_tokens >= self.warning_tokens,
             budget_remaining=budget_remaining,
             externalized_tool_count=sum(
-                1 for message in messages if "[externalized:" in message.content
+                1
+                for message in messages
+                if "externalized to internal storage" in self._message_text(message)
             ),
         )
 
     def estimate_tokens(self, messages: list[SessionMessage], tools: list[str]) -> int:
-        message_tokens = sum(max(1, len(message.content) // 4) for message in messages)
+        message_tokens = sum(max(1, len(self._message_text(message)) // 4) for message in messages)
         return message_tokens + len(tools) * 8
 
     def should_compact(self, messages: list[SessionMessage], model: str = "default") -> bool:
@@ -289,6 +296,9 @@ class ContextGovernance:
 
     def tool_result_message_content(self, result: ToolResult) -> str:
         return tool_result_message_content(result)
+
+    def tool_result_transcript_content(self, result: ToolResult) -> JsonValue:
+        return tool_result_transcript_content(result)
 
     def _provider_cache_key(self, messages: list[SessionMessage]) -> str | None:
         return provider_cache_key(messages)

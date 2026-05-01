@@ -28,6 +28,7 @@ from openagent.harness.context_engineering.entry.startup_context import (
 from openagent.harness.context_engineering.governance.context_editing import (
     externalize_tool_result,
     tool_result_message_content,
+    tool_result_transcript_content,
 )
 from openagent.harness.context_engineering.governance.context_governance import (
     ContextGovernance,
@@ -86,4 +87,5 @@ __all__ = [
     "default_workspace_root_from_metadata",
     "externalize_tool_result",
     "tool_result_message_content",
+    "tool_result_transcript_content",
 ]

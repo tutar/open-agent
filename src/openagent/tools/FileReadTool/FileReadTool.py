@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from openagent.object_model import JsonValue, ToolResult
+from openagent.object_model import JsonValue, ToolResult, text_block
 from openagent.tools.FileReadTool.prompt import DESCRIPTION, READ_TOOL_NAME
 from openagent.tools.models import ToolExecutionContext
 from openagent.tools.tool_base import BuiltinToolBase
@@ -85,6 +85,6 @@ class FileReadTool(BuiltinToolBase):
         return ToolResult(
             tool_name=self.name,
             success=True,
-            content=cast(list[JsonValue], [numbered]),
+            content=cast(list[JsonValue], [text_block(numbered)]),
             structured_content=metadata,
         )

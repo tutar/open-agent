@@ -7,7 +7,14 @@ from pathlib import Path
 from openagent.harness.context_engineering.governance.models import (
     ContentExternalizationResult,
 )
-from openagent.object_model import ToolResult
+from openagent.object_model import (
+    JsonValue,
+    ToolResult,
+    has_non_textual_tool_result_content,
+    normalize_tool_result_content,
+    render_tool_result_content,
+    text_block,
+)
 
 
 def externalize_tool_result(
@@ -16,7 +23,16 @@ def externalize_tool_result(
     externalize_threshold_chars: int,
     storage_dir: str | None,
 ) -> ToolResult:
-    content_text = "\n".join(str(item) for item in result.content)
+    if not result.content:
+        result.content = [text_block(f"({result.tool_name} completed with no output)")]
+        return result
+
+    normalized_content = normalize_tool_result_content(result.content)
+    result.content = normalized_content
+    if has_non_textual_tool_result_content(normalized_content):
+        return result
+
+    content_text = render_tool_result_content(normalized_content)
     if len(content_text) <= externalize_threshold_chars:
         return result
 
@@ -29,7 +45,7 @@ def externalize_tool_result(
         result_path.write_text(content_text, encoding="utf-8")
         persisted_ref = str(result_path)
 
-    result.content = [preview]
+    result.content = [text_block(preview)]
     result.persisted_ref = persisted_ref
     result.truncated = True
     metadata = dict(result.metadata or {})
@@ -70,7 +86,7 @@ def externalize_payload(
 
 
 def tool_result_message_content(result: ToolResult) -> str:
-    content_text = "\n".join(str(item) for item in result.content)
+    content_text = render_tool_result_content(result.content)
     prefix = f"{result.tool_name}: " if result.success else f"{result.tool_name} failed: "
     if result.persisted_ref is None:
         return f"{prefix}{content_text}"
@@ -79,3 +95,9 @@ def tool_result_message_content(result: ToolResult) -> str:
         "[tool result externalized to internal storage; this is not a workspace file path "
         "and should not be read with local file tools]"
     )
+
+
+def tool_result_transcript_content(result: ToolResult) -> JsonValue:
+    if not result.content:
+        return [text_block(f"({result.tool_name} completed with no output)")]
+    return normalize_tool_result_content(result.content)

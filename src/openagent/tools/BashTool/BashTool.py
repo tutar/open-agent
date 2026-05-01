@@ -8,7 +8,7 @@ from pathlib import Path
 from subprocess import TimeoutExpired
 from typing import cast
 
-from openagent.object_model import JsonValue, ToolResult
+from openagent.object_model import JsonValue, ToolResult, image_block, text_block
 from openagent.tools.BashTool.prompt import BASH_TOOL_NAME, DESCRIPTION
 from openagent.tools.models import PermissionDecision, ToolExecutionContext
 from openagent.tools.tool_base import BuiltinToolBase
@@ -94,10 +94,11 @@ class BashTool(BuiltinToolBase):
         output = merge_process_output(completed.stdout, completed.stderr)
         if completed.returncode != 0:
             raise RuntimeError(output.strip() or f"command failed with exit code {completed.returncode}")
+        result_content = bash_result_content(output.rstrip())
         return ToolResult(
             tool_name=self.name,
             success=True,
-            content=cast(list[JsonValue], [output.rstrip()]),
+            content=cast(list[JsonValue], result_content),
             structured_content={
                 "cwd": root,
                 "exit_code": completed.returncode,
@@ -157,3 +158,14 @@ def command_target_path(workspace: Path, token: str) -> Path | None:
     if "/" in candidate:
         return (workspace / candidate).resolve()
     return (workspace / candidate).resolve()
+
+
+def bash_result_content(output: str) -> list[JsonValue]:
+    stripped = output.strip()
+    if stripped.startswith("data:image/") and ";base64," in stripped:
+        header, data = stripped.split(",", 1)
+        media_type = header[len("data:") : header.index(";base64")]
+        return [image_block(media_type=media_type, data=data, alt_text="bash output image")]
+    if not stripped:
+        return []
+    return [text_block(stripped)]

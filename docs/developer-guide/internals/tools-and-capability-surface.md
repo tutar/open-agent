@@ -147,6 +147,30 @@ executor 解决“怎么执行这些 tool”。
   - 支持显式 `timeout_ms`
   - 继续保持 workspace-bound permission 语义，而不是无边界 shell
 
+tool result 回写链路现在也需要按 richer model 维护：
+
+- transcript 内部不再假设所有 tool result 都必须先压成字符串
+- `SessionMessage(role="tool")` 可以持有 richer tool-result content
+- `ContextGovernance` 负责：
+  - 大结果 externalize 为内部持久化引用
+  - 空结果补 `(ToolName completed with no output)` 风格占位
+- provider adapters 按能力投影：
+  - Anthropic-compatible provider 尽量保留 `tool_result` block 和 text/image content
+  - OpenAI-compatible provider 把 richer tool-result 降级成稳定字符串摘要
+
+当前 6 个 core local tools 的第一批 result contract 为：
+
+- `Read`
+  - text block
+- `Grep`
+  - text blocks；`files_with_matches` 模式带文件摘要
+- `Glob`
+  - text summary + tool reference style file blocks
+- `Write / Edit`
+  - 简洁的成功摘要字符串 + structured metadata
+- `Bash`
+  - text block；当 stdout 是图片 data URI 时输出 image block
+
 这组 core local tools 现在也应按四层验证来维护：
 
 - tool behavior unit tests

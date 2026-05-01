@@ -33,6 +33,7 @@
   - builtin 实现按 tool 独立目录维护，便于单独演进与维护
   - per-tool `prompt.py` is the source of truth for model-visible `DESCRIPTION`
   - harness bootstrap prompt only consumes root-level tool-name constants, not per-tool descriptions
+  - transcript 内部支持 richer tool-result content，而不是要求所有工具先压成单字符串
 - core local builtin tools now expose richer execution semantics
   - `Read` supports line-based partial reads with numbered output
   - `Edit` supports strict single-match editing plus `replace_all`
@@ -41,6 +42,13 @@
     output modes, `glob` and `type` filters, context flags, pagination via
     `head_limit/offset`, and multiline search
   - `Bash` supports explicit `timeout_ms` and stronger workspace-bound behavior
+  - `Read / Grep / Bash` can emit text blocks, `Glob` can emit tool-reference style
+    file results, and `Bash` can emit image blocks when command output is an image data URI
+  - empty tool results are normalized to a non-empty completion marker, and oversized
+    text-heavy tool results are externalized to internal storage with a stable summary
+  - provider adapters now project richer tool-result content per provider:
+    Anthropic-compatible payloads keep text/image tool-result blocks when possible, while
+    OpenAI-compatible payloads downgrade them to stable string summaries
   - core local tools now have a layered verification story:
     unit behavior, provider contract, harness integration, and optional live model selection eval
   - live core-tool evals are environment-gated and can reuse the current model config by setting

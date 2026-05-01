@@ -10,6 +10,7 @@ from openagent.harness.providers.base import (
     ProviderError,
     UrllibHttpTransport,
 )
+from openagent.harness.providers.tool_results import tool_result_content_to_anthropic
 from openagent.harness.runtime.io import (
     ModelProviderExchange,
     ModelTurnRequest,
@@ -80,11 +81,11 @@ class AnthropicMessagesModelAdapter:
             system_messages.extend([f"Relevant memory: {item}" for item in memory_blocks])
         for message in request.messages:
             role = str(message.get("role", "user"))
-            content = str(message.get("content", ""))
+            content = message.get("content", "")
             metadata = message.get("metadata")
             metadata_dict = dict(metadata) if isinstance(metadata, dict) else {}
             if role == "system":
-                system_messages.append(content)
+                system_messages.append(str(content))
                 continue
             if role == "tool":
                 tool_use_id = metadata_dict.get("tool_use_id")
@@ -96,13 +97,13 @@ class AnthropicMessagesModelAdapter:
                                 {
                                     "type": "tool_result",
                                     "tool_use_id": str(tool_use_id),
-                                    "content": content,
+                                    "content": tool_result_content_to_anthropic(cast(JsonValue, content)),
                                 }
                             ],
                         }
                     )
                     continue
-            messages.append({"role": role, "content": content})
+            messages.append({"role": role, "content": str(content)})
         payload: JsonObject = {
             "model": self.model,
             "max_tokens": self.max_tokens,
