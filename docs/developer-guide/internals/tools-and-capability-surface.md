@@ -142,6 +142,27 @@ executor 解决“怎么执行这些 tool”。
   - 支持显式 `timeout_ms`
   - 继续保持 workspace-bound permission 语义，而不是无边界 shell
 
+这组 core local tools 现在也应按四层验证来维护：
+
+- tool behavior unit tests
+- provider contract tests
+- harness integration tests
+- live model selection evals
+
+其中 live eval 默认不进入常规回归，使用现有模型装配入口 `load_model_from_env()`，
+通过 `OPENAGENT_RUN_TOOL_SELECTION_EVAL=1` 和当前 provider/model/base_url 配置来运行。
+
+如果目标是评估“当前 runtime 实际挂载的所有工具”，应优先从 runtime registry 枚举：
+
+- builtin tools
+- role-mounted tools
+- MCP/custom tools
+
+然后按是否已有场景定义区分为：
+
+- `completed`：有 live scenario 且真实模型通过
+- `disclosed_only`：当前只验证能力披露和 registry 装配
+
 其中 `WebFetch / WebSearch` 现在已经和具体实现解耦：
 
 - `WebFetch` 保持“按 URL 定向获取内容”的语义

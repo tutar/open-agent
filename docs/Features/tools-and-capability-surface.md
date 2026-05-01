@@ -38,6 +38,13 @@
   - `Edit` supports strict single-match editing plus `replace_all`
   - `Glob` and `Grep` support scoped search with result limits
   - `Bash` supports explicit `timeout_ms` and stronger workspace-bound behavior
+  - core local tools now have a layered verification story:
+    unit behavior, provider contract, harness integration, and optional live model selection eval
+  - live core-tool evals are environment-gated and can reuse the current model config by setting
+    `OPENAGENT_RUN_TOOL_SELECTION_EVAL=1` together with `OPENAGENT_PROVIDER`,
+    `OPENAGENT_BASE_URL`, and `OPENAGENT_MODEL`
+  - a runtime tool-surface eval can enumerate the actual mounted tool registry and report which
+    tools are only disclosed vs which have live task scenarios
 - pluggable web backends for builtin web tools
   - default stdlib URL fetch backend
   - default placeholder search backend

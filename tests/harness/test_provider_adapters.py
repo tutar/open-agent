@@ -29,16 +29,20 @@ from openagent.harness.runtime import (
     ModelTurnResponse,
     SimpleHarness,
 )
-from openagent.object_model import JsonObject, ToolResult
+from openagent.object_model import JsonObject, RuntimeEventType, ToolResult
 from openagent.session import FileSessionStore, InMemoryShortTermMemoryStore
 from openagent.tools import (
     ASK_USER_QUESTION_TOOL_NAME,
     BASH_TOOL_NAME,
     BashTool,
     EDIT_TOOL_NAME,
+    FileEditTool,
+    FileReadTool,
+    FileWriteTool,
     GLOB_TOOL_NAME,
     GREP_TOOL_NAME,
     GlobTool,
+    GrepTool,
     READ_TOOL_NAME,
     SimpleToolExecutor,
     StaticToolRegistry,
@@ -47,6 +51,7 @@ from openagent.tools import (
     WEB_SEARCH_TOOL_NAME,
     WebSearchTool,
     WRITE_TOOL_NAME,
+    create_builtin_toolset,
 )
 
 
@@ -626,6 +631,67 @@ def test_openai_chat_adapter_emits_complete_builtin_tool_schema() -> None:
     ]
 
 
+def test_openai_chat_adapter_emits_complete_core_local_tool_schemas() -> None:
+    transport = FakeTransport(response_body={"choices": [{"message": {"content": "ok"}}]})
+    adapter = OpenAIChatCompletionsModelAdapter(
+        model="gpt-test",
+        base_url="http://127.0.0.1:8001",
+        transport=transport,
+    )
+    toolset = [
+        FileReadTool("."),
+        FileWriteTool("."),
+        FileEditTool("."),
+        GlobTool("."),
+        GrepTool("."),
+        BashTool("."),
+    ]
+
+    adapter.generate(
+        ModelTurnRequest(
+            session_id="sess_core_schema",
+            messages=[{"role": "user", "content": "use local tools"}],
+            tool_definitions=[
+                {
+                    "name": tool.name,
+                    "description": tool.description(),
+                    "input_schema": tool.input_schema,
+                }
+                for tool in toolset
+            ],
+        )
+    )
+
+    assert transport.seen_payload is not None
+    payload_tools = transport.seen_payload["tools"]
+    assert isinstance(payload_tools, list)
+    by_name = {
+        item["function"]["name"]: item["function"]
+        for item in payload_tools
+        if isinstance(item, dict) and isinstance(item.get("function"), dict)
+    }
+
+    expected_fields = {
+        READ_TOOL_NAME: ("path", "offset"),
+        WRITE_TOOL_NAME: ("path", "content"),
+        EDIT_TOOL_NAME: ("path", "replace_all"),
+        GLOB_TOOL_NAME: ("pattern", "path"),
+        GREP_TOOL_NAME: ("pattern", "glob"),
+        BASH_TOOL_NAME: ("command", "timeout_ms"),
+    }
+    for tool_name, fields in expected_fields.items():
+        assert tool_name in by_name
+        function = by_name[tool_name]
+        assert isinstance(function["description"], str)
+        assert function["description"]
+        parameters = function["parameters"]
+        assert parameters["type"] == "object"
+        assert parameters["additionalProperties"] is False
+        for field_name in fields:
+            assert field_name in parameters["properties"]
+        assert parameters["required"]
+
+
 def test_openai_adapter_generate_with_exchange_exposes_payload_and_raw_response() -> None:
     transport = FakeTransport(
         response_body={
@@ -819,6 +885,93 @@ def test_harness_build_model_input_includes_short_term_memory(tmp_path: Path) ->
 
     assert request.short_term_memory is not None
     assert "rollout" in str(request.short_term_memory["summary"]).lower()
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "prepare_workspace", "assert_result"),
+    [
+        (
+            READ_TOOL_NAME,
+            {"path": "notes.txt"},
+            lambda root: (root / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8"),
+            lambda payload: payload["content"] == ["1\talpha\n2\tbeta"],
+        ),
+        (
+            WRITE_TOOL_NAME,
+            {"path": "nested/out.txt", "content": "hello\n"},
+            lambda root: None,
+            lambda payload: str(payload["structured_content"]["path"]).endswith("nested/out.txt"),
+        ),
+        (
+            EDIT_TOOL_NAME,
+            {"path": "notes.txt", "old": "beta", "new": "gamma"},
+            lambda root: (root / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8"),
+            lambda payload: payload["structured_content"]["replacements"] == 1,
+        ),
+        (
+            GLOB_TOOL_NAME,
+            {"pattern": "*.py", "path": "src"},
+            lambda root: (
+                (root / "src").mkdir(),
+                (root / "src" / "main.py").write_text("print('x')\n", encoding="utf-8"),
+            ),
+            lambda payload: payload["content"] == ["src/main.py"],
+        ),
+        (
+            GREP_TOOL_NAME,
+            {"pattern": "needle", "path": "src"},
+            lambda root: (
+                (root / "src").mkdir(),
+                (root / "src" / "main.py").write_text("needle\n", encoding="utf-8"),
+            ),
+            lambda payload: payload["content"] == ["src/main.py:1:needle"],
+        ),
+        (
+            BASH_TOOL_NAME,
+            {"command": "pwd"},
+            lambda root: None,
+            lambda payload: payload["content"] == [str(Path(payload["structured_content"]["cwd"]))],
+        ),
+    ],
+)
+def test_harness_roundtrips_core_local_tool_calls(
+    tmp_path: Path,
+    tool_name: str,
+    arguments: dict[str, object],
+    prepare_workspace,
+    assert_result,
+) -> None:
+    prepare_workspace(tmp_path)
+    toolset = create_builtin_toolset(root=str(tmp_path))
+    harness = SimpleHarness(
+        model=ToolThenReplyModel(
+            responses=[
+                ModelTurnResponse(tool_calls=[ToolCall(tool_name=tool_name, arguments=arguments)]),
+                ModelTurnResponse(assistant_message=f"{tool_name} completed"),
+            ]
+        ),
+        sessions=FileSessionStore(tmp_path / "sessions"),
+        tools=StaticToolRegistry(toolset),
+        executor=SimpleToolExecutor(StaticToolRegistry(toolset)),
+    )
+    session = harness.sessions.load_session(f"sess_{tool_name.lower()}")
+    session.metadata["workdir"] = str(tmp_path)
+    harness.sessions.save_session(session.session_id, session)
+
+    events, terminal = harness.run_turn(f"use {tool_name}", session.session_id)
+
+    assert terminal.status.value == "completed"
+    assert [event.event_type for event in events] == [
+        RuntimeEventType.TURN_STARTED,
+        RuntimeEventType.TOOL_STARTED,
+        RuntimeEventType.TOOL_RESULT,
+        RuntimeEventType.ASSISTANT_MESSAGE,
+        RuntimeEventType.TURN_COMPLETED,
+    ]
+    tool_result_payload = events[2].payload
+    assert tool_result_payload["tool_name"] == tool_name
+    assert tool_result_payload["success"] is True
+    assert assert_result(tool_result_payload)
 
 
 def test_tool_results_preserve_tool_use_id_in_session_messages(tmp_path: Path) -> None:

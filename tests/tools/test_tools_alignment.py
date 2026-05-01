@@ -174,6 +174,19 @@ def test_read_tool_supports_offset_and_limit(tmp_path: Path) -> None:
     assert result.structured_content["truncated"] is True
 
 
+def test_read_tool_rejects_directory_paths(tmp_path: Path) -> None:
+    (tmp_path / "nested").mkdir()
+    tool = ReadTool(str(tmp_path))
+    context = ToolExecutionContext(session_id="sess_read_dir", working_directory=str(tmp_path))
+
+    try:
+        tool.call({"path": "nested"}, context)
+    except IsADirectoryError as exc:
+        assert "path is not a file" in str(exc)
+    else:
+        raise AssertionError("Expected IsADirectoryError for directory reads")
+
+
 def test_edit_tool_requires_specific_match_or_replace_all(tmp_path: Path) -> None:
     path = tmp_path / "notes.txt"
     path.write_text("alpha\nbeta\nbeta\n", encoding="utf-8")
@@ -197,6 +210,34 @@ def test_edit_tool_requires_specific_match_or_replace_all(tmp_path: Path) -> Non
     assert path.read_text(encoding="utf-8") == "alpha\ngamma\ngamma\n"
 
 
+def test_write_tool_creates_parent_directories_and_reports_create_update(tmp_path: Path) -> None:
+    tool = WriteTool(str(tmp_path))
+    context = ToolExecutionContext(session_id="sess_write", working_directory=str(tmp_path))
+
+    created = tool.call({"path": "nested/output.txt", "content": "hello\n"}, context)
+    updated = tool.call({"path": "nested/output.txt", "content": "world\n"}, context)
+
+    assert (tmp_path / "nested" / "output.txt").read_text(encoding="utf-8") == "world\n"
+    assert created.structured_content is not None
+    assert created.structured_content["operation"] == "create"
+    assert updated.structured_content is not None
+    assert updated.structured_content["operation"] == "update"
+
+
+def test_edit_tool_fails_when_target_text_is_missing(tmp_path: Path) -> None:
+    path = tmp_path / "notes.txt"
+    path.write_text("alpha\nbeta\n", encoding="utf-8")
+    tool = next(tool for tool in create_builtin_toolset(root=str(tmp_path)) if tool.name == "Edit")
+    context = ToolExecutionContext(session_id="sess_edit_missing", working_directory=str(tmp_path))
+
+    try:
+        tool.call({"path": "notes.txt", "old": "gamma", "new": "delta"}, context)
+    except ValueError as exc:
+        assert str(exc) == "target text not found"
+    else:
+        raise AssertionError("Expected ValueError when edit target is missing")
+
+
 def test_glob_and_grep_support_scoped_search_and_limits(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "docs").mkdir()
@@ -218,6 +259,36 @@ def test_glob_and_grep_support_scoped_search_and_limits(tmp_path: Path) -> None:
     assert grep_result.content == ["src/a.py:1:match", "src/b.py:1:match"]
     assert grep_result.structured_content is not None
     assert grep_result.structured_content["truncated"] is True
+
+
+def test_glob_returns_sorted_matches_and_ignores_directories(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "z.py").write_text("z\n", encoding="utf-8")
+    (tmp_path / "src" / "a.py").write_text("a\n", encoding="utf-8")
+    (tmp_path / "src" / "pkg").mkdir()
+    tool = next(tool for tool in create_builtin_toolset(root=str(tmp_path)) if tool.name == "Glob")
+    context = ToolExecutionContext(session_id="sess_glob_sorted", working_directory=str(tmp_path))
+
+    result = tool.call({"pattern": "*.py", "path": "src", "limit": 10}, context)
+
+    assert result.content == ["src/a.py", "src/z.py"]
+
+
+def test_grep_skips_binary_files_and_reports_empty_results(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "text.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+    (tmp_path / "src" / "blob.bin").write_bytes(b"\xff\xfe\x00\x01")
+    tool = next(tool for tool in create_builtin_toolset(root=str(tmp_path)) if tool.name == "Grep")
+    context = ToolExecutionContext(session_id="sess_grep_binary", working_directory=str(tmp_path))
+
+    missing = tool.call({"pattern": "gamma", "path": "src"}, context)
+    found = tool.call({"pattern": "alpha", "path": "src"}, context)
+
+    assert missing.content == []
+    assert missing.structured_content is not None
+    assert missing.structured_content["count"] == 0
+    assert missing.structured_content["truncated"] is False
+    assert found.content == ["src/text.txt:1:alpha"]
 
 
 def test_builtin_tools_validate_required_arguments() -> None:
