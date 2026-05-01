@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 
-def string_property(description: str, *, examples: list[str] | None = None) -> dict[str, object]:
+def string_property(
+    description: str,
+    *,
+    examples: list[str] | None = None,
+    enum: list[str] | None = None,
+) -> dict[str, object]:
     payload: dict[str, object] = {
         "type": "string",
         "description": description,
     }
     if examples:
         payload["examples"] = examples
+    if enum:
+        payload["enum"] = enum
     return payload
 
 

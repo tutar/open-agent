@@ -676,7 +676,7 @@ def test_openai_chat_adapter_emits_complete_core_local_tool_schemas() -> None:
         WRITE_TOOL_NAME: ("path", "content"),
         EDIT_TOOL_NAME: ("path", "replace_all"),
         GLOB_TOOL_NAME: ("pattern", "path"),
-        GREP_TOOL_NAME: ("pattern", "glob"),
+        GREP_TOOL_NAME: ("pattern", "output_mode", "head_limit"),
         BASH_TOOL_NAME: ("command", "timeout_ms"),
     }
     for tool_name, fields in expected_fields.items():
@@ -690,6 +690,14 @@ def test_openai_chat_adapter_emits_complete_core_local_tool_schemas() -> None:
         for field_name in fields:
             assert field_name in parameters["properties"]
         assert parameters["required"]
+    grep_function = by_name[GREP_TOOL_NAME]
+    assert "ripgrep" in grep_function["description"]
+    assert "Agent tool" in grep_function["description"]
+    assert grep_function["parameters"]["properties"]["output_mode"]["enum"] == [
+        "content",
+        "files_with_matches",
+        "count",
+    ]
 
 
 def test_openai_adapter_generate_with_exchange_exposes_payload_and_raw_response() -> None:

@@ -189,7 +189,7 @@ CORE_TOOL_SELECTION_SCENARIOS = [
     ),
     ToolSelectionScenario(
         name="grep_finds_symbol_usage",
-        prompt="Find where the text validation_failed appears under src.",
+        prompt="Find where the text validation_failed appears under src and show the matching lines.",
         enabled_tools=(GREP_TOOL_NAME, GLOB_TOOL_NAME, BASH_TOOL_NAME),
         expected_tool=GREP_TOOL_NAME,
         forbidden_tools=(BASH_TOOL_NAME,),

@@ -19,3 +19,19 @@ def require_positive_int_field(arguments: dict[str, object], field_name: str) ->
     if value < 1:
         raise ValueError(f"{field_name} must be >= 1")
     return value
+
+
+def require_non_negative_int_field(arguments: dict[str, object], field_name: str) -> int:
+    value = arguments.get(field_name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field_name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{field_name} must be >= 0")
+    return value
+
+
+def require_bool_field(arguments: dict[str, object], field_name: str) -> bool:
+    value = arguments.get(field_name)
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a boolean")
+    return value

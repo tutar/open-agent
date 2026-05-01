@@ -137,7 +137,12 @@ executor 解决“怎么执行这些 tool”。
   - 多处命中时必须显式使用 `replace_all`
 - `Glob / Grep`
   - 支持限定搜索子目录
-  - 支持结果数量上限
+  - `Glob` 支持结果数量上限
+  - `Grep` 直接调用 `rg`/ripgrep，而不是退化成 Python substring search
+  - `Grep` 暴露 regex、`output_mode`、context flags、`type`、`head_limit/offset`、
+    `multiline` 这组 model-visible schema
+  - `Grep` 的 `prompt.py` description 明确要求优先用工具本身，不要通过 `Bash`
+    调 `grep` 或 `rg`
 - `Bash`
   - 支持显式 `timeout_ms`
   - 继续保持 workspace-bound permission 语义，而不是无边界 shell

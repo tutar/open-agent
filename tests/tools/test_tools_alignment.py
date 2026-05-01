@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import openagent
@@ -148,7 +149,7 @@ def test_builtin_file_tools_roundtrip(tmp_path: Path) -> None:
         context,
     )
     glob_result = tools["Glob"].call({"pattern": "*.txt"}, context)
-    grep_result = tools["Grep"].call({"pattern": "gamma"}, context)
+    grep_result = tools["Grep"].call({"pattern": "gamma", "output_mode": "content"}, context)
 
     assert write_result.content == [str((tmp_path / "notes.txt").resolve())]
     assert read_result.content == ["1\talpha\n2\tbeta"]
@@ -249,7 +250,13 @@ def test_glob_and_grep_support_scoped_search_and_limits(tmp_path: Path) -> None:
 
     glob_result = tools["Glob"].call({"pattern": "*.py", "path": "src", "limit": 1}, context)
     grep_result = tools["Grep"].call(
-        {"pattern": "match", "path": "src", "glob": "*.py", "limit": 2},
+        {
+            "pattern": "match",
+            "path": "src",
+            "glob": "*.py",
+            "output_mode": "content",
+            "head_limit": 2,
+        },
         context,
     )
 
@@ -281,14 +288,93 @@ def test_grep_skips_binary_files_and_reports_empty_results(tmp_path: Path) -> No
     tool = next(tool for tool in create_builtin_toolset(root=str(tmp_path)) if tool.name == "Grep")
     context = ToolExecutionContext(session_id="sess_grep_binary", working_directory=str(tmp_path))
 
-    missing = tool.call({"pattern": "gamma", "path": "src"}, context)
-    found = tool.call({"pattern": "alpha", "path": "src"}, context)
+    missing = tool.call({"pattern": "gamma", "path": "src", "output_mode": "content"}, context)
+    found = tool.call({"pattern": "alpha", "path": "src", "output_mode": "content"}, context)
 
     assert missing.content == []
     assert missing.structured_content is not None
     assert missing.structured_content["count"] == 0
     assert missing.structured_content["truncated"] is False
     assert found.content == ["src/text.txt:1:alpha"]
+
+
+def test_grep_supports_ripgrep_output_modes_and_filters(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("Error one\nok\nError two\n", encoding="utf-8")
+    (tmp_path / "src" / "b.txt").write_text("error lower\n", encoding="utf-8")
+    tool = next(tool for tool in create_builtin_toolset(root=str(tmp_path)) if tool.name == "Grep")
+    context = ToolExecutionContext(session_id="sess_grep_modes", working_directory=str(tmp_path))
+
+    files_result = tool.call(
+        {"pattern": "Error", "output_mode": "files_with_matches", "type": "py"},
+        context,
+    )
+    count_result = tool.call(
+        {"pattern": "Error", "output_mode": "count", "type": "py"},
+        context,
+    )
+    content_result = tool.call(
+        {
+            "pattern": "error",
+            "output_mode": "content",
+            "-i": True,
+            "glob": "*.txt",
+            "-n": True,
+        },
+        context,
+    )
+
+    assert files_result.content == ["src/a.py"]
+    assert files_result.structured_content is not None
+    assert files_result.structured_content["mode"] == "files_with_matches"
+    assert count_result.content == ["src/a.py:2"]
+    assert content_result.content == ["src/b.txt:1:error lower"]
+
+
+def test_grep_supports_multiline_and_offset_windows(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.txt").write_text(
+        "alpha\nBEGIN\nmiddle\nEND\nomega\nBEGIN\nagain\nEND\n",
+        encoding="utf-8",
+    )
+    tool = next(tool for tool in create_builtin_toolset(root=str(tmp_path)) if tool.name == "Grep")
+    context = ToolExecutionContext(session_id="sess_grep_multiline", working_directory=str(tmp_path))
+
+    result = tool.call(
+        {
+            "pattern": "BEGIN[\\s\\S]*?END",
+            "path": "src/a.txt",
+            "output_mode": "content",
+            "multiline": True,
+            "-n": False,
+            "head_limit": 2,
+            "offset": 1,
+        },
+        context,
+    )
+
+    assert result.content == ["middle", "END"]
+    assert result.structured_content is not None
+    assert result.structured_content["applied_offset"] == 1
+    assert result.structured_content["truncated"] is True
+
+
+def test_grep_reports_missing_ripgrep_binary(tmp_path: Path, monkeypatch) -> None:
+    tool = next(tool for tool in create_builtin_toolset(root=str(tmp_path)) if tool.name == "Grep")
+    context = ToolExecutionContext(session_id="sess_grep_rg_missing", working_directory=str(tmp_path))
+
+    def _raise_missing(*args, **kwargs):
+        del args, kwargs
+        raise FileNotFoundError("rg")
+
+    monkeypatch.setattr(subprocess, "run", _raise_missing)
+
+    try:
+        tool.call({"pattern": "alpha"}, context)
+    except RuntimeError as exc:
+        assert "ripgrep executable `rg` is required" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError when rg is missing")
 
 
 def test_builtin_tools_validate_required_arguments() -> None:
@@ -324,19 +410,22 @@ def test_builtin_tools_validate_required_arguments() -> None:
 def test_builtin_tools_validate_optional_argument_types() -> None:
     executor = SimpleToolExecutor(
         StaticToolRegistry(
-            [
-                ReadTool("."),
-                BashTool("."),
-                next(tool for tool in create_builtin_toolset() if tool.name == "Edit"),
-            ]
+                [
+                    ReadTool("."),
+                    BashTool("."),
+                    next(tool for tool in create_builtin_toolset() if tool.name == "Grep"),
+                    next(tool for tool in create_builtin_toolset() if tool.name == "Edit"),
+                ]
+            )
         )
-    )
     context = ToolExecutionContext(session_id="sess_optional_types", working_directory=".")
 
     cases = [
         ("Read", {"path": "README.md", "offset": "1"}, "offset must be an integer"),
         ("Edit", {"path": "x", "old": "", "new": "y"}, "old must be a non-empty string"),
         ("Bash", {"command": "pwd", "timeout_ms": 0}, "timeout_ms must be >= 1"),
+        ("Grep", {"pattern": "x", "offset": -1}, "offset must be >= 0"),
+        ("Grep", {"pattern": "x", "-i": "true"}, "-i must be a boolean"),
     ]
 
     for tool_name, arguments, reason in cases:
@@ -381,6 +470,14 @@ def test_builtin_tools_expose_complete_json_schema() -> None:
     assert "replace_all" in toolset["Edit"].input_schema["properties"]
     assert "path" in toolset["Glob"].input_schema["properties"]
     assert "glob" in toolset["Grep"].input_schema["properties"]
+    assert "output_mode" in toolset["Grep"].input_schema["properties"]
+    assert "head_limit" in toolset["Grep"].input_schema["properties"]
+    assert "multiline" in toolset["Grep"].input_schema["properties"]
+
+    grep_properties = toolset["Grep"].input_schema["properties"]
+    assert grep_properties["output_mode"]["enum"] == ["content", "files_with_matches", "count"]
+    assert "ripgrep" in GREP_DESCRIPTION
+    assert "NEVER invoke `grep` or `rg` as a Bash command" in GREP_DESCRIPTION
     assert "timeout_ms" in toolset["Bash"].input_schema["properties"]
 
 

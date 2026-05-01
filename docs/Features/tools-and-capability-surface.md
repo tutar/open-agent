@@ -36,7 +36,10 @@
 - core local builtin tools now expose richer execution semantics
   - `Read` supports line-based partial reads with numbered output
   - `Edit` supports strict single-match editing plus `replace_all`
-  - `Glob` and `Grep` support scoped search with result limits
+  - `Glob` supports scoped search with result limits
+  - `Grep` is now ripgrep-backed, supports regex search, `content/files_with_matches/count`
+    output modes, `glob` and `type` filters, context flags, pagination via
+    `head_limit/offset`, and multiline search
   - `Bash` supports explicit `timeout_ms` and stronger workspace-bound behavior
   - core local tools now have a layered verification story:
     unit behavior, provider contract, harness integration, and optional live model selection eval
