@@ -17,9 +17,9 @@ def test_markdown_writer_replaces_managed_phase_blocks_idempotently(tmp_path: Pa
         report_lines=["- Remember launch plan"],
     )
 
+    phase_path = writer.write_phase_report(result, day="2026-04-27")
     writer.write_phase_report(result, day="2026-04-27")
-    writer.write_phase_report(result, day="2026-04-27")
-    daily_text = (tmp_path / "memory/dreaming/light/2026-04-27.md").read_text(encoding="utf-8")
+    daily_text = phase_path.read_text(encoding="utf-8")
     dreams_text = (tmp_path / "DREAMS.md").read_text(encoding="utf-8")
 
     assert daily_text.count("<!-- openagent:dreaming:light:start -->") == 1

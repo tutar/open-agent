@@ -38,6 +38,12 @@
 - `agent_<role_id|default>/<agent_id>/model-io`
   - provider token usage、reasoning、streaming、request/response 证据
 
+append-only transcript 和 event log 是 durable history source of truth：
+
+- `state.json` 只保存 side-state snapshot 与 counts，不负责重建历史
+- 如果 transcript backing 或 event log backing 丢失，OpenAgent 不会从截断后的内存 state 自动重写历史
+- metadata / restore-marker / lease 这类 side-state 仍可单独更新，但新的 turn append 会明确失败，直到 backing history 被修复
+
 role-bound durable memory 作为第四条长期事实源，固定落在：
 
 - `roles/<role_id>/memory/`

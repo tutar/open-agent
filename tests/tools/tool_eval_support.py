@@ -12,8 +12,6 @@ from typing import Any
 
 import pytest
 
-PSEUDO_TOOL_MARKERS = ("<tool_call>", "<function=", "<parameter=", "<tool_response>")
-
 
 @dataclass(slots=True)
 class ProviderTurnResult:
@@ -100,6 +98,11 @@ def provider_summary() -> str:
     return f"provider={provider} model={model} base_url={base_url}"
 
 
+def configured_provider() -> str:
+    load_repo_env()
+    return os.getenv("OPENAGENT_PROVIDER", "openai").strip().lower()
+
+
 def live_tool_eval_timeout_seconds(default: float = 90.0) -> float:
     load_repo_env()
     raw_value = os.getenv("OPENAGENT_TOOL_EVAL_TIMEOUT_SEC", "").strip()
@@ -120,11 +123,48 @@ def scenario_filter_names(env_var: str) -> set[str]:
     return {item.strip() for item in raw_value.split(",") if item.strip()}
 
 
-def contains_pseudo_tool_markup(text: str | None) -> bool:
-    if not text:
-        return False
-    lowered = text.lower()
-    return any(marker in lowered for marker in PSEUDO_TOOL_MARKERS)
+def latest_model_io_row(model_io_root: Path) -> dict[str, Any] | None:
+    index_path = model_io_root / "index.jsonl"
+    if not index_path.exists():
+        return None
+    lines = [line for line in index_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not lines:
+        return None
+    loaded = json.loads(lines[-1])
+    return loaded if isinstance(loaded, dict) else None
+
+
+def latest_provider_row_with_tool_messages(model_io_root: Path) -> dict[str, Any] | None:
+    index_path = model_io_root / "index.jsonl"
+    if not index_path.exists():
+        return None
+    rows = [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    for row in reversed(rows):
+        if not isinstance(row, dict):
+            continue
+        projected = row.get("provider_projected_messages")
+        if not isinstance(projected, list):
+            continue
+        if any(isinstance(message, dict) and message.get("role") == "tool" for message in projected):
+            return row
+    return None
+
+
+def provider_tool_messages(row: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(row, dict):
+        return []
+    projected = row.get("provider_projected_messages")
+    if not isinstance(projected, list):
+        return []
+    return [
+        dict(message)
+        for message in projected
+        if isinstance(message, dict) and message.get("role") == "tool"
+    ]
 
 
 def build_openai_function_tool(

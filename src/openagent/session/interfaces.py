@@ -29,6 +29,9 @@ class SessionStore(Protocol):
     def save_session(self, session_id: str, state: Any) -> None:
         """Persist session state."""
 
+    def save_session_state_only(self, session_id: str, state: Any) -> None:
+        """Persist side-state without appending transcript or event history."""
+
     def get_checkpoint(self, session_id: str) -> SessionCheckpoint:
         """Return the current event-log checkpoint."""
 

@@ -83,16 +83,39 @@ class FileSessionStore:
         transcript_count = self._persisted_count(existing_state, "transcript_message_count")
         event_count = self._persisted_count(existing_state, "event_count")
         transcript_path = self._ensure_transcript_ref(session_id, state)
-        self._append_transcript_suffix(session_id, state, transcript_count, transcript_path)
-        self._append_event_suffix(session_id, state, event_count)
-        payload = self._session_state_payload(
+        effective_transcript_count = self._validated_transcript_count_for_save(
+            session_id,
+            state,
+            transcript_count,
+        )
+        effective_event_count = self._validated_event_count_for_save(
+            session_id,
+            state,
+            event_count,
+        )
+        self._append_transcript_suffix(
+            session_id,
+            state,
+            effective_transcript_count,
+            transcript_path,
+        )
+        self._append_event_suffix(session_id, state, effective_event_count)
+        self._write_session_state(
+            session_id,
             state,
             transcript_message_count=len(state.messages),
             event_count=len(state.events),
         )
-        self._session_path(session_id).write_text(
-            json.dumps(payload, indent=2),
-            encoding="utf-8",
+
+    def save_session_state_only(self, session_id: str, state: SessionRecord) -> None:
+        existing_state = self._load_state_payload(session_id)
+        transcript_count = self._persisted_count(existing_state, "transcript_message_count")
+        event_count = self._persisted_count(existing_state, "event_count")
+        self._write_session_state(
+            session_id,
+            state,
+            transcript_message_count=transcript_count,
+            event_count=event_count,
         )
 
     def get_checkpoint(self, session_id: str) -> SessionCheckpoint:
@@ -120,7 +143,7 @@ class FileSessionStore:
             else checkpoint.last_event_id
         )
         session.restore_marker = marker
-        self.save_session(session_id, session)
+        self.save_session_state_only(session_id, session)
 
     def get_resume_snapshot(self, wake_request: WakeRequest) -> ResumeSnapshot:
         session = self.load_session(wake_request.session_id)
@@ -226,6 +249,60 @@ class FileSessionStore:
             return 0
         value = state_payload.get(key)
         return value if isinstance(value, int) and value >= 0 else 0
+
+    def _validated_transcript_count_for_save(
+        self,
+        session_id: str,
+        state: SessionRecord,
+        transcript_count: int,
+    ) -> int:
+        current_transcript = self._read_transcript(session_id)
+        visible_count = len(current_transcript)
+        if transcript_count > visible_count:
+            if current_transcript == state.messages:
+                return transcript_count
+            raise ValueError("Append-only transcript backing is missing or truncated")
+        if visible_count > len(state.messages):
+            raise ValueError("Cannot truncate append-only transcript")
+        if current_transcript != state.messages[:visible_count]:
+            raise ValueError("Append-only transcript diverged from session state")
+        return visible_count
+
+    def _validated_event_count_for_save(
+        self,
+        session_id: str,
+        state: SessionRecord,
+        event_count: int,
+    ) -> int:
+        current_events = self.read_events(session_id)
+        visible_count = len(current_events)
+        if event_count > visible_count:
+            if current_events == state.events:
+                return event_count
+            raise ValueError("Append-only event log backing is missing or truncated")
+        if visible_count > len(state.events):
+            raise ValueError("Cannot truncate append-only event log")
+        if current_events != state.events[:visible_count]:
+            raise ValueError("Append-only event log diverged from session state")
+        return visible_count
+
+    def _write_session_state(
+        self,
+        session_id: str,
+        state: SessionRecord,
+        *,
+        transcript_message_count: int,
+        event_count: int,
+    ) -> None:
+        payload = self._session_state_payload(
+            state,
+            transcript_message_count=transcript_message_count,
+            event_count=event_count,
+        )
+        self._session_path(session_id).write_text(
+            json.dumps(payload, indent=2),
+            encoding="utf-8",
+        )
 
     def _append_transcript_suffix(
         self,

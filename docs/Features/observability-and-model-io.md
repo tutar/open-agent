@@ -51,6 +51,7 @@
 - per-call record files under `records/<session_id>/`
 - assembled `ModelTurnRequest` capture
 - provider payload capture
+- direct `provider_projected_messages` capture that matches the real outbound API `messages` array
 - provider raw response capture
 - parsed `ModelTurnResponse` capture
 - provider-exposed reasoning / thinking block capture
@@ -64,7 +65,29 @@
 - Loki-facing projection of:
   - `.openagent/.../transcript.jsonl` as conversation view
   - `.openagent/sessions/<session_id>/events.jsonl` as runtime event view
-  - `.openagent/.../model-io` as provider evidence view
+- `.openagent/.../model-io` as provider evidence view
+
+`model-io` 中的两类 message 视图语义不同：
+
+- `assembled_request.messages`
+  - OpenAgent 内部 canonical request messages
+  - 保留 provider-neutral transcript 语义，便于 context engineering 和 session 侧排查
+- `provider_projected_messages`
+  - 与真实外发 LLM API payload 完全一致的 `messages` 视图
+  - 用于直接排查 provider/tool-calling 问题，不再需要从 `provider_payload` 中手动翻找
+
+tool result 回写时，这两个视图会故意不同：
+
+- `assembled_request.messages`
+  - 仍可能保留 richer canonical 结构，例如：
+    - `role: "tool"`
+    - `content: [...]`
+    - `metadata.tool_use_id`
+- `provider_projected_messages`
+  - 必须反映真实 provider wire format
+  - 对 OpenAI-compatible provider，tool result 会投影成：
+    - `{"role":"tool","tool_call_id":"...","content":"..."}`
+  - 其中 `content` 是 provider-facing string payload，不再保留 canonical `metadata`
 
 ### 当前不支持
 

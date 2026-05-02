@@ -419,7 +419,7 @@ host / runtime assembly 负责：
   - 是否补 normalized usage 字段
   - 是否补 `callsite`
   - 是否补 `ttft_ms` / request duration
-- `AnthropicMessagesModelAdapter`
+- `InstructorModelAdapter`
   - 当前仍是 non-streaming；若后续补 streaming，必须同步满足完整 exchange/usage capture 契约
 
 ## Non-Goals

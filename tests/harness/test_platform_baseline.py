@@ -675,8 +675,8 @@ def test_capability_surface_projects_unified_entries() -> None:
         for descriptor in terminal_projected["capabilities"]
         if descriptor["capability_id"] == "Glob"
     )
-    assert "open-ended search" in glob_descriptor["description"]
-    assert "Agent tool instead" in glob_descriptor["description"]
+    assert "Find files by path pattern inside the workspace" in glob_descriptor["description"]
+    assert "before reading or grepping" in glob_descriptor["description"]
     skill_descriptor = next(
         descriptor
         for descriptor in terminal_projected["capabilities"]

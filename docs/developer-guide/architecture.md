@@ -212,8 +212,7 @@ host 默认 demo tools 只是在此基础上额外叠加，不会覆盖 builtin 
 
 真实 provider 当前放在 `harness/providers/`：
 
-- `OpenAIChatCompletionsModelAdapter`
-- `AnthropicMessagesModelAdapter`
+- `InstructorModelAdapter`
 
 如果模型提供 `stream_generate(...)`，harness 会先产出 `assistant_delta` 事件，再汇总成最终
 `assistant_message`。

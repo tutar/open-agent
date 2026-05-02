@@ -353,7 +353,10 @@ class SimpleHarness(Harness):
         return ModelTurnRequest(
             session_id=session_slice.session_id,
             messages=assembly_result.message_stream,
-            system_prompt=assembly_result.system_prompt,
+            system_prompt=self._provider_adjusted_system_prompt(
+                assembly_result.system_prompt,
+                session_slice,
+            ),
             prompt_sections=assembly_result.prompt_sections,
             prompt_blocks=assembly_result.prompt_blocks,
             startup_contexts=assembly_result.startup_contexts,
@@ -991,6 +994,7 @@ class SimpleHarness(Harness):
                         "success": result.success,
                         "truncated": bool(result.truncated) if result.truncated is not None else False,
                         "persisted_ref": result.persisted_ref,
+                        "structured_content": result.structured_content,
                     },
                 )
             )
@@ -1174,6 +1178,26 @@ class SimpleHarness(Harness):
     def _provider_family(self) -> str | None:
         family = getattr(self.model, "provider_family", None)
         return str(family) if family is not None else None
+
+    def _provider_adjusted_system_prompt(
+        self,
+        system_prompt: str | None,
+        session: SessionRecord,
+    ) -> str | None:
+        if getattr(self.model, "tool_result_prompt_hint", None) != "openai_tool_json_string":
+            return system_prompt
+        if not any(message.role == "tool" for message in session.messages):
+            return system_prompt
+        hint = (
+            "OpenAI-compatible tool-result note: messages with role `tool` use "
+            "`content` as a JSON-formatted string. Parse that JSON string to inspect "
+            "the structured tool result rather than treating it as free-form prose."
+        )
+        if system_prompt is None or not system_prompt.strip():
+            return hint
+        if hint in system_prompt:
+            return system_prompt
+        return f"{system_prompt}\n\n{hint}"
 
 
 __all__ = [

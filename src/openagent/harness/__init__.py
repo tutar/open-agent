@@ -13,13 +13,9 @@ from openagent.harness.multi_agent import (
     ViewedTranscriptEntry,
 )
 from openagent.harness.providers import (
-    AnthropicMessagesModelAdapter,
-    HttpResponse,
-    HttpTransport,
-    OpenAIChatCompletionsModelAdapter,
+    InstructorModelAdapter,
     ProviderConfigurationError,
     ProviderError,
-    UrllibHttpTransport,
     load_model_from_env,
 )
 from openagent.harness.task import (
@@ -46,13 +42,10 @@ __all__ = [
     "DelegatedAgentIdentity",
     "DelegatedAgentInvocation",
     "DirectViewInput",
-    "AnthropicMessagesModelAdapter",
     "FileTaskManager",
     "Harness",
-    "HttpResponse",
-    "HttpTransport",
+    "InstructorModelAdapter",
     "InterAgentMessage",
-    "OpenAIChatCompletionsModelAdapter",
     "ProviderConfigurationError",
     "ProviderError",
     "InMemoryTaskManager",
@@ -69,7 +62,6 @@ __all__ = [
     "VerificationRequest",
     "VerificationResult",
     "VerificationVerdict",
-    "UrllibHttpTransport",
     "VerifierTaskHandle",
     "ViewedTranscript",
     "ViewedTranscriptEntry",

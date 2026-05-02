@@ -109,6 +109,7 @@ class ModelIoRecord(SerializableModel):
     retry_index: int
     status: str
     assembled_request: JsonObject
+    provider_projected_messages: list[JsonObject] = field(default_factory=list)
     provider_payload: JsonObject | None = None
     provider_response_raw: JsonObject | None = None
     provider_response_summary: JsonObject | None = None
@@ -260,6 +261,9 @@ class FileModelIoCapture:
         assistant_message: str | None = None
         if isinstance(response_dict, dict) and response_dict.get("assistant_message") is not None:
             assistant_message = str(response_dict.get("assistant_message"))
+        provider_projected_messages = _provider_projected_messages(
+            exchange.provider_payload if exchange is not None else None
+        )
         record = ModelIoRecord(
             capture_id=uuid.uuid4().hex,
             timestamp=datetime.now(UTC).isoformat(),
@@ -273,6 +277,7 @@ class FileModelIoCapture:
             retry_index=retry_index,
             status="completed",
             assembled_request=request.to_dict(),
+            provider_projected_messages=provider_projected_messages,
             provider_payload=exchange.provider_payload if exchange is not None else None,
             provider_response_raw=(
                 exchange.raw_response if exchange is not None and self.write_raw_response else None
@@ -358,3 +363,12 @@ def _truncate_json(value: JsonValue, max_chars: int) -> JsonValue:
             for key, item in value.items()
         }
     return value
+
+
+def _provider_projected_messages(provider_payload: JsonObject | None) -> list[JsonObject]:
+    if not isinstance(provider_payload, dict):
+        return []
+    raw_messages = provider_payload.get("messages")
+    if not isinstance(raw_messages, list):
+        return []
+    return [dict(item) for item in raw_messages if isinstance(item, dict)]

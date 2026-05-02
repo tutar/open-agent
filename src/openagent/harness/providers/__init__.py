@@ -7,42 +7,55 @@ import os
 from urllib import request
 from urllib.error import HTTPError, URLError
 
-from openagent.harness.providers.anthropic import AnthropicMessagesModelAdapter
-from openagent.harness.providers.base import (
-    HttpResponse,
-    HttpTransport,
+from openagent.harness.providers.errors import (
     ProviderConfigurationError,
     ProviderError,
-    UrllibHttpTransport,
 )
-from openagent.harness.providers.openai import OpenAIChatCompletionsModelAdapter
+from openagent.harness.providers.instructor_adapter import (
+    InstructorModelAdapter,
+)
 from openagent.harness.runtime.io import ModelProviderAdapter
 
 
 def load_model_from_env() -> ModelProviderAdapter:
     """Create a real model adapter from the local environment."""
 
-    provider = os.getenv("OPENAGENT_PROVIDER", "openai").strip().lower()
     model = os.getenv("OPENAGENT_MODEL")
     base_url = os.getenv("OPENAGENT_BASE_URL")
+    provider = _resolve_provider_from_env(base_url)
     if not model:
         raise ProviderConfigurationError("OPENAGENT_MODEL is required")
     if not base_url:
         raise ProviderConfigurationError("OPENAGENT_BASE_URL is required")
     if provider == "openai":
         model = _resolve_openai_model_name(base_url, model)
-        return OpenAIChatCompletionsModelAdapter(
-            model=model,
-            base_url=base_url,
-            api_key=os.getenv("OPENAI_API_KEY") or os.getenv("OPENAGENT_API_KEY"),
-        )
+    return InstructorModelAdapter(
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        api_key=_provider_api_key(provider),
+        max_tokens=1024 if provider == "anthropic" else None,
+    )
+
+
+def _resolve_provider_from_env(base_url: str | None) -> str:
+    configured = os.getenv("OPENAGENT_PROVIDER", "").strip().lower()
+    if configured in {"openai", "anthropic"}:
+        return configured
+    normalized_base_url = (base_url or "").strip().lower()
+    if "anthropic" in normalized_base_url or normalized_base_url.rstrip("/").endswith("/v1/messages"):
+        return "anthropic"
+    if os.getenv("ANTHROPIC_API_KEY") and not (
+        os.getenv("OPENAI_API_KEY") or os.getenv("OPENAGENT_API_KEY")
+    ):
+        return "anthropic"
+    return "openai"
+
+
+def _provider_api_key(provider: str) -> str | None:
     if provider == "anthropic":
-        return AnthropicMessagesModelAdapter(
-            model=model,
-            base_url=base_url,
-            api_key=os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAGENT_API_KEY"),
-        )
-    raise ProviderConfigurationError(f"Unsupported provider: {provider}")
+        return os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAGENT_API_KEY")
+    return os.getenv("OPENAI_API_KEY") or os.getenv("OPENAGENT_API_KEY")
 
 
 def _resolve_openai_model_name(base_url: str, requested_model: str) -> str:
@@ -95,12 +108,8 @@ def _fetch_openai_model_ids(base_url: str) -> list[str]:
 
 
 __all__ = [
-    "AnthropicMessagesModelAdapter",
-    "HttpResponse",
-    "HttpTransport",
-    "OpenAIChatCompletionsModelAdapter",
+    "InstructorModelAdapter",
     "ProviderConfigurationError",
     "ProviderError",
-    "UrllibHttpTransport",
     "load_model_from_env",
 ]

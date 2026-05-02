@@ -10,6 +10,7 @@ from openagent.session import (
     FileShortTermMemoryStore,
     InMemoryShortTermMemoryStore,
     SessionMessage,
+    SessionRecord,
     WakeRequest,
 )
 from openagent.tools import ToolCall
@@ -210,3 +211,108 @@ def test_tool_events_persist_turn_task_id(tmp_path: Path) -> None:
 
     assert tool_events
     assert all(event["task_id"] for event in tool_events)
+
+
+def test_file_session_store_allows_metadata_only_save_when_transcript_file_is_missing(
+    tmp_path: Path,
+) -> None:
+    sessions = FileSessionStore(tmp_path / "sessions")
+    session = SessionRecord(
+        session_id="sess_missing_transcript",
+        messages=[SessionMessage(role="user", content="hello")],
+        metadata={"workdir": str((tmp_path / "workspace").resolve())},
+    )
+    sessions.save_session("sess_missing_transcript", session)
+
+    session_root = tmp_path / "sessions" / "sess_missing_transcript"
+    transcript_ref = (session_root / "transcript.ref").read_text(encoding="utf-8").strip()
+    Path(transcript_ref).unlink()
+
+    restored = sessions.load_session("sess_missing_transcript")
+    restored.metadata["restored_via"] = "gateway"
+    sessions.save_session_state_only("sess_missing_transcript", restored)
+
+    state_payload = json.loads((session_root / "state.json").read_text(encoding="utf-8"))
+    assert state_payload["transcript_message_count"] == 1
+    assert state_payload["metadata"]["restored_via"] == "gateway"
+
+
+def test_file_session_store_rejects_append_when_transcript_backing_is_missing(
+    tmp_path: Path,
+) -> None:
+    sessions = FileSessionStore(tmp_path / "sessions")
+    session = SessionRecord(
+        session_id="sess_heal_transcript",
+        messages=[SessionMessage(role="user", content="hello")],
+    )
+    sessions.save_session("sess_heal_transcript", session)
+
+    session_root = tmp_path / "sessions" / "sess_heal_transcript"
+    transcript_ref = (session_root / "transcript.ref").read_text(encoding="utf-8").strip()
+    Path(transcript_ref).unlink()
+
+    restored = sessions.load_session("sess_heal_transcript")
+    restored.messages.append(SessionMessage(role="user", content="next"))
+    try:
+        sessions.save_session("sess_heal_transcript", restored)
+    except ValueError as exc:
+        assert "Append-only transcript backing is missing or truncated" in str(exc)
+    else:
+        raise AssertionError("Expected save_session to reject appending with missing transcript")
+
+    state_payload = json.loads((session_root / "state.json").read_text(encoding="utf-8"))
+    assert state_payload["transcript_message_count"] == 1
+
+
+def test_file_session_store_allows_state_only_save_when_event_log_is_missing(
+    tmp_path: Path,
+) -> None:
+    runtime = create_file_runtime(
+        model=ScriptedModel([ModelTurnResponse(assistant_message="saved")]),
+        session_root=str(tmp_path / "sessions"),
+    )
+    runtime.run_turn("hello", "sess_missing_events")
+
+    sessions = runtime.sessions
+    session_root = tmp_path / "sessions" / "sess_missing_events"
+    (session_root / "events.jsonl").unlink()
+
+    restored = sessions.load_session("sess_missing_events")
+    restored.metadata["restored_via"] = "gateway"
+    sessions.save_session_state_only("sess_missing_events", restored)
+
+    state_payload = json.loads((session_root / "state.json").read_text(encoding="utf-8"))
+    assert state_payload["event_count"] == 3
+    assert state_payload["metadata"]["restored_via"] == "gateway"
+
+
+def test_file_session_store_rejects_append_when_event_log_backing_is_missing(
+    tmp_path: Path,
+) -> None:
+    runtime = create_file_runtime(
+        model=ScriptedModel([ModelTurnResponse(assistant_message="saved")]),
+        session_root=str(tmp_path / "sessions"),
+    )
+    runtime.run_turn("hello", "sess_missing_events_append")
+
+    sessions = runtime.sessions
+    session_root = tmp_path / "sessions" / "sess_missing_events_append"
+    (session_root / "events.jsonl").unlink()
+
+    restored = sessions.load_session("sess_missing_events_append")
+    restored.events.append(
+        runtime._new_event(
+            session_id="sess_missing_events_append",
+            event_type=RuntimeEventType.TURN_STARTED,
+            payload={"input": "again"},
+        )
+    )
+    try:
+        sessions.save_session("sess_missing_events_append", restored)
+    except ValueError as exc:
+        assert "Append-only event log backing is missing or truncated" in str(exc)
+    else:
+        raise AssertionError("Expected save_session to reject appending with missing event log")
+
+    state_payload = json.loads((session_root / "state.json").read_text(encoding="utf-8"))
+    assert state_payload["event_count"] == 3

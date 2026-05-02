@@ -156,7 +156,8 @@ tool result 回写链路现在也需要按 richer model 维护：
   - 空结果补 `(ToolName completed with no output)` 风格占位
 - provider adapters 按能力投影：
   - Anthropic-compatible provider 尽量保留 `tool_result` block 和 text/image content
-  - OpenAI-compatible provider 把 richer tool-result 降级成稳定字符串摘要
+  - OpenAI-compatible provider 保持 `role=tool` / `tool_call_id` 契约，并把 richer
+    tool-result 编码成 JSON 格式文本放进 `content`
 
 当前 6 个 core local tools 的第一批 result contract 为：
 

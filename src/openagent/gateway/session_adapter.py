@@ -40,10 +40,13 @@ class InProcessSessionAdapter:
             metadata={"spawned_at": datetime.now(UTC).isoformat()},
         )
         session = self._runtime.sessions.load_session(session_id)
+        original_agent_id = session.agent_id
+        original_metadata = dict(session.metadata)
         if getattr(session, "agent_id", None) is None:
             session.agent_id = self._agent_id
         self._runtime.ensure_session_workspace(session_id, session)
-        self._runtime.sessions.save_session(session_id, session)
+        if session.agent_id != original_agent_id or session.metadata != original_metadata:
+            self._runtime.sessions.save_session_state_only(session_id, session)
         self._runtime.sessions.acquire_lease(
             session_id,
             harness_instance.harness_instance_id,

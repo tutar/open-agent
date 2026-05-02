@@ -244,6 +244,7 @@ class SimpleToolExecutor:
                     span,
                     started_at,
                     context.session_id,
+                    context.task_id,
                     tool_call.tool_name,
                     "completed",
                 )

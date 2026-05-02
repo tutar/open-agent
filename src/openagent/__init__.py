@@ -62,13 +62,9 @@ from openagent.harness.multi_agent import (
     ViewedTranscriptEntry,
 )
 from openagent.harness.providers import (
-    AnthropicMessagesModelAdapter,
-    HttpResponse,
-    HttpTransport,
-    OpenAIChatCompletionsModelAdapter,
+    InstructorModelAdapter,
     ProviderConfigurationError,
     ProviderError,
-    UrllibHttpTransport,
     load_model_from_env,
 )
 from openagent.harness.task import (
@@ -246,7 +242,6 @@ from openagent.tools import (
 __all__ = [
     "AgentObservability",
     "AgentTool",
-    "AnthropicMessagesModelAdapter",
     "AskUserQuestionTool",
     "BackgroundTaskContext",
     "BackgroundTaskHandle",
@@ -288,9 +283,8 @@ __all__ = [
     "Gateway",
     "GlobTool",
     "GrepTool",
-    "HttpResponse",
     "HttpTransportConfig",
-    "HttpTransport",
+    "InstructorModelAdapter",
     "InMemoryMcpClient",
     "InMemoryMcpTransport",
     "InterAgentMessage",
@@ -341,7 +335,6 @@ __all__ = [
     "NoOpObservabilitySink",
     "NormalizedInboundMessage",
     "OfficialFeishuBotClient",
-    "OpenAIChatCompletionsModelAdapter",
     "PermissionDecision",
     "PersistedToolResultRef",
     "ProgressUpdate",
@@ -426,7 +419,6 @@ __all__ = [
     "StdioMcpTransport",
     "StdioTransportConfig",
     "StreamableHttpMcpTransport",
-    "UrllibHttpTransport",
     "VerificationRequest",
     "VerificationResult",
     "VerificationVerdict",

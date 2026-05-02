@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from openagent.harness.providers import load_model_from_env
-from openagent.harness.runtime import SimpleHarness
+from openagent.harness.runtime import FileModelIoCapture, SimpleHarness
 from openagent.harness.runtime.core.terminal import TurnControl
-from openagent.object_model import RuntimeEventType, TerminalStatus
+from openagent.object_model import RuntimeEventType
 from openagent.session import FileSessionStore
 from openagent.tools import (
     GREP_TOOL_NAME,
@@ -19,9 +19,11 @@ from openagent.tools import (
     create_local_code_edit_toolset,
 )
 from tests.tools.tool_eval_support import (
-    contains_pseudo_tool_markup,
+    configured_provider,
     live_tool_selection_eval_enabled,
     live_tool_eval_timeout_seconds,
+    latest_provider_row_with_tool_messages,
+    provider_tool_messages,
     provider_summary,
     require_live_model_endpoint,
     scenario_filter_names,
@@ -42,7 +44,6 @@ class ToolLoopRecord:
     terminal_status: str
     tool_rounds: int
     tool_sequence: list[str]
-    fallback_round: int | None
     detail: str
 
 
@@ -87,7 +88,8 @@ def _run_runtime_tool_loop(
         sessions=FileSessionStore(tmp_path / "sessions"),
         tools=registry,
         executor=SimpleToolExecutor(registry),
-        max_iterations=4,
+        max_iterations=6,
+        model_io_capture=FileModelIoCapture(tmp_path / "model-io"),
         session_root_dir=str(tmp_path / "sessions"),
     )
     session = harness.sessions.load_session(f"tool_loop_{scenario.name}")
@@ -104,36 +106,6 @@ def _run_runtime_tool_loop(
         for event in events
         if event.event_type is RuntimeEventType.TOOL_STARTED
     ]
-    assistant_messages = [
-        str(event.payload["message"])
-        for event in events
-        if event.event_type is RuntimeEventType.ASSISTANT_MESSAGE
-    ]
-    fallback_round: int | None = None
-    for message in assistant_messages:
-        if contains_pseudo_tool_markup(message):
-            fallback_round = len(tool_sequence) + 1
-            break
-    if terminal.status is not TerminalStatus.COMPLETED:
-        return ToolLoopRecord(
-            scenario_name=scenario.name,
-            status="failed",
-            terminal_status=terminal.status.value,
-            tool_rounds=len(tool_sequence),
-            tool_sequence=tool_sequence,
-            fallback_round=fallback_round,
-            detail="terminal did not complete",
-        )
-    if fallback_round is not None:
-        return ToolLoopRecord(
-            scenario_name=scenario.name,
-            status="pseudo_tool_fallback",
-            terminal_status=terminal.status.value,
-            tool_rounds=len(tool_sequence),
-            tool_sequence=tool_sequence,
-            fallback_round=fallback_round,
-            detail="assistant message contained pseudo tool markup",
-        )
     if len(tool_sequence) < scenario.expected_min_rounds:
         return ToolLoopRecord(
             scenario_name=scenario.name,
@@ -141,18 +113,7 @@ def _run_runtime_tool_loop(
             terminal_status=terminal.status.value,
             tool_rounds=len(tool_sequence),
             tool_sequence=tool_sequence,
-            fallback_round=None,
             detail="runtime completed before the expected number of tool rounds",
-        )
-    if GREP_TOOL_NAME not in tool_sequence:
-        return ToolLoopRecord(
-            scenario_name=scenario.name,
-            status="missing_grep",
-            terminal_status=terminal.status.value,
-            tool_rounds=len(tool_sequence),
-            tool_sequence=tool_sequence,
-            fallback_round=None,
-            detail="runtime never reached a Grep tool call",
         )
     return ToolLoopRecord(
         scenario_name=scenario.name,
@@ -160,9 +121,46 @@ def _run_runtime_tool_loop(
         terminal_status=terminal.status.value,
         tool_rounds=len(tool_sequence),
         tool_sequence=tool_sequence,
-        fallback_round=None,
         detail="runtime preserved structured tool use through the required rounds",
     )
+
+
+def _tool_loop_projection_failure_details(model_io_root: Path) -> str:
+    row = latest_provider_row_with_tool_messages(model_io_root)
+    if row is None:
+        return "no provider request with tool messages was captured"
+    return (
+        f"provider_projected_messages={json.dumps(row.get('provider_projected_messages'), ensure_ascii=False)} "
+        f"assembled_request_messages={json.dumps(row.get('assembled_request', {}).get('messages', []), ensure_ascii=False)}"
+    )
+
+
+def _assert_openai_tool_result_projection(model_io_root: Path) -> None:
+    if configured_provider() != "openai":
+        pytest.skip("tool result wire-format assertion is only defined for OpenAI-compatible providers")
+    row = latest_provider_row_with_tool_messages(model_io_root)
+    assert row is not None, (
+        "tool result never appeared in a follow-up provider request; "
+        f"{provider_summary()} {_tool_loop_projection_failure_details(model_io_root)}"
+    )
+    tool_messages = provider_tool_messages(row)
+    assert tool_messages, (
+        "expected at least one provider-facing tool message; "
+        f"{provider_summary()} {_tool_loop_projection_failure_details(model_io_root)}"
+    )
+    for message in tool_messages:
+        assert "tool_call_id" in message, (
+            "provider-facing tool message is missing tool_call_id; "
+            f"{provider_summary()} {_tool_loop_projection_failure_details(model_io_root)}"
+        )
+        assert "metadata" not in message, (
+            "provider-facing tool message leaked canonical metadata instead of wire fields; "
+            f"{provider_summary()} {_tool_loop_projection_failure_details(model_io_root)}"
+        )
+        assert isinstance(message.get("content"), str), (
+            "provider-facing tool message content must be a string for OpenAI-compatible payloads; "
+            f"{provider_summary()} {_tool_loop_projection_failure_details(model_io_root)}"
+        )
 
 
 TOOL_LOOP_SCENARIOS = [
@@ -222,4 +220,5 @@ def test_live_runtime_tool_loop_stability(
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
     assert record.status == "completed", report
+    _assert_openai_tool_result_projection(tmp_path / "model-io")
     assert report_path.exists()

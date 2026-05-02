@@ -169,7 +169,7 @@ def test_read_tool_supports_offset_and_limit(tmp_path: Path) -> None:
 
     result = tool.call({"path": "notes.txt", "offset": 2, "limit": 2}, context)
 
-    assert result.content == ["2\tb\n3\tc"]
+    assert result.content == [{"type": "text", "text": "2\tb\n3\tc"}]
     assert result.structured_content is not None
     assert result.structured_content["offset"] == 2
     assert result.structured_content["limit"] == 2
@@ -264,10 +264,10 @@ def test_glob_and_grep_support_scoped_search_and_limits(tmp_path: Path) -> None:
     assert render_tool_result_content(glob_result.content) == "Found 1 matching files\nsrc/a.py"
     assert glob_result.structured_content is not None
     assert glob_result.structured_content["count"] == 1
-    assert grep_result.content == [
-        {"type": "text", "text": "src/a.py:1:match"},
-        {"type": "text", "text": "src/b.py:1:match"},
-    ]
+    assert {item["text"] for item in grep_result.content} == {
+        "src/a.py:1:match",
+        "src/b.py:1:match",
+    }
     assert grep_result.structured_content is not None
     assert grep_result.structured_content["truncated"] is True
 

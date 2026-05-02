@@ -218,18 +218,42 @@ When you encounter an obstacle, do not use destructive actions as a shortcut to 
 
     def _using_your_tools_section(self, runtime_capabilities: list[str]) -> str:
         tools = {name.lower() for name in runtime_capabilities}
-        providedToolSubitems = [
-            f"To read files use {READ_TOOL_NAME} instead of cat, head, tail, or sed",
-            f"To edit files use {EDIT_TOOL_NAME} instead of sed or awk",
-            f"To create files use {WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection",
-            f"To search for files use {GLOB_TOOL_NAME} instead of find or ls",
-            f"To search the content of files, use {GREP_TOOL_NAME} instead of grep or rg",
-            f"Reserve using the {BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the {BASH_TOOL_NAME} tool for these if it is absolutely necessary.",
-        ]
-
         items = []
-        items.append(f"Do NOT use the {BASH_TOOL_NAME} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:")
-        items.extend(providedToolSubitems)
+        dedicated_items: list[str] = []
+        if READ_TOOL_NAME.lower() in tools:
+            dedicated_items.append(
+                f"To read files use {READ_TOOL_NAME} instead of cat, head, tail, or sed"
+            )
+        if EDIT_TOOL_NAME.lower() in tools:
+            dedicated_items.append(
+                f"To edit files use {EDIT_TOOL_NAME} instead of sed or awk"
+            )
+        if WRITE_TOOL_NAME.lower() in tools:
+            dedicated_items.append(
+                f"To create files use {WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection"
+            )
+        if GLOB_TOOL_NAME.lower() in tools:
+            dedicated_items.append(
+                f"To search for files use {GLOB_TOOL_NAME} instead of find or ls"
+            )
+        if GREP_TOOL_NAME.lower() in tools:
+            dedicated_items.append(
+                f"To search the content of files, use {GREP_TOOL_NAME} instead of grep or rg"
+            )
+        if BASH_TOOL_NAME.lower() in tools:
+            dedicated_items.append(
+                f"Reserve using the {BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the {BASH_TOOL_NAME} tool for these if it is absolutely necessary."
+            )
+
+        if dedicated_items:
+            items.append(
+                f"Only use tools that are explicitly available in the runtime capability summary. Do NOT use the {BASH_TOOL_NAME} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:"
+            )
+            items.extend(dedicated_items)
+        else:
+            items.append(
+                "Only use tools that are explicitly available in the runtime capability summary."
+            )
         items.append("You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.")
 
         return self._section("Using your tools", items)

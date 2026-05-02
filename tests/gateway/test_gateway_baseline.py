@@ -236,6 +236,59 @@ def test_gateway_process_input_accepts_supplement_input() -> None:
     assert egress[-1].event["event_type"] == RuntimeEventType.TURN_COMPLETED.value
 
 
+def test_in_process_session_adapter_spawn_tolerates_missing_transcript_file() -> None:
+    session_root = Path(mkdtemp(prefix="openagent-gateway-runtime-")) / "agent_default" / "sessions"
+    runtime = create_file_runtime(
+        model=StaticModel(message="restored"),
+        session_root=str(session_root),
+    )
+    runtime.run_turn("hello", "sess_restore")
+
+    session_dir = session_root / "sess_restore"
+    transcript_ref = (session_dir / "transcript.ref").read_text(encoding="utf-8").strip()
+    Path(transcript_ref).unlink()
+
+    adapter = InProcessSessionAdapter(runtime)
+    handle = adapter.spawn("sess_restore")
+
+    assert handle.session_id == "sess_restore"
+
+
+def test_gateway_run_turn_tolerates_missing_transcript_file() -> None:
+    session_root = Path(mkdtemp(prefix="openagent-gateway-runtime-")) / "agent_default" / "sessions"
+    runtime = create_file_runtime(
+        model=StaticModel(message="restored"),
+        session_root=str(session_root),
+    )
+    runtime.run_turn("hello", "sess_restore_turn")
+
+    session_dir = session_root / "sess_restore_turn"
+    transcript_ref = (session_dir / "transcript.ref").read_text(encoding="utf-8").strip()
+    Path(transcript_ref).unlink()
+
+    gateway = create_gateway_for_runtime(runtime, [TerminalChannelAdapter()])
+    channel = ChannelIdentity(
+        channel_type="terminal",
+        user_id="user_restore_turn",
+        conversation_id="conv_restore_turn",
+    )
+    gateway.bind_session(channel, "sess_restore_turn")
+
+    try:
+        gateway.process_user_message(
+            InboundEnvelope(
+                channel_identity=channel.to_dict(),
+                input_kind="user_message",
+                payload={"content": "again"},
+                delivery_metadata={"message_id": "msg_restore_turn"},
+            )
+        )
+    except ValueError as exc:
+        assert "Append-only transcript backing is missing or truncated" in str(exc)
+    else:
+        raise AssertionError("Expected gateway turn to fail when transcript backing is missing")
+
+
 def test_gateway_projects_tool_progress_events() -> None:
     gateway = build_terminal_gateway(
         ToolProgressModel(),

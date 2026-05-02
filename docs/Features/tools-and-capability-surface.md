@@ -48,7 +48,8 @@
     text-heavy tool results are externalized to internal storage with a stable summary
   - provider adapters now project richer tool-result content per provider:
     Anthropic-compatible payloads keep text/image tool-result blocks when possible, while
-    OpenAI-compatible payloads downgrade them to stable string summaries
+    OpenAI-compatible payloads encode the structured tool result as a JSON-formatted string in
+    `role=tool` message `content`
   - core local tools now have a layered verification story:
     unit behavior, provider contract, harness integration, and optional live model selection eval
   - live core-tool evals are environment-gated and can reuse the current model config by setting
